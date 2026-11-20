@@ -105,7 +105,7 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
   return (
     <form onSubmit={handleSave} className="space-y-5">
       <div>
-        <label className="block text-xs font-medium text-[#9aa0ac] mb-1.5">
+        <label className="block text-xs font-medium text-slate-600 mb-1.5">
           Nama Tampilan
         </label>
         <input
@@ -113,13 +113,13 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           placeholder="Nama kamu"
-          className="input-field w-full px-3 py-2 text-sm"
+          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
         />
       </div>
 
       <div>
-        <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
-          <label className="text-xs font-medium text-[#9aa0ac]">
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-xs font-medium text-slate-600">
             Bahasa Target
           </label>
           <div className="flex flex-wrap gap-1">
@@ -128,10 +128,10 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
                 key={lang}
                 type="button"
                 onClick={() => setTargetLanguage(lang)}
-                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+                className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition cursor-pointer ${
                   targetLanguage === lang
-                    ? 'bg-[#ededef] text-[#111215]'
-                    : 'bg-[#1b1e23] text-[#9aa0ac] hover:text-[#ededef] border border-[#242730]'
+                    ? 'bg-red-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
                 }`}
               >
                 {lang}
@@ -145,13 +145,13 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
           placeholder="Contoh: Japanese, Korean, Spanish"
           value={targetLanguage}
           onChange={(e) => setTargetLanguage(e.target.value)}
-          className="input-field w-full px-3 py-2 text-sm"
+          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
         />
       </div>
 
       <div>
-        <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
-          <label className="text-xs font-medium text-[#9aa0ac]">
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-xs font-medium text-slate-600">
             Target Harian (menit)
           </label>
           <div className="flex flex-wrap gap-1">
@@ -160,10 +160,10 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
                 key={mins}
                 type="button"
                 onClick={() => setDailyGoal(mins)}
-                className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors cursor-pointer ${
+                className={`px-2 py-0.5 rounded-md text-[11px] font-medium font-mono transition cursor-pointer ${
                   dailyGoal === mins
-                    ? 'bg-[#ededef] text-[#111215] font-medium'
-                    : 'bg-[#1b1e23] text-[#9aa0ac] hover:text-[#ededef] border border-[#242730]'
+                    ? 'bg-red-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
                 }`}
               >
                 {mins}m
@@ -178,14 +178,14 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
           max={1440}
           value={dailyGoal}
           onChange={(e) => setDailyGoal(Number(e.target.value))}
-          className="input-field w-full px-3 py-2 text-sm font-mono tabular-nums"
+          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
         />
       </div>
 
       <button
         type="submit"
         disabled={saving}
-        className="btn-primary w-full py-2.5 rounded-lg font-medium text-sm flex items-center justify-center gap-2 cursor-pointer"
+        className="btn-crimson w-full py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
       >
         <Save className="w-4 h-4" />
         {saving ? 'Menyimpan...' : 'Simpan Pengaturan'}
@@ -230,10 +230,14 @@ export const SettingsPage: React.FC = () => {
       }));
       const { error } = await supabase.from('immersion_logs').insert(rows);
       if (error) throw error;
-      toast.success(`${rows.length} catatan lokal berhasil diunggah ke akun cloud!`);
+      toast.success(
+        `${rows.length} catatan lokal berhasil diunggah ke akun cloud!`
+      );
     } catch (err: unknown) {
       toast.error(
-        err instanceof Error ? err.message : 'Gagal menyinkronkan data ke Supabase'
+        err instanceof Error
+          ? err.message
+          : 'Gagal menyinkronkan data ke Supabase'
       );
     } finally {
       setMigratingLogs(false);
@@ -325,22 +329,22 @@ export const SettingsPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0e0f11] text-[#ededef] px-4 py-8 sm:py-10">
-      <div className="max-w-xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-b from-red-50/50 via-slate-50 to-slate-50 text-slate-900 px-4 py-10">
+      <div className="max-w-xl mx-auto space-y-6 animate-fade-up">
         <Link
           to="/dashboard"
-          className="inline-flex items-center gap-2 text-xs font-medium text-[#9aa0ac] hover:text-[#ededef] transition-colors"
+          className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-red-700 transition"
         >
-          <ArrowLeft className="w-3.5 h-3.5" />
+          <ArrowLeft className="w-4 h-4" />
           Kembali ke Dashboard
         </Link>
 
-        <section className="surface p-6 space-y-5">
+        <div className="card-pro p-6 space-y-5">
           <div>
-            <h1 className="text-lg font-semibold text-[#ededef]">
+            <h1 className="text-xl font-bold text-slate-900">
               Pengaturan Immersion
             </h1>
-            <p className="text-xs text-[#9aa0ac] mt-1">
+            <p className="text-sm text-slate-500 mt-1">
               Sesuaikan nama tampilan, bahasa target, dan target durasi harian.
             </p>
           </div>
@@ -355,33 +359,33 @@ export const SettingsPage: React.FC = () => {
               onRefreshProfile={refreshProfile}
             />
           )}
-        </section>
+        </div>
 
-        <section className="surface p-6 space-y-4">
+        <div className="card-pro p-6 space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-[#1b1e23] border border-[#282c35] text-[#9aa0ac] shrink-0">
-                <Database className="w-4 h-4" />
+              <div className="p-2.5 rounded-xl bg-red-50 border border-red-100 text-red-600">
+                <Database className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-[#ededef]">
-                  Koneksi Cloud Supabase
+                <h2 className="text-base font-bold text-slate-900">
+                  Koneksi Cloud Supabase (Database & Auth)
                 </h2>
-                <p className="text-xs text-[#9aa0ac] mt-0.5">
-                  Hubungkan proyek Supabase untuk sinkronisasi akun & data di
-                  semua perangkat.
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Hubungkan proyek Supabase Anda untuk sinkronisasi akun & data
+                  di semua perangkat.
                 </p>
               </div>
             </div>
             <span
-              className={`px-2 py-0.5 rounded text-[11px] font-medium border shrink-0 ${
+              className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border shrink-0 ${
                 sbSource !== 'none'
-                  ? 'bg-[#14291f] text-[#5cd697] border-[#214a36]'
-                  : 'bg-[#1b1e23] text-[#9aa0ac] border-[#282c35]'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-slate-100 text-slate-600 border-slate-200'
               }`}
             >
               {sbSource === 'env'
-                ? 'Env'
+                ? 'Terhubung (Env)'
                 : sbSource === 'local'
                   ? 'Terhubung'
                   : 'Lokal'}
@@ -390,7 +394,7 @@ export const SettingsPage: React.FC = () => {
 
           <form onSubmit={handleTestAndSaveSupabase} className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-[#9aa0ac] mb-1">
+              <label className="block text-xs font-medium text-slate-600 mb-1">
                 Project URL
               </label>
               <input
@@ -399,11 +403,11 @@ export const SettingsPage: React.FC = () => {
                 placeholder="https://your-project-id.supabase.co"
                 value={sbUrl}
                 onChange={(e) => setSbUrl(e.target.value)}
-                className="input-field w-full px-3 py-2 text-xs font-mono"
+                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#9aa0ac] mb-1">
+              <label className="block text-xs font-medium text-slate-600 mb-1">
                 Anon Public Key
               </label>
               <input
@@ -412,33 +416,35 @@ export const SettingsPage: React.FC = () => {
                 placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                 value={sbKey}
                 onChange={(e) => setSbKey(e.target.value)}
-                className="input-field w-full px-3 py-2 text-xs font-mono"
+                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
               />
             </div>
 
-            <div className="flex flex-wrap gap-2 pt-1">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="submit"
                 disabled={testingSb}
-                className="btn-primary px-3.5 py-2 rounded-lg text-xs font-medium cursor-pointer"
+                className="btn-crimson px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer disabled:opacity-60"
               >
-                {testingSb ? 'Menguji...' : 'Test & Simpan Koneksi'}
+                {testingSb
+                  ? 'Menguji Koneksi...'
+                  : 'Test & Simpan Koneksi Supabase'}
               </button>
 
               <button
                 type="button"
                 onClick={handleCopySql}
-                className="btn-secondary px-3 py-2 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer"
+                className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 inline-flex items-center gap-1.5 cursor-pointer"
               >
-                <Copy className="w-3.5 h-3.5 text-[#9aa0ac]" />
-                Salin Skrip SQL
+                <Copy className="w-3.5 h-3.5 text-red-600" />
+                Salin Skrip SQL Tabel & RLS
               </button>
 
               {sbSource === 'local' && (
                 <button
                   type="button"
                   onClick={handleDisconnectSupabase}
-                  className="btn-secondary px-3 py-2 rounded-lg text-xs text-[#9aa0ac] hover:text-[#e57373] cursor-pointer"
+                  className="px-3 py-2 rounded-xl bg-white border border-slate-200 hover:text-red-600 text-xs font-medium text-slate-500 cursor-pointer"
                 >
                   Putuskan
                 </button>
@@ -449,7 +455,7 @@ export const SettingsPage: React.FC = () => {
                   type="button"
                   disabled={migratingLogs}
                   onClick={handleMigrateLocalToCloud}
-                  className="px-3 py-2 rounded-lg bg-[#14291f] border border-[#214a36] text-xs font-medium text-[#5cd697] hover:bg-[#19382a] inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                  className="px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-xs font-semibold text-emerald-700 inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
                 >
                   <Upload className="w-3.5 h-3.5" />
                   {migratingLogs
@@ -462,10 +468,10 @@ export const SettingsPage: React.FC = () => {
 
           {sbStatusMsg && (
             <div
-              className={`p-3 rounded-lg text-xs border flex items-start justify-between gap-2 ${
+              className={`p-3 rounded-xl text-xs border flex items-start justify-between gap-2 ${
                 sbTablesReady
-                  ? 'bg-[#14291f] border-[#214a36] text-[#5cd697]'
-                  : 'bg-[#262013] border-[#3d331d] text-[#e5b55c]'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-amber-50 border-amber-200 text-amber-900'
               }`}
             >
               <span className="flex items-start gap-2">
@@ -476,7 +482,7 @@ export const SettingsPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => signOut()}
-                  className="underline font-medium shrink-0 cursor-pointer"
+                  className="underline font-semibold shrink-0 cursor-pointer"
                 >
                   Login Sekarang
                 </button>
@@ -484,11 +490,11 @@ export const SettingsPage: React.FC = () => {
             </div>
           )}
 
-          <div className="pt-2 border-t border-[#242730]">
+          <div className="pt-1 border-t border-slate-100">
             <button
               type="button"
               onClick={() => setShowSql(!showSql)}
-              className="text-xs font-medium text-[#9aa0ac] hover:text-[#ededef] inline-flex items-center gap-1 cursor-pointer"
+              className="text-xs font-semibold text-slate-600 hover:text-slate-900 inline-flex items-center gap-1 cursor-pointer"
             >
               Lihat Skrip SQL Supabase
               {showSql ? (
@@ -498,22 +504,22 @@ export const SettingsPage: React.FC = () => {
               )}
             </button>
             {showSql && (
-              <pre className="mt-2 p-3 rounded-lg bg-[#0e0f11] border border-[#242730] text-[#9aa0ac] text-[11px] font-mono overflow-x-auto max-h-56">
+              <pre className="mt-2 p-3 rounded-xl bg-slate-900 text-slate-100 text-[11px] font-mono overflow-x-auto max-h-56">
                 {SUPABASE_SCHEMA_SQL}
               </pre>
             )}
           </div>
-        </section>
+        </div>
 
         {isDemoMode && (
-          <section className="surface p-6 space-y-4">
+          <div className="card-pro p-6 space-y-4">
             <div>
-              <h2 className="text-sm font-semibold text-[#ededef]">
+              <h2 className="text-base font-bold text-slate-900">
                 Manajemen Data & Backup
               </h2>
-              <p className="text-xs text-[#9aa0ac] mt-1">
-                Ekspor cadangan riwayat ke JSON, pulihkan dari file, atau atur
-                ulang data lokal.
+              <p className="text-xs text-slate-500 mt-1">
+                Ekspor cadangan riwayat belajar ke JSON, pulihkan dari file,
+                atau atur ulang catatan lokal Anda.
               </p>
             </div>
 
@@ -521,18 +527,18 @@ export const SettingsPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleExport}
-                className="btn-secondary px-4 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 flex items-center justify-center gap-2 transition cursor-pointer"
               >
-                <Download className="w-3.5 h-3.5 text-[#9aa0ac]" />
+                <Download className="w-4 h-4 text-red-600" />
                 Ekspor Backup JSON
               </button>
 
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="btn-secondary px-4 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 flex items-center justify-center gap-2 transition cursor-pointer"
               >
-                <Upload className="w-3.5 h-3.5 text-[#9aa0ac]" />
+                <Upload className="w-4 h-4 text-slate-500" />
                 Impor Backup JSON
               </button>
               <input
@@ -544,14 +550,14 @@ export const SettingsPage: React.FC = () => {
               />
             </div>
 
-            <div className="pt-3 border-t border-[#242730] flex flex-wrap items-center justify-between gap-2">
+            <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
               <button
                 type="button"
                 onClick={() => {
                   resetDemoLogs();
                   toast.success('Data contoh awal dimuat ulang');
                 }}
-                className="btn-secondary px-3 py-1.5 rounded-lg text-xs text-[#9aa0ac] hover:text-[#ededef] inline-flex items-center gap-1.5 cursor-pointer"
+                className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:text-slate-900 text-xs font-medium text-slate-600 inline-flex items-center gap-1.5 transition cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 Muat Data Contoh
@@ -566,14 +572,14 @@ export const SettingsPage: React.FC = () => {
                       setConfirmClear(false);
                       toast.success('Semua riwayat belajar dikosongkan');
                     }}
-                    className="px-3 py-1.5 rounded-lg bg-[#3a1c20] hover:bg-[#4c2329] border border-[#5c2a30] text-xs font-medium text-[#f29b9b] cursor-pointer"
+                    className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-xs font-semibold text-white cursor-pointer"
                   >
                     Ya, Kosongkan
                   </button>
                   <button
                     type="button"
                     onClick={() => setConfirmClear(false)}
-                    className="btn-secondary px-3 py-1.5 rounded-lg text-xs text-[#9aa0ac] cursor-pointer"
+                    className="px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-700 cursor-pointer"
                   >
                     Batal
                   </button>
@@ -582,14 +588,14 @@ export const SettingsPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setConfirmClear(true)}
-                  className="btn-secondary px-3 py-1.5 rounded-lg text-xs text-[#9aa0ac] hover:text-[#e57373] inline-flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:border-red-300 hover:text-red-600 text-xs font-medium text-slate-500 inline-flex items-center gap-1.5 transition cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  Kosongkan Data
+                  Kosongkan Semua Data
                 </button>
               )}
             </div>
-          </section>
+          </div>
         )}
       </div>
     </div>

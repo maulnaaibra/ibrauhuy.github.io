@@ -210,6 +210,25 @@ export async function testSupabaseConnection(
   }
 }
 
+export async function isGoogleProviderEnabled(): Promise<boolean> {
+  const cfg = getSupabaseConfig();
+  if (!cfg.configured || !cfg.url || !cfg.anonKey) return false;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(`${cfg.url}/auth/v1/settings`, {
+      headers: { apikey: cfg.anonKey },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return false;
+    const data = (await res.json()) as { external?: { google?: boolean } };
+    return Boolean(data.external?.google);
+  } catch {
+    return false;
+  }
+}
+
 export const SUPABASE_SCHEMA_SQL = `grant usage on schema public to anon, authenticated;
 
 create table if not exists public.profiles (

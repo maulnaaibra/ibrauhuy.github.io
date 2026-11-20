@@ -53,20 +53,37 @@ export function generatePosterSvgDataUrl(
     cleanTitle.length > 26 ? `${cleanTitle.slice(0, 25)}…` : cleanTitle;
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320" width="240" height="320">
-  <rect width="240" height="320" rx="10" fill="#1b1e24"/>
-  <rect x="0.75" y="0.75" width="238.5" height="318.5" rx="9.25" fill="none" stroke="#2c303a" stroke-width="1.5"/>
-  <circle cx="28" cy="30" r="4" fill="${meta.color}"/>
-  <text x="40" y="34" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#9aa0ac">${escapeXml(
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#dc2626"/>
+      <stop offset="100%" stop-color="#e11d48"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.88" cy="0.16" r="0.72">
+      <stop offset="0%" stop-color="${meta.color}" stop-opacity="0.34"/>
+      <stop offset="100%" stop-color="${meta.color}" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="240" height="320" rx="16" fill="url(#bg)"/>
+  <rect width="240" height="320" rx="16" fill="url(#glow)"/>
+  <rect x="0" y="0" width="240" height="6" fill="url(#accent)"/>
+  <circle cx="195" cy="54" r="76" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <rect x="18" y="22" width="84" height="22" rx="11" fill="rgba(255,255,255,0.1)"/>
+  <circle cx="30" cy="33" r="3.5" fill="${meta.color}"/>
+  <text x="40" y="37" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="600" fill="#f1f5f9">${escapeXml(
     meta.shortLabel.toUpperCase()
   )}</text>
-  <text x="120" y="168" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="56" font-weight="700" letter-spacing="-2" fill="#2d313c">${escapeXml(
+  <text x="120" y="170" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="58" font-weight="800" letter-spacing="-2" fill="rgba(255,255,255,0.16)">${escapeXml(
     monogram
   )}</text>
-  <line x1="20" y1="248" x2="220" y2="248" stroke="#272b34" stroke-width="1"/>
-  <text x="20" y="274" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#ededef">${escapeXml(
+  <line x1="18" y1="250" x2="222" y2="250" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+  <text x="18" y="274" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#ffffff">${escapeXml(
     shortTitle
   )}</text>
-  <text x="20" y="294" font-family="Inter,system-ui,sans-serif" font-size="10.5" fill="#6c727f">${escapeXml(
+  <text x="18" y="294" font-family="Inter,system-ui,sans-serif" font-size="10" fill="#94a3b8">${escapeXml(
     meta.label
   )}</text>
 </svg>`;

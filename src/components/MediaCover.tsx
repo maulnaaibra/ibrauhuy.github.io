@@ -11,13 +11,13 @@ interface MediaCoverProps {
 export const MediaCover: React.FC<MediaCoverProps> = ({
   title,
   category,
-  className = 'w-11 h-15 rounded-md',
+  className = 'w-12 h-16 rounded-xl',
 }) => {
   const { coverUrl, fallbackUrl } = useMediaCover(title, category);
 
   return (
     <div
-      className={`relative overflow-hidden shrink-0 bg-[#1b1e23] border border-[#282c35] ${className}`}
+      className={`relative overflow-hidden shrink-0 bg-slate-100 border border-slate-200 shadow-xs ${className}`}
     >
       <img
         src={coverUrl}
@@ -28,8 +28,9 @@ export const MediaCover: React.FC<MediaCoverProps> = ({
             e.currentTarget.src = fallbackUrl;
           }
         }}
-        className="w-full h-full object-cover"
+        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
       />
+      <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-black/[0.04] rounded-[inherit]" />
     </div>
   );
 };

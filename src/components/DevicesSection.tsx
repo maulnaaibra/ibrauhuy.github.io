@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Save,
   Smartphone,
+  Sparkles,
   Terminal,
   Trash2,
   Wifi,
@@ -320,39 +321,38 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Windows Companion Agent */}
-      <section className="surface p-5 space-y-5">
+      <div className="card-pro p-5 space-y-5">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
             <div
-              className={`p-2 rounded-lg border shrink-0 ${
+              className={`p-2.5 rounded-xl border ${
                 connected
-                  ? 'bg-[#14291f] border-[#214a36] text-[#5cd697]'
-                  : 'bg-[#1b1e23] border-[#282c35] text-[#9aa0ac]'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                  : 'bg-slate-100 border-slate-200 text-slate-600'
               }`}
             >
-              <Laptop className="w-4 h-4" />
+              <Laptop className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-sm font-semibold text-[#ededef]">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h3 className="font-semibold text-slate-900">
                   Windows Desktop Companion Agent
                 </h3>
                 {connected ? (
-                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#14291f] border border-[#214a36] text-[11px] font-medium text-[#5cd697]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#2eb872]" />
-                    Terhubung · {companionStatus?.deviceName}
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Terhubung • {companionStatus?.deviceName}
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#1b1e23] border border-[#282c35] text-[11px] text-[#9aa0ac]">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-[11px] font-medium text-slate-600">
                     <WifiOff className="w-3 h-3" />
                     Offline
                   </span>
                 )}
               </div>
-              <p className="text-xs text-[#9aa0ac] mt-1">
-                Deteksi otomatis media aktif di Windows (MPV, VLC, Anki,
-                YouTube, Netflix, Manga, VN) meskipun browser ditutup.
+              <p className="text-xs text-slate-500 mt-1">
+                Otomatis deteksi aplikasi/media aktif di Windows (MPV, VLC, Anki,
+                YouTube, Netflix, Manga, VN) walaupun browser ditutup.
               </p>
             </div>
           </div>
@@ -366,12 +366,12 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
               value={urlDraft}
               onChange={(e) => setUrlDraft(e.target.value)}
               aria-label="URL Companion Agent"
-              className="input-field px-3 py-1.5 text-xs font-mono w-52"
+              className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 w-52 focus:outline-none focus:border-red-500 focus:bg-white"
             />
             <button
               type="submit"
               disabled={companionChecking}
-              className="btn-secondary px-3 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer"
+              className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 inline-flex items-center gap-1.5 cursor-pointer"
             >
               <RefreshCw
                 className={`w-3.5 h-3.5 ${
@@ -384,27 +384,26 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
         </div>
 
         {connected && companionStatus && (
-          <div className="space-y-5 pt-4 border-t border-[#242730]">
-            {/* Hairline split instead of nested boxes */}
-            <div className="grid lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-[#242730] bg-[#121316] border border-[#242730] rounded-lg">
-              <div className="p-4 space-y-2">
+          <div className="space-y-5 pt-3 border-t border-slate-100">
+            <div className="grid lg:grid-cols-2 gap-4">
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-[#9aa0ac] flex items-center gap-1.5">
-                    <Activity className="w-3.5 h-3.5 text-[#5cd697]" />
+                  <span className="font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <Activity className="w-3.5 h-3.5 text-red-600" />
                     Jendela Aktif Saat Ini
                   </span>
-                  <span className="font-mono text-[#6c727f] tabular-nums">
-                    Idle {companionStatus.lastWindow.idleSeconds}d
+                  <span className="font-mono text-slate-400">
+                    Idle: {companionStatus.lastWindow.idleSeconds}d
                   </span>
                 </div>
-                <div className="text-sm font-medium text-[#ededef] truncate">
+                <div className="text-sm font-medium text-slate-900 truncate">
                   {companionStatus.lastWindow.title || '(Tidak ada judul)'}
                 </div>
-                <div className="flex items-center gap-2 text-xs text-[#6c727f]">
-                  <span className="px-2 py-0.5 rounded bg-[#1b1e23] border border-[#282c35] font-mono text-[#9aa0ac]">
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 font-mono text-slate-700">
                     {companionStatus.lastWindow.process || 'unknown'}
                   </span>
-                  <span className="truncate">
+                  <span>
                     {companionStatus.lastWindow.matchedRule
                       ? `Cocok: ${companionStatus.lastWindow.matchedRule}`
                       : 'Tidak cocok aturan immersion'}
@@ -412,25 +411,27 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                 </div>
               </div>
 
-              <div className="p-4 flex flex-col justify-between gap-3">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-[#9aa0ac]">Sesi di Background</span>
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col justify-between gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Sesi Berjalan di Background
+                  </span>
                   {activeSession && activeMeta ? (
-                    <span className="text-[#ededef] font-medium">
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-700 font-medium">
                       {activeMeta.label}
                     </span>
                   ) : (
-                    <span className="text-[#6c727f]">Standby</span>
+                    <span className="text-[11px] text-slate-400">Standby</span>
                   )}
                 </div>
 
                 {activeSession ? (
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-medium text-[#ededef] truncate">
+                      <div className="text-sm font-semibold text-slate-900 truncate">
                         {activeSession.title}
                       </div>
-                      <div className="text-xs font-mono text-[#5cd697] mt-0.5">
+                      <div className="text-xs font-mono text-red-600 mt-0.5">
                         +
                         {calculateXp(
                           activeSession.category,
@@ -443,14 +444,14 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                         XP est.
                       </div>
                     </div>
-                    <div className="text-xl font-mono font-semibold text-[#5cd697] tabular-nums shrink-0">
+                    <div className="text-2xl font-mono font-bold text-emerald-600 tabular-nums shrink-0">
                       {formatDurationSec(activeSession.activeSeconds)}
                     </div>
                   </div>
                 ) : (
-                  <p className="text-xs text-[#6c727f]">
-                    Buka MPV, VLC, Anki, atau konten sesuai aturan di bawah agar
-                    agent mulai menghitung otomatis.
+                  <p className="text-xs text-slate-500">
+                    Buka MPV, VLC, Anki, atau tonton/baca konten sesuai aturan di
+                    bawah—agent akan mulai menghitung otomatis.
                   </p>
                 )}
 
@@ -459,10 +460,10 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                     type="button"
                     disabled={busyAction}
                     onClick={handleToggleTracking}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium inline-flex items-center gap-1.5 border cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer ${
                       companionStatus.trackingEnabled
-                        ? 'bg-[#262013] text-[#e5b55c] border-[#3d331d]'
-                        : 'bg-[#14291f] text-[#5cd697] border-[#214a36]'
+                        ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                     }`}
                   >
                     {companionStatus.trackingEnabled ? (
@@ -481,10 +482,10 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                       type="button"
                       disabled={busyAction}
                       onClick={handleFlushNow}
-                      className="btn-primary px-3 py-1.5 rounded-md text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer"
+                      className="btn-crimson px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                     >
                       <Save className="w-3.5 h-3.5" />
-                      Simpan Sesi
+                      Simpan Sesi Sekarang
                     </button>
                   )}
 
@@ -493,7 +494,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                       type="button"
                       disabled={busyAction}
                       onClick={handlePullPending}
-                      className="px-3 py-1.5 rounded-md bg-[#19382a] hover:bg-[#1f4735] border border-[#245940] text-xs font-medium text-[#7ae2ac] inline-flex items-center gap-1.5 cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs font-semibold text-white inline-flex items-center gap-1.5 cursor-pointer"
                     >
                       Tarik {companionStatus.pendingCount} Sesi Pending
                     </button>
@@ -502,47 +503,48 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-2 text-xs">
-              <label className="flex items-center gap-2.5 cursor-pointer text-[#ededef]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
+              <label className="flex items-center gap-2.5 cursor-pointer text-slate-700">
                 <input
                   type="checkbox"
                   checked={companionAutoSync}
                   onChange={(e) => onToggleCompanionAutoSync(e.target.checked)}
-                  className="accent-[#2eb872] w-4 h-4 rounded"
+                  className="accent-red-600 w-4 h-4 rounded"
                 />
                 <span>
-                  Auto-sync otomatis setiap kali sesi dari PC selesai
+                  <strong>Auto-Sync otomatis</strong> setiap kali sesi dari PC
+                  selesai
                 </span>
               </label>
 
-              <div className="flex items-center gap-4 text-[#9aa0ac] font-mono tabular-nums">
+              <div className="flex items-center gap-3 text-slate-500">
                 <span>
                   Idle pause:{' '}
-                  <span className="text-[#ededef]">
+                  <strong className="text-slate-900">
                     {Math.round(
                       companionStatus.config.idleThresholdSeconds / 60
-                    )}
-                    m
-                  </span>
+                    )}{' '}
+                    mnt
+                  </strong>
                 </span>
                 <span>
                   Min sesi:{' '}
-                  <span className="text-[#ededef]">
-                    {companionStatus.config.minSessionMinutes}m
-                  </span>
+                  <strong className="text-slate-900">
+                    {companionStatus.config.minSessionMinutes} mnt
+                  </strong>
                 </span>
               </div>
             </div>
 
-            {/* Detection rules */}
             <div className="space-y-3">
-              <h4 className="text-xs font-medium text-[#9aa0ac]">
-                Aturan Deteksi ({companionStatus.config.rules.length})
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Aturan Deteksi Aplikasi & Judul (
+                {companionStatus.config.rules.length})
               </h4>
 
               <form
                 onSubmit={handleAddRule}
-                className="grid sm:grid-cols-12 gap-2"
+                className="grid sm:grid-cols-12 gap-2 p-3 rounded-xl bg-slate-50 border border-slate-200/80"
               >
                 <input
                   type="text"
@@ -550,14 +552,14 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                   placeholder="Nama (mis. Bilibili)"
                   value={newRuleName}
                   onChange={(e) => setNewRuleName(e.target.value)}
-                  className="input-field sm:col-span-3 px-3 py-2 text-xs"
+                  className="sm:col-span-3 px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-red-500"
                 />
                 <select
                   value={newRuleMatchType}
                   onChange={(e) =>
                     setNewRuleMatchType(e.target.value as 'process' | 'title')
                   }
-                  className="input-field sm:col-span-2 px-2.5 py-2 text-xs"
+                  className="sm:col-span-2 px-2.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-red-500"
                 >
                   <option value="title">Judul Jendela</option>
                   <option value="process">Nama Proses</option>
@@ -568,14 +570,14 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                   placeholder="Kata kunci / regex (mis. bilibili|anime)"
                   value={newRulePattern}
                   onChange={(e) => setNewRulePattern(e.target.value)}
-                  className="input-field sm:col-span-3 px-3 py-2 text-xs font-mono"
+                  className="sm:col-span-3 px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500"
                 />
                 <select
                   value={newRuleCategory}
                   onChange={(e) =>
                     setNewRuleCategory(e.target.value as PrimaryMediaCategory)
                   }
-                  className="input-field sm:col-span-2 px-2.5 py-2 text-xs"
+                  className="sm:col-span-2 px-2.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-red-500"
                 >
                   {PRIMARY_CATEGORIES.map((cat) => (
                     <option key={cat} value={cat}>
@@ -586,20 +588,20 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                 <button
                   type="submit"
                   disabled={busyAction}
-                  className="btn-primary sm:col-span-2 px-3 py-2 rounded-lg text-xs font-medium inline-flex items-center justify-center gap-1 cursor-pointer"
+                  className="btn-crimson sm:col-span-2 px-3 py-2 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1 cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Tambah
                 </button>
               </form>
 
-              <div className="grid md:grid-cols-2 gap-2">
+              <div className="grid md:grid-cols-2 gap-2.5">
                 {companionStatus.config.rules.map((rule) => {
                   const meta = getCategoryMeta(rule.category);
                   return (
                     <div
                       key={rule.id}
-                      className="px-3 py-2.5 rounded-lg bg-[#121316] border border-[#242730] flex items-center justify-between gap-2"
+                      className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-2"
                     >
                       <div className="min-w-0 space-y-0.5">
                         <div className="flex items-center gap-2">
@@ -607,11 +609,11 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                             className="w-2 h-2 rounded-full shrink-0"
                             style={{ backgroundColor: meta.color }}
                           />
-                          <span className="text-xs font-medium text-[#ededef] truncate">
+                          <span className="text-xs font-semibold text-slate-900 truncate">
                             {rule.name}
                           </span>
                         </div>
-                        <div className="text-[11px] font-mono text-[#6c727f] truncate">
+                        <div className="text-[11px] font-mono text-slate-500 truncate">
                           [{rule.matchType}] /{rule.pattern}/i →{' '}
                           {meta.shortLabel}
                         </div>
@@ -621,10 +623,10 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                         <button
                           type="button"
                           onClick={() => handleToggleRule(rule.id)}
-                          className={`px-2 py-0.5 rounded text-[11px] font-medium border cursor-pointer ${
+                          className={`px-2 py-1 rounded-md text-[11px] font-semibold cursor-pointer ${
                             rule.enabled
-                              ? 'bg-[#14291f] text-[#5cd697] border-[#214a36]'
-                              : 'bg-[#1b1e23] text-[#6c727f] border-[#282c35]'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-slate-200 text-slate-500'
                           }`}
                         >
                           {rule.enabled ? 'Aktif' : 'Nonaktif'}
@@ -633,8 +635,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                           type="button"
                           onClick={() => handleDeleteRule(rule.id)}
                           title="Hapus aturan"
-                          aria-label={`Hapus aturan ${rule.name}`}
-                          className="p-1 rounded text-[#6c727f] hover:text-[#e57373] cursor-pointer"
+                          className="p-1.5 rounded-md text-slate-400 hover:text-red-600 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -647,14 +648,14 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
           </div>
         )}
 
-        <div className="border-t border-[#242730] pt-3">
+        <div className="border-t border-slate-100 pt-3">
           <button
             type="button"
             onClick={() => setShowCompanionGuide(!showCompanionGuide)}
-            className="text-xs font-medium text-[#9aa0ac] hover:text-[#ededef] flex items-center gap-1.5 cursor-pointer"
+            className="text-xs font-semibold text-red-600 hover:text-red-700 flex items-center gap-1.5 cursor-pointer"
           >
             <Terminal className="w-3.5 h-3.5" />
-            Cara menjalankan background agent di Windows
+            Cara Menjalankan Background Agent di Windows
             {showCompanionGuide ? (
               <ChevronUp className="w-3.5 h-3.5" />
             ) : (
@@ -663,64 +664,60 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
           </button>
 
           {showCompanionGuide && (
-            <div className="mt-3 p-4 rounded-lg bg-[#121316] border border-[#242730] text-xs text-[#9aa0ac] space-y-2">
+            <div className="mt-3 p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 space-y-2.5">
               <p>
-                1. Jalankan di terminal folder proyek:{' '}
-                <code className="px-1.5 py-0.5 rounded bg-[#1b1e23] border border-[#282c35] font-mono text-[#ededef]">
+                1. Jalankan lewat terminal di folder proyek:{' '}
+                <code className="px-2 py-0.5 rounded bg-white border border-slate-200 font-mono text-red-700">
                   npm run tracker
                 </code>
               </p>
               <p>
                 2. Atau klik ganda{' '}
-                <code className="px-1.5 py-0.5 rounded bg-[#1b1e23] border border-[#282c35] font-mono text-[#ededef]">
+                <code className="px-2 py-0.5 rounded bg-white border border-slate-200 font-mono text-slate-800">
                   companion\start-hidden.vbs
                 </code>{' '}
-                agar berjalan diam-diam tanpa jendela CMD.
+                agar berjalan diam-diam di background tanpa jendela CMD.
               </p>
               <p>
-                3. Agar otomatis jalan saat startup: tekan{' '}
-                <code className="font-mono text-[#ededef]">Win + R</code> →
+                3. Supaya otomatis jalan saat laptop menyala: tekan{' '}
+                <code className="font-mono text-slate-800">Win + R</code> →
                 ketik{' '}
-                <code className="font-mono text-[#ededef]">shell:startup</code>{' '}
-                → simpan shortcut{' '}
-                <code className="font-mono text-[#ededef]">
-                  start-hidden.vbs
-                </code>{' '}
-                di sana.
+                <code className="font-mono text-slate-800">shell:startup</code> →
+                taruh shortcut{' '}
+                <code className="font-mono">start-hidden.vbs</code> di sana.
               </p>
             </div>
           )}
         </div>
-      </section>
+      </div>
 
-      {/* AnkiConnect & Mobile PWA */}
       <div className="grid lg:grid-cols-2 gap-6">
-        <section className="surface p-5 space-y-4">
+        <div className="card-pro p-5 space-y-4">
           <div className="flex items-start gap-3">
             <div
-              className={`p-2 rounded-lg border shrink-0 ${
+              className={`p-2.5 rounded-xl border ${
                 ankiCheck?.connected
-                  ? 'bg-[#14291f] border-[#214a36] text-[#5cd697]'
-                  : 'bg-[#1b1e23] border-[#282c35] text-[#9aa0ac]'
+                  ? 'bg-red-50 border-red-200 text-red-600'
+                  : 'bg-slate-100 border-slate-200 text-slate-600'
               }`}
             >
-              <BookOpen className="w-4 h-4" />
+              <BookOpen className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-sm font-semibold text-[#ededef]">
+                <h3 className="font-semibold text-slate-900">
                   Integrasi AnkiConnect
                 </h3>
                 {ankiCheck?.connected && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#14291f] border border-[#214a36] text-[11px] font-medium text-[#5cd697]">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
                     <CheckCircle2 className="w-3 h-3" />v{ankiCheck.version}
                     {ankiCheck.viaProxy ? ' (via Agent)' : ''}
                   </span>
                 )}
               </div>
-              <p className="text-xs text-[#9aa0ac] mt-1">
-                Tarik jumlah review dan kartu baru hari ini langsung dari Anki
-                PC.
+              <p className="text-xs text-slate-500 mt-1">
+                Tarik jumlah review & kartu baru yang ditambang hari ini
+                langsung dari Anki PC.
               </p>
             </div>
           </div>
@@ -731,18 +728,18 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
               value={ankiSettings.url}
               onChange={(e) => updateAnkiSetting({ url: e.target.value })}
               aria-label="URL AnkiConnect"
-              className="input-field flex-1 px-3 py-2 text-xs font-mono"
+              className="flex-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:border-red-500 focus:bg-white"
             />
             <button
               type="button"
               disabled={checkingAnki}
               onClick={handleTestAnki}
-              className="btn-primary px-3.5 py-2 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer shrink-0"
+              className="btn-crimson px-3.5 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
             >
               <RefreshCw
                 className={`w-3.5 h-3.5 ${checkingAnki ? 'animate-spin' : ''}`}
               />
-              Test
+              Test Koneksi
             </button>
           </div>
 
@@ -750,7 +747,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
             <div className="space-y-3 pt-1">
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="block text-[11px] text-[#9aa0ac] mb-1">
+                  <label className="block text-[11px] text-slate-500 mb-1">
                     Filter Deck Kartu Baru
                   </label>
                   <select
@@ -758,7 +755,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                     onChange={(e) =>
                       updateAnkiSetting({ selectedDeck: e.target.value })
                     }
-                    className="input-field w-full px-3 py-2 text-xs"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-red-500"
                   >
                     <option value="all">Semua Deck</option>
                     {(ankiCheck.decks ?? []).map((deck) => (
@@ -770,7 +767,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-[#9aa0ac] mb-1">
+                  <label className="block text-[11px] text-slate-500 mb-1">
                     Estimasi Detik / Review
                   </label>
                   <input
@@ -783,28 +780,28 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                         secondsPerReview: Number(e.target.value),
                       })
                     }
-                    className="input-field w-full px-3 py-2 text-xs font-mono tabular-nums"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500"
                   />
                 </div>
               </div>
 
               {ankiStats && (
-                <div className="grid grid-cols-3 divide-x divide-[#242730] bg-[#121316] border border-[#242730] rounded-lg py-3 text-center">
+                <div className="grid grid-cols-3 gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-center">
                   <div>
-                    <div className="text-[11px] text-[#9aa0ac]">Kartu Baru</div>
-                    <div className="text-base font-semibold font-mono text-[#ededef] mt-0.5 tabular-nums">
+                    <div className="text-[11px] text-slate-500">Kartu Baru</div>
+                    <div className="text-lg font-bold font-mono text-red-600">
                       +{ankiStats.newCardsToday}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-[#9aa0ac]">Review</div>
-                    <div className="text-base font-semibold font-mono text-[#ededef] mt-0.5 tabular-nums">
+                    <div className="text-[11px] text-slate-500">Review</div>
+                    <div className="text-lg font-bold font-mono text-slate-900">
                       {ankiStats.reviewsToday}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-[#9aa0ac]">Est. Waktu</div>
-                    <div className="text-base font-semibold font-mono text-[#5cd697] mt-0.5 tabular-nums">
+                    <div className="text-[11px] text-slate-500">Est. Waktu</div>
+                    <div className="text-lg font-bold font-mono text-emerald-600">
                       {ankiStats.estimatedMinutes}m
                     </div>
                   </div>
@@ -815,8 +812,9 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                 type="button"
                 disabled={syncingAnki}
                 onClick={handleSyncAnki}
-                className="btn-primary w-full py-2 rounded-lg text-xs font-medium cursor-pointer"
+                className="btn-crimson w-full py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
               >
+                <Sparkles className="w-4 h-4" />
                 {syncingAnki
                   ? 'Menyinkronkan...'
                   : 'Sinkronkan Anki Hari Ini ke Log'}
@@ -824,11 +822,11 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
             </div>
           )}
 
-          <div className="border-t border-[#242730] pt-3">
+          <div className="border-t border-slate-100 pt-3">
             <button
               type="button"
               onClick={() => setShowAnkiGuide(!showAnkiGuide)}
-              className="text-xs font-medium text-[#9aa0ac] hover:text-[#ededef] flex items-center gap-1.5 cursor-pointer"
+              className="text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 cursor-pointer"
             >
               Setup Add-on AnkiConnect (Kode: 2055492159)
               {showAnkiGuide ? (
@@ -839,58 +837,56 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
             </button>
 
             {showAnkiGuide && (
-              <div className="mt-2.5 p-3.5 rounded-lg bg-[#121316] border border-[#242730] text-xs text-[#9aa0ac] space-y-1.5">
+              <div className="mt-2.5 p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 space-y-1.5">
                 <p>1. Buka Anki → Tools → Add-ons → Get Add-ons...</p>
                 <p>
                   2. Masukkan kode{' '}
-                  <strong className="text-[#ededef] font-mono">
+                  <strong className="text-slate-900 font-mono">
                     2055492159
                   </strong>{' '}
                   lalu restart Anki.
                 </p>
                 <p>
-                  3. Jika Windows Companion Agent sedang aktif, web ini otomatis
-                  mem-proxy koneksi Anki tanpa perlu edit CORS di Anki.
+                  3. Jika Windows Companion Agent di atas sedang aktif, web ini
+                  otomatis mem-proxy koneksi Anki tanpa perlu edit CORS di Anki!
                 </p>
               </div>
             )}
           </div>
-        </section>
+        </div>
 
-        <section className="surface p-5 space-y-4">
+        <div className="card-pro p-5 space-y-4">
           <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-[#1b1e23] border border-[#282c35] text-[#9aa0ac] shrink-0">
-              <Smartphone className="w-4 h-4" />
+            <div className="p-2.5 rounded-xl bg-red-50 border border-red-100 text-red-600">
+              <Smartphone className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-sm font-semibold text-[#ededef]">
+                <h3 className="font-semibold text-slate-900">
                   HP (Android / iOS) & Background Timer
                 </h3>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#14291f] border border-[#214a36] text-[11px] font-medium text-[#5cd697]">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
                   <Wifi className="w-3 h-3" />
                   Background-Safe
                 </span>
               </div>
-              <p className="text-xs text-[#9aa0ac] mt-1">
-                Stopwatch memakai timestamp perangkat sehingga waktu tetap
-                akurat walaupun HP dikunci atau tab ditutup.
+              <p className="text-xs text-slate-500 mt-1">
+                Stopwatch di tab Overview memakai timestamp perangkat sehingga
+                waktu tetap akurat walau HP dikunci atau tab ditutup.
               </p>
             </div>
           </div>
 
-          <div className="p-3.5 rounded-lg bg-[#121316] border border-[#242730] space-y-2 text-xs text-[#9aa0ac]">
-            <div className="font-medium text-[#ededef]">
-              Akses dari HP via Browser / Wi-Fi Lokal
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs text-slate-600">
+            <div className="font-semibold text-slate-900">
+              Akses dari HP via Wi-Fi Lokal:
             </div>
             <p>
-              Buka{' '}
-              <span className="text-[#ededef] font-mono">
-                nihongotracker.my.id
-              </span>{' '}
-              langsung dari HP Anda, atau jalankan lokal dengan:
+              Atau langsung buka{' '}
+              <strong className="text-red-700">nihongotracker.my.id</strong> dari
+              HP Anda, atau jalankan lokal dengan:
             </p>
-            <code className="block px-3 py-2 rounded bg-[#16181c] border border-[#242730] font-mono text-[#ededef]">
+            <code className="block px-3 py-2 rounded-lg bg-white border border-slate-200 font-mono text-red-700">
               npm run dev:host
             </code>
           </div>
@@ -899,24 +895,20 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
             <button
               type="button"
               onClick={handleInstallPwa}
-              className="btn-primary w-full py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 cursor-pointer"
+              className="btn-crimson w-full py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5" />
+              <Download className="w-4 h-4" />
               Install sebagai Aplikasi (PWA)
             </button>
           ) : (
-            <div className="p-3.5 rounded-lg bg-[#121316] border border-[#242730] text-xs text-[#9aa0ac] leading-relaxed">
-              <strong className="text-[#ededef] font-medium">
-                Install di HP:
-              </strong>{' '}
-              Di Chrome Android pilih menu{' '}
-              <span className="text-[#ededef]">⋮ → Install app</span>, atau di
-              Safari iOS pilih{' '}
-              <span className="text-[#ededef]">Share → Add to Home Screen</span>{' '}
-              agar tampil full-screen seperti aplikasi native.
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 leading-relaxed">
+              <strong className="text-slate-900">Tips Install di HP:</strong> Di
+              Chrome Android ketuk menu <strong>⋮ → Install app</strong>, atau di
+              Safari iOS ketuk <strong>Share → Add to Home Screen</strong> agar
+              ImmersionTrack tampil full-screen seperti aplikasi native.
             </div>
           )}
-        </section>
+        </div>
       </div>
     </div>
   );

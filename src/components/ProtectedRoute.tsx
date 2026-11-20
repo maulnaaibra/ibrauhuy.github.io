@@ -10,10 +10,12 @@ export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0e0f11] flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-b from-red-50/50 via-white to-slate-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-7 h-7 border-2 border-[#ededef] border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs text-[#9aa0ac]">Memeriksa sesi akun...</span>
+          <div className="w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs font-medium text-slate-500">
+            Memeriksa sesi akun...
+          </span>
         </div>
       </div>
     );

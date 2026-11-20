@@ -91,42 +91,40 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({
     };
   }, [logs]);
 
-  /* Calm 4-step bamboo green intensity scale for matte dark background */
   const getIntensityClass = (mins: number) => {
-    if (mins === 0) return 'bg-[#1f222a] hover:bg-[#2a2e38]';
+    if (mins === 0) return 'bg-slate-100 hover:bg-slate-200';
     const ratio = mins / Math.max(1, dailyGoal);
-    if (ratio < 0.35) return 'bg-[#153626]';
-    if (ratio < 0.7) return 'bg-[#1d5b3d]';
-    if (ratio < 1) return 'bg-[#268556]';
-    return 'bg-[#2eb872]';
+    if (ratio < 0.35) return 'bg-red-100 border border-red-200';
+    if (ratio < 0.7) return 'bg-red-300 border border-red-300';
+    if (ratio < 1) return 'bg-red-500 border border-red-500';
+    return 'bg-red-700 border border-red-700 shadow-xs';
   };
 
   return (
-    <section className="surface p-5">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+    <div className="card-pro p-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
-          <h3 className="text-sm font-semibold text-[#ededef]">
-            Aktivitas 12 Bulan Terakhir
-          </h3>
-          <p className="text-xs text-[#9aa0ac] mt-0.5 tabular-nums">
-            {activeDays} hari aktif · {totalHours.toFixed(1)} jam tercatat
+          <h3 className="font-semibold text-slate-900">Aktivitas Tahunan</h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {activeDays} hari aktif • {totalHours.toFixed(1)} jam dalam 364 hari
+            terakhir
           </p>
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
           {selectedDay && (
-            <span className="text-xs px-2.5 py-1 rounded-md bg-[#121316] border border-[#242730] text-[#ededef] font-mono tabular-nums">
-              {selectedDay.dateStr} · {selectedDay.minutes}m ({selectedDay.sessions}{' '}
+            <span className="text-xs px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 font-mono">
+              {selectedDay.dateStr}: {selectedDay.minutes}m ({selectedDay.sessions}{' '}
               sesi)
             </span>
           )}
-          <div className="flex items-center gap-1.5 text-[11px] text-[#6c727f]">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
             <span>Kurang</span>
-            <span className="w-2.5 h-2.5 rounded-[2px] bg-[#1f222a]" />
-            <span className="w-2.5 h-2.5 rounded-[2px] bg-[#153626]" />
-            <span className="w-2.5 h-2.5 rounded-[2px] bg-[#1d5b3d]" />
-            <span className="w-2.5 h-2.5 rounded-[2px] bg-[#268556]" />
-            <span className="w-2.5 h-2.5 rounded-[2px] bg-[#2eb872]" />
+            <span className="w-3 h-3 rounded-[3px] bg-slate-100 border border-slate-200" />
+            <span className="w-3 h-3 rounded-[3px] bg-red-100 border border-red-200" />
+            <span className="w-3 h-3 rounded-[3px] bg-red-300" />
+            <span className="w-3 h-3 rounded-[3px] bg-red-500" />
+            <span className="w-3 h-3 rounded-[3px] bg-red-700" />
             <span>Target</span>
           </div>
         </div>
@@ -134,23 +132,23 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({
 
       <div className="overflow-x-auto pb-1">
         <div className="inline-flex flex-col gap-1 min-w-max">
-          <div className="flex gap-1 pl-7 text-[10px] text-[#6c727f] h-4">
+          <div className="flex gap-1 pl-7 text-[10px] text-slate-500 h-4">
             {weekMonthLabels.map((label, idx) => (
-              <div key={idx} className="w-3 shrink-0 whitespace-nowrap">
+              <div key={idx} className="w-3.5 shrink-0 whitespace-nowrap">
                 {label ?? ''}
               </div>
             ))}
           </div>
 
           <div className="flex gap-2">
-            <div className="grid grid-rows-7 gap-1 text-[10px] text-[#6c727f] pr-1">
-              <span className="h-3 leading-[12px]" />
-              <span className="h-3 leading-[12px]">Sen</span>
-              <span className="h-3 leading-[12px]" />
-              <span className="h-3 leading-[12px]">Rab</span>
-              <span className="h-3 leading-[12px]" />
-              <span className="h-3 leading-[12px]">Jum</span>
-              <span className="h-3 leading-[12px]" />
+            <div className="grid grid-rows-7 gap-1 text-[10px] text-slate-400 pr-1">
+              <span className="h-3.5 leading-[14px]"></span>
+              <span className="h-3.5 leading-[14px]">Sen</span>
+              <span className="h-3.5 leading-[14px]"></span>
+              <span className="h-3.5 leading-[14px]">Rab</span>
+              <span className="h-3.5 leading-[14px]"></span>
+              <span className="h-3.5 leading-[14px]">Jum</span>
+              <span className="h-3.5 leading-[14px]"></span>
             </div>
 
             <div className="flex gap-1">
@@ -163,8 +161,7 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({
                       onClick={() => setSelectedDay(day)}
                       onMouseEnter={() => setSelectedDay(day)}
                       title={`${day.dateStr}: ${day.minutes} menit (${day.sessions} sesi)`}
-                      aria-label={`${day.dateStr}: ${day.minutes} menit`}
-                      className={`w-3 h-3 rounded-[2px] transition-colors cursor-pointer ${getIntensityClass(
+                      className={`w-3.5 h-3.5 rounded-[3px] transition-all cursor-pointer ${getIntensityClass(
                         day.minutes
                       )}`}
                     />
@@ -175,6 +172,6 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({
           </div>
         </div>
       </div>
-    </section>
+    </div>
   );
 };

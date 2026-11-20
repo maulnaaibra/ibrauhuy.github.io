@@ -1,18 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Award,
   BarChart3,
+  BookOpen,
+  Clock,
+  Cloud,
+  Flame,
   History,
   LayoutDashboard,
   LogOut,
   MonitorSmartphone,
   Plus,
   Settings,
+  Sparkles,
   Target,
+  Trophy,
+  Zap,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
+import { COMMUNITY_LEADERBOARD } from '../lib/publicShowcase';
 import {
   DEMO_USER_ID,
   loadDemoLogs,
@@ -58,41 +66,54 @@ import { DevicesSection } from '../components/DevicesSection';
 
 type DashboardTab =
   | 'overview'
-  | 'activity'
   | 'stats'
   | 'goals'
   | 'achievements'
+  | 'activity'
   | 'devices';
 
-const TAB_HEADINGS: Record<DashboardTab, { title: string; subtitle: string }> = {
-  overview: {
-    title: 'Ringkasan',
-    subtitle: 'Catat sesi dan pantau progres harianmu.',
+const QUICK_LOG_PRESETS: Array<{
+  label: string;
+  title: string;
+  category: ImmersionCategory;
+  duration: number;
+}> = [
+  {
+    label: '+24m Anime (1 Eps)',
+    title: 'Anime Episode',
+    category: 'anime',
+    duration: 24,
   },
-  activity: {
-    title: 'Riwayat',
-    subtitle: 'Cari, filter, atau ubah seluruh catatan immersion.',
+  {
+    label: '+30m Manga',
+    title: 'Manga Reading',
+    category: 'manga',
+    duration: 30,
   },
-  stats: {
-    title: 'Statistik',
-    subtitle: 'Tren durasi, distribusi media, dan peta milestone.',
+  {
+    label: '+45m Visual Novel',
+    title: 'Visual Novel',
+    category: 'visual_novel',
+    duration: 45,
   },
-  goals: {
-    title: 'Target',
-    subtitle: 'Target harian dan proyeksi penyelesaian jangka panjang.',
+  {
+    label: '+20m Anki Review',
+    title: 'Anki Review',
+    category: 'study',
+    duration: 20,
   },
-  achievements: {
-    title: 'Pencapaian',
-    subtitle: 'Tonggak konsistensi berdasarkan akumulasi immersion.',
+  {
+    label: '+25m Podcast',
+    title: 'Podcast Bahasa',
+    category: 'audio',
+    duration: 25,
   },
-  devices: {
-    title: 'Perangkat',
-    subtitle: 'Hubungkan Windows Companion Agent, AnkiConnect, dan HP.',
-  },
-};
+];
 
 export const DashboardPage: React.FC = () => {
-  const { user, profile, isDemoMode, signOut } = useAuth();
+  const { user, profile, isDemoMode, updateDemoProfile, refreshProfile, signOut } =
+    useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [logs, setLogs] = useState<ImmersionLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
@@ -264,6 +285,60 @@ export const DashboardPage: React.FC = () => {
     return () => clearInterval(timer);
   }, [user, pollCompanion]);
 
+  useEffect(() => {
+    if (!user) return;
+    const goalParam = searchParams.get('goal');
+    const logTitleParam = searchParams.get('logTitle');
+    const logCatParam = searchParams.get('logCategory') as
+      | ImmersionCategory
+      | null;
+    const logDurationParam = searchParams.get('logDuration');
+
+    if (!goalParam && !logTitleParam) return;
+
+    const timer = setTimeout(() => {
+      if (goalParam) {
+        const parsedGoal = Number(goalParam);
+        if (Number.isFinite(parsedGoal) && parsedGoal >= 5 && parsedGoal <= 1440) {
+          if (isDemoMode) {
+            updateDemoProfile({ daily_goal_minutes: parsedGoal });
+          } else {
+            void supabase
+              .from('profiles')
+              .update({ daily_goal_minutes: parsedGoal })
+              .eq('id', user.id)
+              .then(() => refreshProfile());
+          }
+        }
+      }
+
+      if (logTitleParam) {
+        const parsedDuration = Number(logDurationParam);
+        setEditingLog(null);
+        setPrefillTitle(logTitleParam);
+        setPrefillCategory(logCatParam ?? 'anime');
+        setPrefillDuration(
+          Number.isFinite(parsedDuration) && parsedDuration > 0
+            ? parsedDuration
+            : 30
+        );
+        setModalKey((k) => k + 1);
+        setModalOpen(true);
+      }
+
+      setSearchParams({}, { replace: true });
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [
+    user,
+    isDemoMode,
+    searchParams,
+    setSearchParams,
+    updateDemoProfile,
+    refreshProfile,
+  ]);
+
   const handleManualRefreshCompanion = async () => {
     setCompanionChecking(true);
     try {
@@ -340,6 +415,25 @@ export const DashboardPage: React.FC = () => {
       recentMedia,
     };
   }, [logs, profile]);
+
+  const rankedLeaderboard = useMemo(() => {
+    const selfEntry = {
+      id: user?.id ?? 'self',
+      name: `${profile?.full_name || user?.email?.split('@')[0] || 'Anda'} (Anda)`,
+      targetLanguage: profile?.target_language ?? 'Japanese',
+      rankTitle: stats.skills.overall.rankTitle,
+      streak: stats.streak,
+      totalHours: Number(stats.totalHours.toFixed(1)),
+      totalXp: stats.skills.overall.totalXp,
+      favoriteMedia: stats.recentMedia[0]?.title || 'Belum ada media',
+      isSelf: true,
+    };
+
+    return [
+      ...COMMUNITY_LEADERBOARD.map((item) => ({ ...item, isSelf: false })),
+      selfEntry,
+    ].sort((a, b) => b.totalHours - a.totalHours);
+  }, [user, profile, stats]);
 
   const handleSaveLog = async (payload: {
     title: string;
@@ -554,23 +648,26 @@ export const DashboardPage: React.FC = () => {
     toast.success('Target dihapus');
   };
 
-  const displayName = profile?.full_name || user?.email || 'Learner';
-  const avatarInitial = displayName[0].toUpperCase();
+  const avatarInitial = (
+    profile?.full_name ||
+    user?.email ||
+    'U'
+  )[0].toUpperCase();
+
   const companionConnected = Boolean(companionStatus?.ok);
 
-  const renderDeltaText = (pct: number | null) => {
+  const renderDeltaBadge = (pct: number | null) => {
     if (pct === null) {
-      return <span className="text-xs text-[#6c727f]">Baru bulan ini</span>;
+      return <span className="text-[11px] text-slate-400">Baru bulan ini</span>;
     }
     const positive = pct >= 0;
     return (
       <span
-        className={`text-xs font-mono tabular-nums ${
-          positive ? 'text-[#5cd697]' : 'text-[#e57373]'
+        className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
+          positive ? 'text-emerald-600' : 'text-red-600'
         }`}
       >
-        {positive ? '+' : '-'}
-        {Math.abs(pct)}% vs bulan lalu
+        {positive ? '▲' : '▼'} {Math.abs(pct)}% vs bulan lalu
       </span>
     );
   };
@@ -578,230 +675,444 @@ export const DashboardPage: React.FC = () => {
   const navTabs: Array<{
     id: DashboardTab;
     label: string;
-    shortLabel: string;
     icon: React.ComponentType<{ className?: string }>;
     dot?: boolean;
   }> = [
-    {
-      id: 'overview',
-      label: 'Ringkasan',
-      shortLabel: 'Home',
-      icon: LayoutDashboard,
-    },
-    { id: 'activity', label: 'Riwayat', shortLabel: 'Riwayat', icon: History },
-    { id: 'stats', label: 'Statistik', shortLabel: 'Stats', icon: BarChart3 },
-    { id: 'goals', label: 'Target', shortLabel: 'Target', icon: Target },
-    {
-      id: 'achievements',
-      label: 'Pencapaian',
-      shortLabel: 'Lencana',
-      icon: Award,
-    },
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'stats', label: 'Stats', icon: BarChart3 },
+    { id: 'goals', label: 'Goals', icon: Target },
+    { id: 'achievements', label: 'Achievements', icon: Award },
+    { id: 'activity', label: 'Activity', icon: History },
     {
       id: 'devices',
-      label: 'Perangkat',
-      shortLabel: 'PC/HP',
+      label: 'Devices',
       icon: MonitorSmartphone,
       dot: companionConnected,
     },
   ];
 
-  const currentHeading = TAB_HEADINGS[activeTab];
-
   return (
-    <div className="min-h-screen bg-[#0e0f11] text-[#ededef] flex flex-col lg:flex-row">
-      {/* Desktop Left Sidebar */}
-      <aside className="hidden lg:flex w-60 shrink-0 sticky top-0 h-screen flex-col bg-[#121316] border-r border-[#242730]">
-        <div className="px-4 pt-5 pb-4 flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-md bg-[#1b1e23] border border-[#2c303a] flex items-center justify-center font-semibold text-xs text-[#ededef]">
-            I
-          </div>
-          <div className="min-w-0">
-            <div className="text-sm font-semibold text-[#ededef] leading-tight truncate">
-              ImmersionTrack
+    <div className="min-h-screen bg-gradient-to-b from-red-50/40 via-slate-50 to-slate-50 text-slate-900">
+      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200/80">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+          <Link to="/" className="flex items-center gap-3 shrink-0 group">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-red-600 to-rose-700 flex items-center justify-center font-bold text-white shadow-sm shadow-red-600/25">
+              I
             </div>
-            <div className="text-[11px] text-[#6c727f] truncate">
-              {profile?.target_language ?? 'Japanese'}
-            </div>
-          </div>
-        </div>
-
-        <div className="px-3 pb-4">
-          <button
-            type="button"
-            onClick={() => openNewLogModal()}
-            className="btn-primary w-full py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Catat Sesi
-          </button>
-        </div>
-
-        <nav aria-label="Navigasi utama" className="px-2.5 flex-1 space-y-0.5">
-          {navTabs.map((tab) => {
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`w-full px-3 py-2 rounded-lg text-sm flex items-center justify-between transition-colors cursor-pointer ${
-                  active
-                    ? 'bg-[#1f222a] text-[#ededef] font-medium'
-                    : 'text-[#9aa0ac] hover:text-[#ededef] hover:bg-[#191b21]'
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <tab.icon
-                    className={`w-4 h-4 ${
-                      active ? 'text-[#ededef]' : 'text-[#6c727f]'
-                    }`}
-                  />
-                  {tab.label}
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="font-bold text-sm sm:text-base leading-tight text-slate-900 group-hover:text-red-700 transition-colors">
+                  ImmersionTrack
+                </h1>
+                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full bg-red-50 border border-red-200/80 text-[10px] font-mono font-semibold text-red-700">
+                  Lv.{stats.skills.overall.level}
                 </span>
-                {tab.dot && (
-                  <span
-                    className="w-1.5 h-1.5 rounded-full bg-[#2eb872]"
-                    title="PC Terhubung"
-                  />
-                )}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* Sidebar profile & footer actions */}
-        <div className="mt-auto p-3 border-t border-[#242730] space-y-2">
-          <div className="flex items-center gap-2.5 px-1.5 py-1">
-            {profile?.avatar_url ? (
-              <img
-                src={profile.avatar_url}
-                alt={displayName}
-                className="w-7 h-7 rounded-full object-cover border border-[#2c303a]"
-              />
-            ) : (
-              <div className="w-7 h-7 rounded-full bg-[#1b1e23] border border-[#2c303a] flex items-center justify-center text-xs font-semibold text-[#ededef] shrink-0">
-                {avatarInitial}
               </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-medium text-[#ededef] truncate">
-                {displayName}
-              </div>
-              <div className="text-[11px] text-[#6c727f] truncate font-mono">
-                Lv.{stats.skills.overall.level} · {stats.skills.overall.rankTitle}
-              </div>
+              <p className="text-[11px] text-slate-500">
+                {profile?.target_language ?? 'Japanese'} •{' '}
+                {stats.skills.overall.rankTitle}
+              </p>
             </div>
-          </div>
+          </Link>
 
-          <div className="grid grid-cols-2 gap-1.5">
+          <nav className="hidden lg:flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/80">
+            {navTabs.map((tab) => {
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    active
+                      ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  <tab.icon className="w-3.5 h-3.5" />
+                  {tab.label}
+                  {tab.dot && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {isDemoMode ? (
+              <Link
+                to="/login"
+                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-xs font-semibold text-red-700 transition"
+              >
+                <Cloud className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Masuk / Daftar Cloud</span>
+                <span className="sm:hidden">Masuk</span>
+              </Link>
+            ) : (
+              <span
+                title="Data tersinkron dengan akun cloud Supabase"
+                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700"
+              >
+                <Cloud className="w-3.5 h-3.5" />
+                Cloud Synced
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={() => openNewLogModal()}
+              className="btn-crimson px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Catat Sesi</span>
+              <span className="sm:hidden">Log</span>
+            </button>
+
             <Link
               to="/settings"
-              className="px-2.5 py-1.5 rounded-md bg-[#16181c] border border-[#242730] hover:border-[#313540] text-xs text-[#9aa0ac] hover:text-[#ededef] flex items-center justify-center gap-1.5 transition-colors"
+              title="Pengaturan"
+              className="p-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-slate-600 hover:text-slate-900 transition"
             >
-              <Settings className="w-3.5 h-3.5" />
-              Setelan
+              <Settings className="w-4 h-4" />
             </Link>
+
+            <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-slate-200">
+              {profile?.avatar_url ? (
+                <img
+                  src={profile.avatar_url}
+                  alt={profile.full_name ?? 'User'}
+                  className="w-8 h-8 rounded-full object-cover border border-slate-200"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-xs font-bold text-red-700">
+                  {avatarInitial}
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
               onClick={signOut}
-              className="px-2.5 py-1.5 rounded-md bg-[#16181c] border border-[#242730] hover:border-[#3f262a] text-xs text-[#9aa0ac] hover:text-[#e57373] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              title="Keluar"
+              className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-red-50 hover:text-red-700 hover:border-red-200 text-slate-500 transition cursor-pointer"
             >
-              <LogOut className="w-3.5 h-3.5" />
-              Keluar
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>
-      </aside>
 
-      {/* Mobile Compact Header */}
-      <header className="lg:hidden sticky top-0 z-30 h-14 bg-[#121316]/95 backdrop-blur-sm border-b border-[#242730] px-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-7 h-7 rounded-md bg-[#1b1e23] border border-[#2c303a] flex items-center justify-center font-semibold text-xs text-[#ededef] shrink-0">
-            I
+        <div className="lg:hidden border-t border-slate-200/80 overflow-x-auto bg-white">
+          <div className="max-w-6xl mx-auto px-4 py-2 flex items-center gap-1.5 min-w-max">
+            {navTabs.map((tab) => {
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                    active
+                      ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <tab.icon className="w-3.5 h-3.5" />
+                  {tab.label}
+                  {tab.dot && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  )}
+                </button>
+              );
+            })}
           </div>
-          <span className="text-sm font-semibold text-[#ededef] truncate">
-            {currentHeading.title}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-1.5 shrink-0">
-          <button
-            type="button"
-            onClick={() => openNewLogModal()}
-            className="btn-primary px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1 cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Catat
-          </button>
-          <Link
-            to="/settings"
-            title="Pengaturan"
-            aria-label="Pengaturan"
-            className="p-2 rounded-md bg-[#16181c] border border-[#242730] text-[#9aa0ac] hover:text-[#ededef]"
-          >
-            <Settings className="w-4 h-4" />
-          </Link>
-          <button
-            type="button"
-            onClick={signOut}
-            title="Keluar"
-            aria-label="Keluar"
-            className="p-2 rounded-md bg-[#16181c] border border-[#242730] text-[#9aa0ac] hover:text-[#e57373] cursor-pointer"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 min-w-0 pb-24 lg:pb-12">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
-          {/* Page Header */}
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 pb-1">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-semibold text-[#ededef] tracking-tight">
-                {activeTab === 'overview' ? displayName : currentHeading.title}
-              </h1>
-              <p className="text-xs sm:text-sm text-[#9aa0ac] mt-0.5">
-                {activeTab === 'overview'
-                  ? `${profile?.target_language ?? 'Japanese'} · Level ${stats.skills.overall.level} (${stats.skills.overall.rankTitle})`
-                  : currentHeading.subtitle}
-              </p>
-            </div>
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-7 space-y-6">
+        {companionConnected && companionStatus?.activeSession && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('devices')}
+            className="w-full px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-3 text-xs text-left hover:bg-emerald-100/70 transition cursor-pointer animate-fade-in"
+          >
+            <span className="flex items-center gap-2 text-emerald-900 truncate">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <span>
+                <strong>PC Tracker aktif merekam:</strong>{' '}
+                {companionStatus.activeSession.title} (
+                {Math.floor(companionStatus.activeSession.activeSeconds / 60)}m{' '}
+                {companionStatus.activeSession.activeSeconds % 60}d)
+              </span>
+            </span>
+            <span className="text-emerald-700 font-semibold shrink-0">
+              Kelola →
+            </span>
+          </button>
+        )}
+
+        {loadingLogs ? (
+          <div className="grid sm:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="card-pro h-40 animate-pulse" />
+            ))}
           </div>
+        ) : activeTab === 'overview' ? (
+          <div key="tab-overview" className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 animate-fade-up">
+              <div>
+                <p className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">
+                  Ringkasan Progres
+                </p>
+                <h2 className="text-2xl font-bold text-slate-900 mt-0.5">
+                  {profile?.full_name || user?.email || 'Learner'}
+                </h2>
+              </div>
 
-          {/* Active PC Companion Recording Notice */}
-          {companionConnected && companionStatus?.activeSession && (
-            <button
-              type="button"
-              onClick={() => setActiveTab('devices')}
-              className="w-full px-4 py-2.5 rounded-lg bg-[#14291f] border border-[#214a36] flex items-center justify-between gap-3 text-xs text-left hover:bg-[#183326] transition-colors cursor-pointer"
-            >
-              <span className="flex items-center gap-2 text-[#d5f5e3] truncate">
-                <span className="w-2 h-2 rounded-full bg-[#2eb872] shrink-0" />
-                <span className="truncate">
-                  <strong className="font-medium">PC Tracker aktif:</strong>{' '}
-                  {companionStatus.activeSession.title} (
-                  {Math.floor(companionStatus.activeSession.activeSeconds / 60)}m{' '}
-                  {companionStatus.activeSession.activeSeconds % 60}d)
-                </span>
-              </span>
-              <span className="text-[#5cd697] font-medium shrink-0">
-                Kelola →
-              </span>
-            </button>
-          )}
-
-          {loadingLogs ? (
-            <div className="space-y-4">
-              <div className="surface h-20 opacity-60" />
-              <div className="surface h-32 opacity-60" />
-              <div className="surface h-48 opacity-60" />
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => openNewLogModal()}
+                  className="btn-crimson px-3.5 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Catat Sesi
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('devices')}
+                  className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 inline-flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                >
+                  <MonitorSmartphone
+                    className={`w-3.5 h-3.5 ${
+                      companionConnected ? 'text-emerald-600' : 'text-red-600'
+                    }`}
+                  />
+                  {companionConnected ? 'PC Terhubung' : 'Hubungkan Perangkat'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('stats')}
+                  className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 inline-flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                >
+                  <BarChart3 className="w-3.5 h-3.5 text-slate-500" />
+                  Analitik
+                </button>
+              </div>
             </div>
-          ) : activeTab === 'overview' ? (
-            <div className="space-y-6">
-              {/* 1. Primary tool first: Live Stopwatch */}
+
+            <div className="grid lg:grid-cols-3 gap-4 animate-fade-up delay-1">
+              <div className="card-pro p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Level & Pengalaman
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-xs font-mono font-semibold text-red-600">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    {stats.skills.overall.totalXp.toLocaleString()} XP
+                  </span>
+                </div>
+
+                <div>
+                  <div className="flex items-baseline justify-between mb-2">
+                    <span className="text-2xl font-bold text-slate-900">
+                      Level {stats.skills.overall.level}
+                    </span>
+                    <span className="text-xs font-mono text-slate-500">
+                      {stats.skills.overall.currentLevelXp} /{' '}
+                      {stats.skills.overall.nextLevelXp} XP
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-red-600 to-rose-500 rounded-full animate-bar"
+                      style={{ width: `${stats.skills.overall.progressPct}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/70">
+                    <div className="flex items-center justify-between text-[11px] text-slate-600">
+                      <span>Listening</span>
+                      <span className="font-mono text-slate-900 font-semibold">
+                        Lv.{stats.skills.listening.level}
+                      </span>
+                    </div>
+                    <div className="h-1 rounded-full bg-slate-200 overflow-hidden mt-1.5">
+                      <div
+                        className="h-full bg-red-600 rounded-full animate-bar"
+                        style={{
+                          width: `${stats.skills.listening.progressPct}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/70">
+                    <div className="flex items-center justify-between text-[11px] text-slate-600">
+                      <span>Reading</span>
+                      <span className="font-mono text-slate-900 font-semibold">
+                        Lv.{stats.skills.reading.level}
+                      </span>
+                    </div>
+                    <div className="h-1 rounded-full bg-slate-200 overflow-hidden mt-1.5">
+                      <div
+                        className="h-full bg-rose-500 rounded-full animate-bar"
+                        style={{
+                          width: `${stats.skills.reading.progressPct}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card-pro p-5 flex flex-col justify-between gap-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Streak & Akumulasi
+                  </span>
+                  <Flame className="w-4 h-4 text-red-600" />
+                </div>
+
+                <div className="flex items-baseline gap-3">
+                  <span className="text-3xl font-bold font-mono text-slate-900 tabular-nums">
+                    {stats.streak} Hari
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    Terbaik: {stats.longestStreak} hari
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100 text-xs">
+                  <div className="flex items-center gap-1.5 text-slate-700">
+                    <Clock className="w-3.5 h-3.5 text-red-600" />
+                    <span className="font-mono font-semibold">
+                      {stats.totalHours.toFixed(1)}j
+                    </span>
+                    <span className="text-slate-500">total</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-slate-700">
+                    <BookOpen className="w-3.5 h-3.5 text-slate-500" />
+                    <span className="font-mono font-semibold">
+                      {stats.totalCards}
+                    </span>
+                    <span className="text-slate-500">kartu</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card-pro p-5 flex flex-col justify-between gap-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Target Hari Ini
+                  </span>
+                  <Target className="w-4 h-4 text-red-600" />
+                </div>
+
+                <div>
+                  <div className="flex items-baseline justify-between mb-2">
+                    <span className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
+                      {stats.todayMinutes}{' '}
+                      <span className="text-sm font-normal text-slate-500">
+                        / {stats.dailyGoal} mnt
+                      </span>
+                    </span>
+                    <span className="text-xs font-mono font-semibold text-red-600">
+                      {stats.dailyProgress}%
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-red-600 to-rose-500 rounded-full animate-bar"
+                      style={{ width: `${stats.dailyProgress}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                  <span>Milestone {stats.milestone.nextMilestone}j</span>
+                  <span className="font-mono text-slate-800 font-semibold">
+                    {Math.round(stats.milestone.progress)}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="card-pro p-5 space-y-4 animate-fade-up delay-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Ringkasan Bulan Ini
+                </span>
+                <span className="text-xs text-slate-500 font-mono">
+                  Rasio Reading : Listening ={' '}
+                  <strong className="text-slate-900">
+                    {stats.balance.ratioLabel}
+                  </strong>
+                </span>
+              </div>
+
+              <div className="grid sm:grid-cols-3 gap-4">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Reading
+                  </div>
+                  <div className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
+                    {(stats.monthly.thisMonth.readingMin / 60).toFixed(1)} jam
+                  </div>
+                  <div>{renderDeltaBadge(stats.monthly.deltas.readingPct)}</div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Listening
+                  </div>
+                  <div className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
+                    {(stats.monthly.thisMonth.listeningMin / 60).toFixed(1)} jam
+                  </div>
+                  <div>
+                    {renderDeltaBadge(stats.monthly.deltas.listeningPct)}
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Total Bulan Ini
+                  </div>
+                  <div className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
+                    {(stats.monthly.thisMonth.totalMin / 60).toFixed(1)} jam
+                  </div>
+                  <div>{renderDeltaBadge(stats.monthly.deltas.totalPct)}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="card-pro p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-up delay-3">
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 shrink-0">
+                <Zap className="w-4 h-4 text-red-600" />
+                Catat Cepat 1-Klik:
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {QUICK_LOG_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() =>
+                      openNewLogModal({
+                        title: preset.title,
+                        category: preset.category,
+                        duration: preset.duration,
+                      })
+                    }
+                    className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-red-50 border border-slate-200 hover:border-red-200 text-xs font-semibold text-slate-700 hover:text-red-700 transition cursor-pointer"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="animate-fade-up delay-3">
               <LiveStopwatch
                 onSaveDuration={({ minutes, category, title }) => {
                   openNewLogModal({
@@ -811,221 +1122,150 @@ export const DashboardPage: React.FC = () => {
                   });
                 }}
               />
-
-              {/* 2. Unified Key Metrics Strip (flat, hairline-divided, no nested cards) */}
-              <section
-                aria-label="Ringkasan utama"
-                className="surface grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[#242730]"
-              >
-                {/* Today's Goal */}
-                <div className="p-5 flex flex-col justify-between gap-3">
-                  <div className="flex items-center justify-between text-xs text-[#9aa0ac]">
-                    <span>Target Hari Ini</span>
-                    <span className="font-mono text-[#5cd697] tabular-nums">
-                      {stats.dailyProgress}%
-                    </span>
-                  </div>
-                  <div>
-                    <div className="text-2xl font-semibold font-mono text-[#ededef] tabular-nums">
-                      {stats.todayMinutes}{' '}
-                      <span className="text-sm font-normal text-[#6c727f]">
-                        / {stats.dailyGoal} mnt
-                      </span>
-                    </div>
-                    <div className="progress-track h-1.5 mt-3">
-                      <div
-                        className="progress-fill h-full"
-                        style={{ width: `${stats.dailyProgress}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div className="text-xs text-[#6c727f] flex items-center justify-between font-mono tabular-nums">
-                    <span>Milestone {stats.milestone.nextMilestone}j</span>
-                    <span className="text-[#9aa0ac]">
-                      {Math.round(stats.milestone.progress)}%
-                    </span>
-                  </div>
-                </div>
-
-                {/* Streak & Accumulation */}
-                <div className="p-5 flex flex-col justify-between gap-3">
-                  <div className="flex items-center justify-between text-xs text-[#9aa0ac]">
-                    <span>Streak Aktif</span>
-                    <span className="font-mono text-[#6c727f] tabular-nums">
-                      Rekor {stats.longestStreak}h
-                    </span>
-                  </div>
-                  <div className="text-2xl font-semibold font-mono text-[#ededef] tabular-nums">
-                    {stats.streak}{' '}
-                    <span className="text-sm font-normal text-[#6c727f]">
-                      hari
-                    </span>
-                  </div>
-                  <div className="text-xs text-[#9aa0ac] flex items-center gap-3 font-mono tabular-nums">
-                    <span>{stats.totalHours.toFixed(1)} jam total</span>
-                    <span className="text-[#313540]">·</span>
-                    <span>{stats.totalCards} kartu</span>
-                  </div>
-                </div>
-
-                {/* Level & XP */}
-                <div className="p-5 flex flex-col justify-between gap-3">
-                  <div className="flex items-center justify-between text-xs text-[#9aa0ac]">
-                    <span>Level & XP</span>
-                    <span className="font-mono text-[#9aa0ac] tabular-nums">
-                      {stats.skills.overall.totalXp.toLocaleString()} XP
-                    </span>
-                  </div>
-                  <div>
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-2xl font-semibold text-[#ededef]">
-                        Level {stats.skills.overall.level}
-                      </span>
-                      <span className="text-xs font-mono text-[#6c727f] tabular-nums">
-                        {stats.skills.overall.currentLevelXp} /{' '}
-                        {stats.skills.overall.nextLevelXp}
-                      </span>
-                    </div>
-                    <div className="progress-track h-1.5 mt-3">
-                      <div
-                        className="progress-fill h-full"
-                        style={{ width: `${stats.skills.overall.progressPct}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div className="text-xs text-[#9aa0ac] flex items-center gap-3 font-mono tabular-nums">
-                    <span>Listening Lv.{stats.skills.listening.level}</span>
-                    <span className="text-[#313540]">·</span>
-                    <span>Reading Lv.{stats.skills.reading.level}</span>
-                  </div>
-                </div>
-              </section>
-
-              {/* 3. Monthly Summary Strip (flat hairline dividers, zero nested boxes) */}
-              <section className="surface">
-                <div className="px-5 py-3.5 border-b border-[#242730] flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                  <h2 className="text-sm font-semibold text-[#ededef]">
-                    Ringkasan Bulan Ini
-                  </h2>
-                  <span className="text-xs text-[#9aa0ac] font-mono tabular-nums">
-                    Rasio Reading : Listening ={' '}
-                    <span className="text-[#ededef] font-medium">
-                      {stats.balance.ratioLabel}
-                    </span>
-                  </span>
-                </div>
-
-                <div className="grid sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[#242730]">
-                  <div className="p-5 space-y-1">
-                    <div className="text-xs text-[#9aa0ac]">Total Bulan Ini</div>
-                    <div className="text-xl font-semibold font-mono text-[#ededef] tabular-nums">
-                      {(stats.monthly.thisMonth.totalMin / 60).toFixed(1)} jam
-                    </div>
-                    <div>{renderDeltaText(stats.monthly.deltas.totalPct)}</div>
-                  </div>
-
-                  <div className="p-5 space-y-1">
-                    <div className="text-xs text-[#9aa0ac]">Reading</div>
-                    <div className="text-xl font-semibold font-mono text-[#ededef] tabular-nums">
-                      {(stats.monthly.thisMonth.readingMin / 60).toFixed(1)} jam
-                    </div>
-                    <div>
-                      {renderDeltaText(stats.monthly.deltas.readingPct)}
-                    </div>
-                  </div>
-
-                  <div className="p-5 space-y-1">
-                    <div className="text-xs text-[#9aa0ac]">Listening</div>
-                    <div className="text-xl font-semibold font-mono text-[#ededef] tabular-nums">
-                      {(stats.monthly.thisMonth.listeningMin / 60).toFixed(1)}{' '}
-                      jam
-                    </div>
-                    <div>
-                      {renderDeltaText(stats.monthly.deltas.listeningPct)}
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              {/* 4. Recent Media Quick Log */}
-              {stats.recentMedia.length > 0 && (
-                <section className="space-y-3">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <h2 className="text-sm font-semibold text-[#ededef]">
-                      Media yang Sedang Diikuti
-                    </h2>
-                    <span className="text-xs text-[#6c727f]">
-                      Klik untuk catat sesi lanjutan
-                    </span>
-                  </div>
-
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {stats.recentMedia.map((media) => {
-                      const meta = getCategoryMeta(media.category);
-                      return (
-                        <button
-                          key={`${media.title}-${media.category}`}
-                          type="button"
-                          onClick={() =>
-                            openNewLogModal({
-                              title: media.title,
-                              category: media.category,
-                              duration: 30,
-                            })
-                          }
-                          className="surface-interactive p-3 text-left flex items-center gap-3 group cursor-pointer"
-                        >
-                          <MediaCover
-                            title={media.title}
-                            category={media.category}
-                            className="w-11 h-15 rounded-md"
-                          />
-
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <div className="flex items-center gap-1.5 text-[11px] text-[#9aa0ac]">
-                              <span
-                                className="w-1.5 h-1.5 rounded-full shrink-0"
-                                style={{ backgroundColor: meta.color }}
-                              />
-                              <span>{meta.shortLabel}</span>
-                              <span className="text-[#6c727f] font-mono">
-                                · {media.sessions} sesi
-                              </span>
-                            </div>
-                            <div className="font-medium text-sm text-[#ededef] truncate">
-                              {media.title}
-                            </div>
-                            <div className="text-xs font-mono text-[#6c727f] tabular-nums">
-                              {(media.totalMinutes / 60).toFixed(1)}j ·{' '}
-                              {media.totalXp} XP
-                            </div>
-                          </div>
-
-                          <span className="text-xs font-medium text-[#6c727f] group-hover:text-[#ededef] transition-colors shrink-0 pr-1">
-                            + Log
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
-
-              {/* 5. Yearly Activity Heatmap */}
-              <ActivityHeatmap logs={logs} dailyGoal={stats.dailyGoal} />
-
-              {/* 6. Recent Logs */}
-              <ActivityLogList
-                logs={logs}
-                compact
-                onEdit={openEditLogModal}
-                onDelete={handleDeleteLog}
-                onViewAll={() => setActiveTab('activity')}
-              />
             </div>
-          ) : activeTab === 'stats' ? (
+
+            {stats.recentMedia.length > 0 && (
+              <div className="space-y-3 animate-fade-up delay-4">
+                <div>
+                  <h3 className="font-semibold text-slate-900">
+                    Media yang Sedang Diikuti
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Pilih media terakhir untuk langsung mencatat sesi lanjutan.
+                  </p>
+                </div>
+
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                  {stats.recentMedia.map((media) => {
+                    const meta = getCategoryMeta(media.category);
+                    return (
+                      <button
+                        key={`${media.title}-${media.category}`}
+                        type="button"
+                        onClick={() =>
+                          openNewLogModal({
+                            title: media.title,
+                            category: media.category,
+                            duration: 30,
+                          })
+                        }
+                        className="card-pro-interactive p-3.5 text-left flex items-center gap-3.5 group cursor-pointer"
+                      >
+                        <MediaCover
+                          title={media.title}
+                          category={media.category}
+                          className="w-14 h-20 rounded-xl"
+                        />
+
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: meta.color }}
+                            />
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                              {meta.shortLabel}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              • {media.sessions} sesi
+                            </span>
+                          </div>
+                          <div className="font-semibold text-sm text-slate-900 truncate">
+                            {media.title}
+                          </div>
+                          <div className="text-xs font-mono text-slate-500">
+                            {(media.totalMinutes / 60).toFixed(1)} jam •{' '}
+                            {media.totalXp} XP
+                          </div>
+                        </div>
+
+                        <span className="px-2.5 py-1.5 rounded-lg bg-slate-100 border border-slate-200 group-hover:bg-red-600 group-hover:border-red-600 group-hover:text-white text-xs font-semibold text-slate-700 transition shrink-0">
+                          + Log
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="animate-fade-up delay-5">
+              <ActivityHeatmap logs={logs} dailyGoal={stats.dailyGoal} />
+            </div>
+
+            <div className="card-pro p-5 space-y-4 animate-fade-up delay-5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Trophy className="w-4 h-4 text-red-600" />
+                  <h3 className="font-semibold text-slate-900">
+                    Peringkat Komunitas
+                  </h3>
+                </div>
+                <span className="text-xs font-mono text-slate-500">
+                  Posisi Anda: #
+                  {rankedLeaderboard.findIndex((item) => item.isSelf) + 1} dari{' '}
+                  {rankedLeaderboard.length}
+                </span>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                {rankedLeaderboard.map((member, idx) => (
+                  <div
+                    key={member.id}
+                    className={`py-2.5 px-3 rounded-xl flex items-center justify-between gap-3 ${
+                      member.isSelf
+                        ? 'bg-red-50/80 border border-red-200 my-1'
+                        : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-mono font-bold shrink-0 ${
+                          member.isSelf || idx === 0
+                            ? 'bg-gradient-to-br from-red-600 to-rose-600 text-white'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        #{idx + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-slate-900 truncate">
+                          {member.name}
+                        </div>
+                        <div className="text-[11px] text-slate-500 truncate">
+                          {member.rankTitle} • {member.totalXp.toLocaleString()} XP
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <div className="text-sm font-mono font-bold text-slate-900">
+                        {member.totalHours.toLocaleString('id-ID')} j
+                      </div>
+                      <div className="text-[11px] font-mono text-red-600 inline-flex items-center gap-1">
+                        <Flame className="w-3 h-3" />
+                        {member.streak}h
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <ActivityLogList
+              logs={logs}
+              compact
+              onEdit={openEditLogModal}
+              onDelete={handleDeleteLog}
+              onViewAll={() => setActiveTab('activity')}
+            />
+          </div>
+        ) : activeTab === 'stats' ? (
+          <div key="tab-stats" className="animate-fade-up">
             <ChartsSection logs={logs} />
-          ) : activeTab === 'goals' ? (
+          </div>
+        ) : activeTab === 'goals' ? (
+          <div key="tab-goals" className="animate-fade-up">
             <GoalsSection
               logs={logs}
               dailyGoal={stats.dailyGoal}
@@ -1033,9 +1273,13 @@ export const DashboardPage: React.FC = () => {
               onAddGoal={handleAddGoal}
               onDeleteGoal={handleDeleteGoal}
             />
-          ) : activeTab === 'achievements' ? (
+          </div>
+        ) : activeTab === 'achievements' ? (
+          <div key="tab-achievements" className="animate-fade-up">
             <AchievementsSection logs={logs} />
-          ) : activeTab === 'devices' ? (
+          </div>
+        ) : activeTab === 'devices' ? (
+          <div key="tab-devices" className="animate-fade-up">
             <DevicesSection
               companionUrl={companionSettings.url}
               onChangeCompanionUrl={(url) => updateCompanionSettings({ url })}
@@ -1049,50 +1293,17 @@ export const DashboardPage: React.FC = () => {
               onImportPending={(items) => importPendingSessions(items, false)}
               onSyncAnkiToday={handleSyncAnkiToday}
             />
-          ) : (
+          </div>
+        ) : (
+          <div key="tab-activity" className="animate-fade-up">
             <ActivityLogList
               logs={logs}
               onEdit={openEditLogModal}
               onDelete={handleDeleteLog}
             />
-          )}
-        </div>
+          </div>
+        )}
       </main>
-
-      {/* Mobile Bottom Navigation */}
-      <nav
-        aria-label="Navigasi bawah"
-        className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-[#121316]/95 backdrop-blur-sm border-t border-[#242730]"
-      >
-        <div className="grid grid-cols-6 max-w-lg mx-auto">
-          {navTabs.map((tab) => {
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`relative py-2.5 flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                  active ? 'text-[#ededef]' : 'text-[#6c727f]'
-                }`}
-              >
-                {active && (
-                  <span className="absolute top-0 inset-x-3 h-[2px] bg-[#ededef] rounded-full" />
-                )}
-                <span className="relative">
-                  <tab.icon className="w-4 h-4" />
-                  {tab.dot && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#2eb872] absolute -top-0.5 -right-1" />
-                  )}
-                </span>
-                <span className="text-[10px] font-medium leading-none">
-                  {tab.shortLabel}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
 
       <LogModal
         key={modalKey}

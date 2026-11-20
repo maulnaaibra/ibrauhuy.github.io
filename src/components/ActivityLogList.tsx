@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pencil, Search, Trash2 } from 'lucide-react';
+import { Pencil, Search, Sparkles, Trash2 } from 'lucide-react';
 import { MediaCover } from '../components/MediaCover';
 import { getCategoryMeta, type ImmersionLog } from '../types';
 import { getLogXp } from '../utils/stats';
@@ -63,13 +63,13 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
   const displayLogs = compact ? filtered.slice(0, 6) : filtered;
 
   return (
-    <section className="surface">
-      <div className="px-5 py-4 border-b border-[#242730] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+    <div className="card-pro p-5 animate-fade-up">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
-          <h3 className="text-sm font-semibold text-[#ededef]">
+          <h3 className="font-semibold text-slate-900">
             {compact ? 'Riwayat Sesi Terbaru' : 'Semua Riwayat Immersion'}
           </h3>
-          <p className="text-xs text-[#9aa0ac] mt-0.5 tabular-nums">
+          <p className="text-xs text-slate-500">
             {filtered.length} sesi tercatat
           </p>
         </div>
@@ -78,24 +78,24 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
           <button
             type="button"
             onClick={onViewAll}
-            className="text-xs font-medium text-[#9aa0ac] hover:text-[#ededef] transition-colors cursor-pointer self-start sm:self-center"
+            className="text-xs font-semibold text-red-600 hover:text-red-700 transition-colors cursor-pointer self-start sm:self-center"
           >
-            Lihat semua ({logs.length}) →
+            Lihat Semua ({logs.length}) →
           </button>
         )}
       </div>
 
       {!compact && (
-        <div className="px-5 py-4 border-b border-[#242730] space-y-3 bg-[#121316]/50">
-          <div className="flex flex-col sm:flex-row gap-2">
+        <div className="space-y-3 mb-5">
+          <div className="flex flex-col sm:flex-row gap-2.5">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-[#6c727f] absolute left-3 top-2.5" />
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Cari judul atau catatan..."
-                className="input-field w-full pl-9 pr-3 py-2 text-sm"
+                className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-red-500 focus:bg-white"
               />
             </div>
 
@@ -104,8 +104,7 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
               onChange={(e) =>
                 setSortBy(e.target.value as 'newest' | 'duration' | 'xp')
               }
-              aria-label="Urutkan riwayat"
-              className="input-field px-3 py-2 text-xs font-medium text-[#ededef]"
+              className="px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700 focus:outline-none focus:border-red-500 focus:bg-white"
             >
               <option value="newest">Urutkan: Terbaru</option>
               <option value="duration">Urutkan: Durasi Terlama</option>
@@ -117,10 +116,10 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
             <button
               type="button"
               onClick={() => setCategoryFilter('all')}
-              className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl font-medium transition cursor-pointer ${
                 categoryFilter === 'all'
-                  ? 'bg-[#ededef] text-[#111215]'
-                  : 'bg-[#1b1e23] text-[#9aa0ac] hover:text-[#ededef] border border-[#242730]'
+                  ? 'bg-red-600 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
               }`}
             >
               Semua
@@ -130,10 +129,10 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
                 key={catKey}
                 type="button"
                 onClick={() => setCategoryFilter(catKey)}
-                className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-xl font-medium transition cursor-pointer ${
                   categoryFilter === catKey
-                    ? 'bg-[#ededef] text-[#111215]'
-                    : 'bg-[#1b1e23] text-[#9aa0ac] hover:text-[#ededef] border border-[#242730]'
+                    ? 'bg-red-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
                 }`}
               >
                 {shortLabel}
@@ -144,11 +143,11 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
       )}
 
       {displayLogs.length === 0 ? (
-        <p className="text-center text-sm text-[#6c727f] py-12 px-4">
+        <p className="text-center text-sm text-slate-400 py-10">
           Belum ada catatan immersion yang cocok.
         </p>
       ) : (
-        <div className="divide-y divide-[#22252d]">
+        <div className="divide-y divide-slate-100">
           {displayLogs.map((log) => {
             const meta = getCategoryMeta(log.category);
             const xp = getLogXp(log);
@@ -157,49 +156,44 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
             return (
               <div
                 key={log.id}
-                className="px-5 py-3.5 hover:bg-[#1b1e23]/60 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                className="py-3.5 px-2.5 -mx-2.5 rounded-xl hover:bg-slate-50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
               >
-                <div className="flex items-start gap-3 min-w-0">
+                <div className="flex items-start gap-3.5 min-w-0">
                   <MediaCover
                     title={log.title}
                     category={log.category}
-                    className="w-10 h-14 rounded-md"
+                    className="w-12 h-16 rounded-xl"
                   />
 
-                  <div className="min-w-0 space-y-1">
+                  <div className="space-y-1 min-w-0 pt-0.5">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-sm text-[#ededef] truncate">
+                      <span className="font-semibold text-sm text-slate-900 truncate">
                         {log.title}
                       </span>
-                      <span className="inline-flex items-center gap-1.5 text-xs text-[#9aa0ac]">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-medium">
                         <span
-                          className="w-1.5 h-1.5 rounded-full shrink-0"
+                          className="w-1.5 h-1.5 rounded-full"
                           style={{ backgroundColor: meta.color }}
                         />
-                        {meta.shortLabel}
+                        {meta.label}
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
+                        <Sparkles className="w-2.5 h-2.5" />+{xp} XP
                       </span>
                     </div>
 
-                    <div className="text-xs text-[#6c727f] flex items-center gap-2 flex-wrap font-mono tabular-nums">
+                    <div className="text-xs text-slate-500 flex items-center gap-2.5 flex-wrap font-mono">
                       <span>{log.logged_date}</span>
-                      <span>·</span>
-                      <span className="text-[#ededef] font-medium">
-                        {log.duration_minutes} mnt
-                      </span>
-                      <span>·</span>
-                      <span className="text-[#5cd697]">+{xp} XP</span>
+                      <span>• {log.duration_minutes} mnt</span>
                       {log.cards_mined > 0 && (
-                        <>
-                          <span>·</span>
-                          <span className="text-[#9aa0ac]">
-                            +{log.cards_mined} kartu
-                          </span>
-                        </>
+                        <span className="text-slate-700 font-medium">
+                          • +{log.cards_mined} kartu
+                        </span>
                       )}
                     </div>
 
                     {log.notes && (
-                      <p className="text-xs text-[#9aa0ac] line-clamp-1 max-w-xl">
+                      <p className="text-xs text-slate-500 line-clamp-1 max-w-xl">
                         {log.notes}
                       </p>
                     )}
@@ -215,14 +209,14 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
                           onDelete(log.id);
                           setConfirmDeleteId(null);
                         }}
-                        className="px-2.5 py-1 rounded-md bg-[#3a1c20] hover:bg-[#4c2329] border border-[#5c2a30] text-xs font-medium text-[#f29b9b] transition-colors cursor-pointer"
+                        className="px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-xs font-semibold text-white transition cursor-pointer"
                       >
-                        Hapus
+                        Ya, Hapus
                       </button>
                       <button
                         type="button"
                         onClick={() => setConfirmDeleteId(null)}
-                        className="btn-secondary px-2.5 py-1 rounded-md text-xs text-[#9aa0ac] cursor-pointer"
+                        className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs text-slate-600 hover:text-slate-900 transition cursor-pointer"
                       >
                         Batal
                       </button>
@@ -232,18 +226,16 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
                       <button
                         type="button"
                         onClick={() => onEdit(log)}
-                        className="p-1.5 rounded-md text-[#6c727f] hover:text-[#ededef] hover:bg-[#22252d] transition-colors cursor-pointer"
+                        className="p-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 text-slate-500 hover:text-slate-900 transition cursor-pointer"
                         title="Edit"
-                        aria-label={`Edit ${log.title}`}
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
                       <button
                         type="button"
                         onClick={() => setConfirmDeleteId(log.id)}
-                        className="p-1.5 rounded-md text-[#6c727f] hover:text-[#e57373] hover:bg-[#2a191b] transition-colors cursor-pointer"
+                        className="p-2 rounded-lg bg-white border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 text-slate-400 transition cursor-pointer"
                         title="Hapus"
-                        aria-label={`Hapus ${log.title}`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -255,6 +247,6 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
           })}
         </div>
       )}
-    </section>
+    </div>
   );
 };
