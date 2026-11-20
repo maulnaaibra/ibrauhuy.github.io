@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import {
@@ -16,6 +16,8 @@ interface AuthContextType {
   profile: Profile | null;
   loading: boolean;
   isDemoMode: boolean;
+  passwordRecoveryMode: boolean;
+  clearPasswordRecovery: () => void;
   enterDemoMode: () => void;
   updateDemoProfile: (patch: Partial<Profile>) => void;
   refreshProfile: () => Promise<void>;
@@ -45,59 +47,130 @@ function readInitialDemoFlag(): boolean {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
+  const [supabaseReady, setSupabaseReady] = useState<boolean>(
+    () => isSupabaseConfigured
+  );
   const [isDemoMode, setIsDemoMode] = useState<boolean>(readInitialDemoFlag);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(() =>
     readInitialDemoFlag() ? loadDemoProfile() : null
   );
+  const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(false);
   const [loading, setLoading] = useState<boolean>(
     () => !readInitialDemoFlag() && isSupabaseConfigured
   );
 
-  const fetchProfile = async (userId: string) => {
+  const fetchOrInitProfile = useCallback(async (authUser: User) => {
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
-      .eq('id', userId)
-      .single();
+      .eq('id', authUser.id)
+      .maybeSingle();
 
-    if (!error && data) {
+    if (error) return;
+
+    if (data) {
       setProfile(data as Profile);
-    }
-  };
-
-  useEffect(() => {
-    if (isDemoMode || !isSupabaseConfigured) {
       return;
     }
+
+    const fallbackName =
+      (authUser.user_metadata?.full_name as string | undefined) ||
+      authUser.email?.split('@')[0] ||
+      'Learner';
+    const fallbackAvatar =
+      (authUser.user_metadata?.avatar_url as string | undefined) ?? null;
+
+    const { data: created } = await supabase
+      .from('profiles')
+      .upsert({
+        id: authUser.id,
+        full_name: fallbackName,
+        avatar_url: fallbackAvatar,
+      })
+      .select()
+      .single();
+
+    if (created) {
+      setProfile(created as Profile);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onConfigChange = () => {
+      setSupabaseReady(isSupabaseConfigured);
+    };
+    window.addEventListener('supabase-config-changed', onConfigChange);
+    return () =>
+      window.removeEventListener('supabase-config-changed', onConfigChange);
+  }, []);
+
+  useEffect(() => {
+    if (!supabaseReady) {
+      return;
+    }
+
+    let active = true;
 
     supabase.auth
       .getSession()
       .then(({ data: { session: currentSession } }) => {
-        setSession(currentSession);
+        if (!active) return;
         if (currentSession?.user) {
-          fetchProfile(currentSession.user.id).finally(() => setLoading(false));
+          try {
+            localStorage.removeItem(DEMO_MODE_KEY);
+          } catch {
+            // ignore storage errors
+          }
+          setIsDemoMode(false);
+          setSession(currentSession);
+          void fetchOrInitProfile(currentSession.user).finally(() => {
+            if (active) setLoading(false);
+          });
         } else {
+          setSession(null);
+          if (readInitialDemoFlag()) {
+            setIsDemoMode(true);
+            setProfile(loadDemoProfile());
+          }
           setLoading(false);
         }
       })
       .catch(() => {
-        setLoading(false);
+        if (active) setLoading(false);
       });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (!active) return;
+
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordRecoveryMode(true);
+      } else if (event === 'SIGNED_OUT') {
+        setPasswordRecoveryMode(false);
+      }
+
       setSession(newSession);
+
       if (newSession?.user) {
-        fetchProfile(newSession.user.id);
-      } else {
+        try {
+          localStorage.removeItem(DEMO_MODE_KEY);
+        } catch {
+          // ignore storage errors
+        }
+        setIsDemoMode(false);
+        void fetchOrInitProfile(newSession.user);
+      } else if (!readInitialDemoFlag()) {
         setProfile(null);
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, [isDemoMode]);
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [supabaseReady, fetchOrInitProfile]);
 
   const enterDemoMode = () => {
     try {
@@ -125,7 +198,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
     if (session?.user) {
-      await fetchProfile(session.user.id);
+      await fetchOrInitProfile(session.user);
     }
   };
 
@@ -138,14 +211,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!isDemoMode && isSupabaseConfigured) {
       await supabase.auth.signOut();
     }
+    setPasswordRecoveryMode(false);
     setIsDemoMode(false);
     setSession(null);
     setProfile(null);
   };
 
-  const activeUser: User | null = isDemoMode
-    ? LOCAL_USER
-    : (session?.user ?? null);
+  const clearPasswordRecovery = () => setPasswordRecoveryMode(false);
+
+  const activeUser: User | null = session?.user
+    ? session.user
+    : isDemoMode
+      ? LOCAL_USER
+      : null;
 
   return (
     <AuthContext.Provider
@@ -154,7 +232,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         user: activeUser,
         profile,
         loading,
-        isDemoMode,
+        isDemoMode: Boolean(!session?.user && isDemoMode),
+        passwordRecoveryMode,
+        clearPasswordRecovery,
         enterDemoMode,
         updateDemoProfile,
         refreshProfile,

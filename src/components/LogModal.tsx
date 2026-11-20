@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Sparkles, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { MediaCover } from '../components/MediaCover';
 import {
   CATEGORY_META,
@@ -94,40 +94,46 @@ export const LogModal: React.FC<LogModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+    <div
+      className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 overflow-y-auto animate-modal"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div
         role="dialog"
         aria-modal="true"
         aria-label={editingLog ? 'Edit Sesi Immersion' : 'Catat Sesi Immersion'}
-        className="w-full max-w-lg rounded-2xl bg-white border border-slate-200 p-6 shadow-2xl my-auto animate-scale-in"
+        className="w-full max-w-lg rounded-xl bg-[#16181c] border border-[#2c303a] p-6 my-auto"
       >
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h2 className="text-lg font-bold text-slate-900">
-              {editingLog ? 'Edit Sesi Immersion' : 'Catat Sesi Immersion'}
+        <div className="flex items-center justify-between gap-3 pb-4 border-b border-[#242730]">
+          <div className="flex items-baseline gap-3">
+            <h2 className="text-base font-semibold text-[#ededef]">
+              {editingLog ? 'Edit Sesi' : 'Catat Sesi Immersion'}
             </h2>
-            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
-              <Sparkles className="w-3 h-3" />+{estimatedXp} XP
+            <span className="text-xs font-mono text-[#5cd697]">
+              +{estimatedXp} XP
             </span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+            aria-label="Tutup"
+            className="p-1.5 rounded-lg text-[#6c727f] hover:text-[#ededef] hover:bg-[#21242b] transition-colors cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 pt-5">
           <div className="flex items-start gap-3.5">
             <MediaCover
               title={title || currentMeta.label}
               category={category}
-              className="w-14 h-20 rounded-xl mt-0.5"
+              className="w-12 h-16 rounded-md mt-0.5"
             />
             <div className="flex-1 min-w-0">
-              <label className="block text-xs font-medium text-slate-600 mb-1.5">
+              <label className="block text-xs font-medium text-[#9aa0ac] mb-1.5">
                 Judul Media / Konten
               </label>
               <input
@@ -136,18 +142,23 @@ export const LogModal: React.FC<LogModalProps> = ({
                 placeholder="Contoh: Sousou no Frieren / Steins;Gate"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="input-field w-full px-3 py-2 text-sm"
               />
-              <p className="text-[11px] text-slate-400 mt-1.5">
-                Sampul media otomatis ditampilkan di riwayat aktivitas Anda.
+              <p className="text-[11px] text-[#6c727f] mt-1.5">
+                Sampul media akan dicocokkan otomatis di riwayat aktivitas.
               </p>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1.5">
-              Tipe Media ({currentMeta.xpPerHour} XP/jam)
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-medium text-[#9aa0ac]">
+                Tipe Media
+              </label>
+              <span className="text-[11px] font-mono text-[#6c727f]">
+                {currentMeta.xpPerHour} XP/jam
+              </span>
+            </div>
             <div className="grid grid-cols-3 gap-1.5">
               {selectableCategories.map((cat) => {
                 const meta = CATEGORY_META[cat];
@@ -157,10 +168,10 @@ export const LogModal: React.FC<LogModalProps> = ({
                     key={cat}
                     type="button"
                     onClick={() => setCategory(cat)}
-                    className={`px-2.5 py-2 rounded-xl text-xs font-medium border flex items-center gap-2 transition cursor-pointer text-left ${
+                    className={`px-2.5 py-2 rounded-lg text-xs border flex items-center gap-2 transition-colors cursor-pointer text-left ${
                       active
-                        ? 'bg-red-50 border-red-500 text-red-700 font-semibold'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                        ? 'bg-[#21242b] border-[#525866] text-[#ededef] font-medium'
+                        : 'bg-[#121316] border-[#242730] text-[#9aa0ac] hover:text-[#ededef] hover:border-[#313540]'
                     }`}
                   >
                     <span
@@ -175,8 +186,8 @@ export const LogModal: React.FC<LogModalProps> = ({
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-medium text-slate-600">
+            <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+              <label className="text-xs font-medium text-[#9aa0ac]">
                 Durasi (menit)
               </label>
               <div className="flex items-center gap-1 flex-wrap">
@@ -185,10 +196,10 @@ export const LogModal: React.FC<LogModalProps> = ({
                     key={preset}
                     type="button"
                     onClick={() => setDuration(preset)}
-                    className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition cursor-pointer ${
+                    className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors cursor-pointer ${
                       duration === preset
-                        ? 'bg-red-600 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
+                        ? 'bg-[#ededef] text-[#111215] font-medium'
+                        : 'bg-[#1b1e23] text-[#9aa0ac] hover:text-[#ededef] border border-[#242730]'
                     }`}
                   >
                     {preset}m
@@ -203,13 +214,13 @@ export const LogModal: React.FC<LogModalProps> = ({
               max={1440}
               value={duration}
               onChange={(e) => setDuration(Number(e.target.value))}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+              className="input-field w-full px-3 py-2 text-sm font-mono tabular-nums"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1.5">
+              <label className="block text-xs font-medium text-[#9aa0ac] mb-1.5">
                 Tanggal
               </label>
               <input
@@ -217,49 +228,49 @@ export const LogModal: React.FC<LogModalProps> = ({
                 required
                 value={loggedDate}
                 onChange={(e) => setLoggedDate(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="input-field w-full px-3 py-2 text-sm"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                Kartu / Kosakata (+4 XP/kartu)
+              <label className="block text-xs font-medium text-[#9aa0ac] mb-1.5">
+                Kartu Baru (+4 XP)
               </label>
               <input
                 type="number"
                 min={0}
                 value={cardsMined}
                 onChange={(e) => setCardsMined(Number(e.target.value))}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="input-field w-full px-3 py-2 text-sm font-mono tabular-nums"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1.5">
-              Catatan Sesi (opsional)
+            <label className="block text-xs font-medium text-[#9aa0ac] mb-1.5">
+              Catatan (opsional)
             </label>
             <textarea
               rows={2}
               placeholder="Episode berapa, tingkat pemahaman, atau kosakata menarik..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-red-500 focus:bg-white resize-none"
+              className="input-field w-full px-3 py-2 text-sm resize-none"
             />
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#242730]">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-sm font-medium text-slate-700 transition cursor-pointer"
+              className="btn-secondary px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="btn-crimson px-5 py-2 rounded-xl text-sm font-semibold disabled:opacity-60 cursor-pointer"
+              className="btn-primary px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
             >
               {submitting
                 ? 'Menyimpan...'

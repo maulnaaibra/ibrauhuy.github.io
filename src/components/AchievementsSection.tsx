@@ -1,12 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Award,
   BookOpen,
-  CheckCircle2,
+  Check,
   Clock,
   Flame,
   Headphones,
   Layers,
-  Sparkles,
   Trophy,
   Zap,
 } from 'lucide-react';
@@ -19,32 +19,32 @@ interface AchievementsSectionProps {
 
 const RARITY_STYLES: Record<
   AchievementRarity,
-  { label: string; badge: string; iconBg: string }
+  { label: string; tag: string; iconTone: string }
 > = {
   common: {
     label: 'Common',
-    badge: 'bg-slate-100 text-slate-700 border-slate-200',
-    iconBg: 'bg-slate-100 text-slate-600',
+    tag: 'text-[#9aa0ac] bg-[#1b1e23] border-[#282c35]',
+    iconTone: 'text-[#9aa0ac]',
   },
   uncommon: {
     label: 'Uncommon',
-    badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    iconBg: 'bg-emerald-50 text-emerald-600',
+    tag: 'text-[#5cd697] bg-[#14291f] border-[#214a36]',
+    iconTone: 'text-[#5cd697]',
   },
   rare: {
     label: 'Rare',
-    badge: 'bg-sky-50 text-sky-700 border-sky-200',
-    iconBg: 'bg-sky-50 text-sky-600',
+    tag: 'text-[#7db0ef] bg-[#162233] border-[#243957]',
+    iconTone: 'text-[#7db0ef]',
   },
   epic: {
     label: 'Epic',
-    badge: 'bg-red-50 text-red-700 border-red-200',
-    iconBg: 'bg-red-50 text-red-600',
+    tag: 'text-[#b69ee6] bg-[#211b2e] border-[#352a4d]',
+    iconTone: 'text-[#b69ee6]',
   },
   legendary: {
     label: 'Legendary',
-    badge: 'bg-amber-50 text-amber-800 border-amber-200',
-    iconBg: 'bg-amber-50 text-amber-600',
+    tag: 'text-[#e5b55c] bg-[#262013] border-[#3d331d]',
+    iconTone: 'text-[#e5b55c]',
   },
 };
 
@@ -63,7 +63,7 @@ function AchievementIcon({
     case 'headphones':
       return <Headphones className={className} />;
     case 'sparkles':
-      return <Sparkles className={className} />;
+      return <Award className={className} />;
     case 'trophy':
       return <Trophy className={className} />;
     case 'zap':
@@ -99,30 +99,32 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-4">
-        <div className="card-pro p-4">
-          <div className="text-xs text-slate-500">Tercapai</div>
-          <div className="text-2xl font-bold font-mono text-slate-900 mt-1 tabular-nums">
+      {/* Unified summary strip */}
+      <div className="surface grid grid-cols-3 divide-x divide-[#242730]">
+        <div className="p-4 sm:p-5">
+          <div className="text-xs text-[#9aa0ac]">Tercapai</div>
+          <div className="text-xl font-semibold font-mono text-[#ededef] mt-1 tabular-nums">
             {earnedCount}{' '}
-            <span className="text-sm font-normal text-slate-400">
+            <span className="text-sm font-normal text-[#6c727f]">
               / {achievements.length}
             </span>
           </div>
         </div>
-        <div className="card-pro p-4">
-          <div className="text-xs text-slate-500">Poin Achievement</div>
-          <div className="text-2xl font-bold font-mono text-red-600 mt-1 tabular-nums">
+        <div className="p-4 sm:p-5">
+          <div className="text-xs text-[#9aa0ac]">Poin</div>
+          <div className="text-xl font-semibold font-mono text-[#ededef] mt-1 tabular-nums">
             {earnedPoints}
           </div>
         </div>
-        <div className="card-pro p-4">
-          <div className="text-xs text-slate-500">Penyelesaian</div>
-          <div className="text-2xl font-bold font-mono text-emerald-600 mt-1 tabular-nums">
+        <div className="p-4 sm:p-5">
+          <div className="text-xs text-[#9aa0ac]">Penyelesaian</div>
+          <div className="text-xl font-semibold font-mono text-[#5cd697] mt-1 tabular-nums">
             {completionPct}%
           </div>
         </div>
       </div>
 
+      {/* Rarity filter */}
       <div className="flex items-center gap-1.5 flex-wrap">
         {(
           [
@@ -138,10 +140,10 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
             key={item.id}
             type="button"
             onClick={() => setRarityFilter(item.id)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer ${
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
               rarityFilter === item.id
-                ? 'bg-red-600 text-white'
-                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+                ? 'bg-[#ededef] text-[#111215]'
+                : 'bg-[#16181c] text-[#9aa0ac] hover:text-[#ededef] border border-[#242730]'
             }`}
           >
             {item.label}
@@ -149,56 +151,59 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
         ))}
       </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Achievement cards */}
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
         {visible.map((ach) => {
           const style = RARITY_STYLES[ach.rarity];
           return (
             <div
               key={ach.id}
-              className={`card-pro p-4 flex flex-col justify-between gap-4 transition ${
-                ach.unlocked ? '' : 'opacity-65 hover:opacity-100'
+              className={`surface p-4 flex flex-col justify-between gap-4 ${
+                ach.unlocked ? '' : 'opacity-65'
               }`}
             >
               <div className="space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className={`p-2.5 rounded-xl ${style.iconBg}`}>
-                    <AchievementIcon icon={ach.icon} className="w-5 h-5" />
-                  </div>
-                  <div className="flex items-center gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`w-8 h-8 rounded-lg bg-[#1b1e23] border border-[#282c35] flex items-center justify-center ${style.iconTone}`}
+                    >
+                      <AchievementIcon icon={ach.icon} className="w-4 h-4" />
+                    </div>
                     <span
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${style.badge}`}
+                      className={`text-[11px] font-medium px-2 py-0.5 rounded border ${style.tag}`}
                     >
                       {style.label}
                     </span>
-                    {ach.unlocked && (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    )}
                   </div>
+                  {ach.unlocked && (
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#14291f] border border-[#214a36] text-[#5cd697]">
+                      <Check className="w-3 h-3" />
+                    </span>
+                  )}
                 </div>
 
                 <div>
-                  <h4 className="font-semibold text-sm text-slate-900">
+                  <h4 className="font-semibold text-sm text-[#ededef]">
                     {ach.title}
                   </h4>
-                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  <p className="text-xs text-[#9aa0ac] mt-1 leading-relaxed">
                     {ach.description}
                   </p>
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-[11px] font-mono text-slate-500">
+                <div className="flex items-center justify-between text-[11px] font-mono text-[#6c727f] tabular-nums">
                   <span>
                     {ach.currentLabel} / {ach.targetLabel}
                   </span>
-                  <span className="text-red-600 font-semibold">
-                    +{ach.points} pt
-                  </span>
+                  <span className="text-[#9aa0ac]">+{ach.points} pt</span>
                 </div>
-                <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div className="progress-track h-1">
                   <div
-                    className={`h-full rounded-full animate-bar ${
-                      ach.unlocked ? 'bg-emerald-500' : 'bg-red-600'
+                    className={`h-full rounded-full ${
+                      ach.unlocked ? 'bg-[#2eb872]' : 'bg-[#4b5263]'
                     }`}
                     style={{ width: `${ach.progressPct}%` }}
                   />

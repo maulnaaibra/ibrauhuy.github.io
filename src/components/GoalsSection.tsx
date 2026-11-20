@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Plus,
-  Target,
   Trash2,
   CheckCircle2,
   AlertTriangle,
@@ -64,59 +63,53 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
 
   return (
     <div className="space-y-6">
-      <div className="card-pro p-5 border-t-2 border-t-red-600">
+      {/* Daily target summary */}
+      <div className="surface p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Target className="w-4 h-4 text-red-600" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Target Harian Aktif
-              </span>
-            </div>
-            <div className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
+            <div className="text-xs text-[#9aa0ac]">Target Harian Aktif</div>
+            <div className="text-2xl font-semibold font-mono text-[#ededef] tabular-nums">
               {todayMinutes}{' '}
-              <span className="text-sm font-normal text-slate-500">
+              <span className="text-sm font-normal text-[#9aa0ac]">
                 / {dailyGoal} menit ({dailyPct}%)
               </span>
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-[#6c727f]">
               {dailyRemaining === 0
-                ? 'Target harian tercapai! Pertahankan konsistensimu.'
-                : `Butuh ${dailyRemaining} menit lagi hari ini untuk mencapai target.`}
+                ? 'Target harian tercapai.'
+                : `Sisa ${dailyRemaining} menit lagi hari ini untuk mencapai target.`}
             </p>
           </div>
 
           <Link
             to="/settings"
-            className="px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 transition self-start sm:self-center"
+            className="btn-secondary px-3.5 py-2 rounded-lg text-xs font-medium self-start sm:self-center"
           >
             Ubah Target Harian
           </Link>
         </div>
 
-        <div className="h-2 rounded-full bg-slate-100 overflow-hidden mt-4">
-          <div
-            className="h-full bg-gradient-to-r from-red-600 to-rose-500 rounded-full animate-bar"
-            style={{ width: `${dailyPct}%` }}
-          />
+        <div className="progress-track h-1.5 mt-4">
+          <div className="progress-fill h-full" style={{ width: `${dailyPct}%` }} />
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
+      {/* Long-term goals header */}
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="font-semibold text-slate-900">
+          <h3 className="text-sm font-semibold text-[#ededef]">
             Target Jangka Panjang & Pace
           </h3>
-          <p className="text-xs text-slate-500">
-            Pantau kecepatan belajarmu agar target selesai tepat waktu.
+          <p className="text-xs text-[#9aa0ac] mt-0.5">
+            Pantau kecepatan belajarmu agar target selesai sesuai jadwal.
           </p>
         </div>
         <button
           type="button"
           onClick={() => setShowForm(!showForm)}
-          className="btn-crimson px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+          className="btn-primary px-3.5 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 cursor-pointer shrink-0"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-3.5 h-3.5" />
           Tambah Target
         </button>
       </div>
@@ -124,11 +117,11 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
       {showForm && (
         <form
           onSubmit={handleCreate}
-          className="card-pro p-5 border-red-200 space-y-4 animate-scale-in"
+          className="surface p-5 border-[#313540] space-y-4"
         >
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">
+              <label className="block text-xs font-medium text-[#9aa0ac] mb-1.5">
                 Nama Target
               </label>
               <input
@@ -137,11 +130,11 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
                 placeholder="Contoh: 50 Jam Reading VN"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="input-field w-full px-3 py-2 text-sm"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">
+              <label className="block text-xs font-medium text-[#9aa0ac] mb-1.5">
                 Target Jam
               </label>
               <input
@@ -151,20 +144,20 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
                 max={5000}
                 value={targetHours}
                 onChange={(e) => setTargetHours(Number(e.target.value))}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="input-field w-full px-3 py-2 text-sm font-mono tabular-nums"
               />
             </div>
           </div>
 
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">
+              <label className="block text-xs font-medium text-[#9aa0ac] mb-1.5">
                 Kategori Progres
               </label>
               <select
                 value={track}
                 onChange={(e) => setTrack(e.target.value as 'all' | SkillTrack)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="input-field w-full px-3 py-2 text-sm"
               >
                 <option value="all">Semua Aktivitas</option>
                 <option value="listening">Listening (Anime/Video/Audio)</option>
@@ -173,7 +166,7 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">
+              <label className="block text-xs font-medium text-[#9aa0ac] mb-1.5">
                 Deadline
               </label>
               <input
@@ -182,22 +175,22 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
                 min={todayStr}
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="input-field w-full px-3 py-2 text-sm"
               />
             </div>
           </div>
 
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
               onClick={() => setShowForm(false)}
-              className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium text-slate-700 cursor-pointer"
+              className="btn-secondary px-4 py-2 rounded-lg text-xs font-medium cursor-pointer"
             >
               Batal
             </button>
             <button
               type="submit"
-              className="btn-crimson px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer"
+              className="btn-primary px-4 py-2 rounded-lg text-xs font-medium cursor-pointer"
             >
               Simpan Target
             </button>
@@ -206,58 +199,57 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
       )}
 
       {goals.length === 0 ? (
-        <div className="card-pro p-10 text-center text-sm text-slate-500">
-          Belum ada target kustom. Klik <strong>Tambah Target</strong> untuk
+        <div className="surface p-10 text-center text-sm text-[#6c727f]">
+          Belum ada target kustom. Klik{' '}
+          <span className="text-[#ededef] font-medium">Tambah Target</span> untuk
           membuat target jam belajarmu.
         </div>
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {goals.map((goal) => {
             const p = getGoalProgress(goal, logs);
-            const topColor =
-              p.status === 'completed' || p.status === 'ahead'
-                ? 'border-t-emerald-500'
-                : p.status === 'behind'
-                  ? 'border-t-amber-500'
-                  : 'border-t-red-600';
 
             const statusBadge =
               p.status === 'completed'
                 ? {
                     text: 'Tercapai',
-                    cls: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                    cls: 'bg-[#14291f] text-[#5cd697] border-[#214a36]',
+                    barCls: 'bg-[#2eb872]',
                     Icon: CheckCircle2,
                   }
                 : p.status === 'ahead'
                   ? {
                       text: 'Lebih Cepat',
-                      cls: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                      cls: 'bg-[#14291f] text-[#5cd697] border-[#214a36]',
+                      barCls: 'bg-[#2eb872]',
                       Icon: TrendingUp,
                     }
                   : p.status === 'behind'
                     ? {
-                        text: 'Tertinggal Pace',
-                        cls: 'bg-amber-50 text-amber-800 border-amber-200',
+                        text: 'Tertinggal',
+                        cls: 'bg-[#262013] text-[#e5b55c] border-[#3d331d]',
+                        barCls: 'bg-[#d4a24c]',
                         Icon: AlertTriangle,
                       }
                     : {
                         text: 'On Track',
-                        cls: 'bg-red-50 text-red-700 border-red-200',
+                        cls: 'bg-[#1b1e23] text-[#9aa0ac] border-[#2c303a]',
+                        barCls: 'bg-[#6b9be0]',
                         Icon: TrendingUp,
                       };
 
             return (
               <div
                 key={goal.id}
-                className={`card-pro p-5 border-t-2 ${topColor} flex flex-col justify-between gap-4`}
+                className="surface p-5 flex flex-col justify-between gap-4"
               >
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <span className="text-[11px] uppercase tracking-wider font-semibold text-slate-400">
+                    <div className="min-w-0">
+                      <span className="text-xs text-[#6c727f] capitalize">
                         {goal.track === 'all' ? 'Semua Media' : goal.track}
                       </span>
-                      <h4 className="font-semibold text-slate-900 mt-0.5">
+                      <h4 className="font-semibold text-sm text-[#ededef] mt-0.5 truncate">
                         {goal.title}
                       </h4>
                     </div>
@@ -265,53 +257,48 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
                       type="button"
                       onClick={() => onDeleteGoal(goal.id)}
                       title="Hapus target"
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer"
+                      aria-label={`Hapus target ${goal.title}`}
+                      className="p-1.5 rounded-md text-[#6c727f] hover:text-[#e57373] hover:bg-[#2a191b] transition-colors cursor-pointer shrink-0"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
                   <div className="flex items-baseline justify-between">
-                    <span className="text-xl font-bold font-mono text-slate-900 tabular-nums">
+                    <span className="text-lg font-semibold font-mono text-[#ededef] tabular-nums">
                       {p.loggedHours.toFixed(1)}j{' '}
-                      <span className="text-xs font-normal text-slate-500">
+                      <span className="text-xs font-normal text-[#6c727f]">
                         / {goal.targetHours}j
                       </span>
                     </span>
-                    <span className="text-xs font-mono font-semibold text-slate-700">
+                    <span className="text-xs font-mono text-[#9aa0ac] tabular-nums">
                       {p.progressPct}%
                     </span>
                   </div>
 
-                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                  <div className="progress-track h-1.5">
                     <div
-                      className={`h-full rounded-full animate-bar ${
-                        p.status === 'completed' || p.status === 'ahead'
-                          ? 'bg-emerald-500'
-                          : p.status === 'behind'
-                            ? 'bg-amber-500'
-                            : 'bg-gradient-to-r from-red-600 to-rose-500'
-                      }`}
+                      className={`h-full rounded-full ${statusBadge.barCls}`}
                       style={{ width: `${p.progressPct}%` }}
                     />
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 text-xs">
-                  <div className="text-slate-500">
+                <div className="pt-3 border-t border-[#22252d] flex items-center justify-between gap-2 text-xs">
+                  <div className="text-[#9aa0ac] tabular-nums">
                     {p.status === 'completed' ? (
                       <span>Selesai sebelum {goal.deadline}</span>
                     ) : (
                       <span>
-                        {p.daysLeft} hari lagi •{' '}
-                        <strong className="text-slate-900">
+                        {p.daysLeft} hari lagi ·{' '}
+                        <span className="text-[#ededef] font-mono font-medium">
                           {p.requiredDailyMinutes}m/hari
-                        </strong>
+                        </span>
                       </span>
                     )}
                   </div>
                   <span
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium shrink-0 ${statusBadge.cls}`}
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] font-medium shrink-0 ${statusBadge.cls}`}
                   >
                     <statusBadge.Icon className="w-3 h-3" />
                     {statusBadge.text}

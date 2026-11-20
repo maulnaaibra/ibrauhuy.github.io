@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Play, Pause, Square, RotateCcw, Sparkles } from 'lucide-react';
+import { Play, Pause, Square, RotateCcw } from 'lucide-react';
 import {
   CATEGORY_META,
   PRIMARY_CATEGORIES,
@@ -114,7 +114,6 @@ export const LiveStopwatch: React.FC<LiveStopwatchProps> = ({
   const estimatedMinutes = Math.max(1, Math.round(seconds / 60));
   const previewXp =
     seconds > 0 ? calculateXp(timer.category, estimatedMinutes, 0) : 0;
-  const meta = CATEGORY_META[timer.category];
 
   const handleToggle = () => {
     const now = Date.now();
@@ -173,37 +172,35 @@ export const LiveStopwatch: React.FC<LiveStopwatchProps> = ({
   };
 
   return (
-    <div className="card-pro p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+    <section
+      aria-label="Live Immersion Timer"
+      className={`surface p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 ${
+        timer.running ? 'border-[#2eb872]/50' : ''
+      }`}
+    >
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-1 min-w-0">
-        <div className="shrink-0">
-          <div className="flex items-center gap-2 flex-wrap">
+        {/* Timer readout */}
+        <div className="shrink-0 min-w-[144px]">
+          <div className="flex items-center gap-2 text-xs text-[#9aa0ac]">
             <span
-              className={`w-2 h-2 rounded-full ${
-                timer.running ? 'bg-red-600 animate-pulse' : 'bg-slate-300'
+              className={`w-1.5 h-1.5 rounded-full ${
+                timer.running ? 'bg-[#2eb872]' : 'bg-[#4b5263]'
               }`}
             />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Live Immersion Timer
-            </span>
-            {timer.running && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
-                Berjalan di latar belakang
+            <span>{timer.running ? 'Sedang berjalan' : 'Stopwatch'}</span>
+            {seconds > 0 && (
+              <span className="font-mono text-[11px] text-[#5cd697]">
+                +{previewXp} XP
               </span>
             )}
           </div>
-          <div className="flex items-baseline gap-3 mt-1">
-            <div className="text-3xl font-mono font-bold text-slate-900 tabular-nums tracking-tight">
-              {formatTime(seconds)}
-            </div>
-            {seconds > 0 && (
-              <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
-                <Sparkles className="w-3 h-3" />+{previewXp} XP
-              </span>
-            )}
+          <div className="text-2xl sm:text-[28px] font-mono font-semibold text-[#ededef] tabular-nums tracking-tight mt-0.5 leading-none">
+            {formatTime(seconds)}
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-2.5 flex-1 max-w-xl">
+        {/* Media inputs */}
+        <div className="flex flex-col sm:flex-row gap-2 flex-1 max-w-xl">
           <select
             value={timer.category}
             onChange={(e) =>
@@ -213,8 +210,7 @@ export const LiveStopwatch: React.FC<LiveStopwatchProps> = ({
               }))
             }
             aria-label="Pilih tipe media stopwatch"
-            className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-800 focus:outline-none focus:border-red-500 shrink-0"
-            style={{ borderLeftColor: meta.color, borderLeftWidth: '3px' }}
+            className="input-field px-3 py-2 text-xs font-medium shrink-0"
           >
             {PRIMARY_CATEGORIES.map((cat) => (
               <option key={cat} value={cat}>
@@ -232,26 +228,27 @@ export const LiveStopwatch: React.FC<LiveStopwatchProps> = ({
                 title: e.target.value,
               }))
             }
-            placeholder="Sedang nonton/baca apa? (opsional)"
-            className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-red-500 focus:bg-white"
+            placeholder="Judul yang sedang diikuti (opsional)"
+            className="input-field w-full px-3 py-2 text-sm"
           />
         </div>
       </div>
 
+      {/* Controls */}
       <div className="flex items-center gap-2 shrink-0">
         <button
           type="button"
           onClick={handleToggle}
-          className={`px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2 transition cursor-pointer ${
+          className={`px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors cursor-pointer ${
             timer.running
-              ? 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
-              : 'btn-crimson'
+              ? 'bg-[#262013] text-[#e5b55c] border border-[#3d331d] hover:bg-[#302817]'
+              : 'btn-primary'
           }`}
         >
           {timer.running ? (
-            <Pause className="w-4 h-4" />
+            <Pause className="w-3.5 h-3.5" />
           ) : (
-            <Play className="w-4 h-4" />
+            <Play className="w-3.5 h-3.5" />
           )}
           {timer.running ? 'Pause' : seconds > 0 ? 'Lanjut' : 'Mulai'}
         </button>
@@ -261,22 +258,23 @@ export const LiveStopwatch: React.FC<LiveStopwatchProps> = ({
             <button
               type="button"
               onClick={handleStopAndSave}
-              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center gap-2 transition cursor-pointer shadow-xs"
+              className="px-3.5 py-2 rounded-lg bg-[#19382a] hover:bg-[#1f4735] border border-[#245940] text-[#7ae2ac] font-medium text-sm flex items-center gap-1.5 transition-colors cursor-pointer"
             >
-              <Square className="w-4 h-4" />
+              <Square className="w-3.5 h-3.5" />
               Simpan ({estimatedMinutes}m)
             </button>
             <button
               type="button"
               onClick={handleReset}
               title="Reset Timer"
-              className="p-2.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 transition cursor-pointer"
+              aria-label="Reset Timer"
+              className="btn-secondary p-2 rounded-lg text-[#9aa0ac] hover:text-[#ededef] cursor-pointer"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
           </>
         )}
       </div>
-    </div>
+    </section>
   );
 };

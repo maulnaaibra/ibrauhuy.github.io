@@ -31,6 +31,15 @@ interface ChartsSectionProps {
   logs: ImmersionLog[];
 }
 
+const TOOLTIP_STYLE = {
+  backgroundColor: '#181a1f',
+  borderColor: '#2c303a',
+  borderRadius: '8px',
+  color: '#ededef',
+  fontSize: '12px',
+  boxShadow: '0 8px 20px rgba(0, 0, 0, 0.35)',
+};
+
 export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
   const [range, setRange] = useState<7 | 30 | 90 | 'all'>(30);
   const [trackFilter, setTrackFilter] = useState<'all' | SkillTrack>('all');
@@ -198,27 +207,29 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
   }, [filteredLogs, pieMetric]);
 
   const totalPieValue = mediaDistribution.reduce((acc, c) => acc + c.value, 0);
+  const seriesColor = chartMetric === 'hours' ? '#2eb872' : '#6b9be0';
 
   return (
     <div className="space-y-6">
-      <div className="card-pro p-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 flex-wrap">
+      {/* Filter bar */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="inline-flex items-center gap-1 bg-[#16181c] border border-[#242730] p-1 rounded-lg w-fit flex-wrap">
           {(
             [
               { id: 7, label: '7 Hari' },
               { id: 30, label: '30 Hari' },
               { id: 90, label: '90 Hari' },
-              { id: 'all', label: 'Semua Waktu' },
+              { id: 'all', label: 'Semua' },
             ] as const
           ).map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setRange(item.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer ${
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                 range === item.id
-                  ? 'bg-red-600 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+                  ? 'bg-[#252831] text-[#ededef]'
+                  : 'text-[#9aa0ac] hover:text-[#ededef]'
               }`}
             >
               {item.label}
@@ -226,7 +237,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
           ))}
         </div>
 
-        <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="inline-flex items-center gap-1 bg-[#16181c] border border-[#242730] p-1 rounded-lg w-fit flex-wrap">
           {(
             [
               { id: 'all', label: 'Semua Tipe' },
@@ -239,10 +250,10 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
               key={tr.id}
               type="button"
               onClick={() => setTrackFilter(tr.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer ${
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                 trackFilter === tr.id
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+                  ? 'bg-[#252831] text-[#ededef]'
+                  : 'text-[#9aa0ac] hover:text-[#ededef]'
               }`}
             >
               {tr.label}
@@ -251,82 +262,64 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-4">
-        <div className="card-pro p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-4">
-            Totals (Periode Dipilih)
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div>
-              <div className="text-xs text-slate-500">Total XP</div>
-              <div className="text-xl font-bold font-mono text-red-600 mt-1 tabular-nums">
-                {kpis.totalXp.toLocaleString()}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">Total Jam</div>
-              <div className="text-xl font-bold font-mono text-slate-900 mt-1 tabular-nums">
-                {kpis.totalHours.toFixed(1)}j
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">Jumlah Sesi</div>
-              <div className="text-xl font-bold font-mono text-slate-900 mt-1 tabular-nums">
-                {kpis.logCount}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">Rata-rata / Hari</div>
-              <div className="text-xl font-bold font-mono text-emerald-600 mt-1 tabular-nums">
-                {kpis.dailyAvgMinutes}m
-              </div>
-            </div>
+      {/* Unified KPI strip */}
+      <div className="surface grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 divide-x divide-[#242730]">
+        <div className="p-4 sm:p-5">
+          <div className="text-xs text-[#9aa0ac]">Total Durasi</div>
+          <div className="text-xl font-semibold font-mono text-[#ededef] mt-1 tabular-nums">
+            {kpis.totalHours.toFixed(1)} jam
+          </div>
+          <div className="text-[11px] text-[#6c727f] mt-1 font-mono tabular-nums">
+            {kpis.logCount} sesi · {kpis.dailyAvgMinutes}m/hari
           </div>
         </div>
 
-        <div className="card-pro p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-4">
-            Balance & Konsistensi
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div>
-              <div className="text-xs text-slate-500">Listening</div>
-              <div className="text-xl font-bold font-mono text-slate-900 mt-1 tabular-nums">
-                {(kpis.balance.listeningMin / 60).toFixed(1)}j
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">Reading</div>
-              <div className="text-xl font-bold font-mono text-slate-900 mt-1 tabular-nums">
-                {(kpis.balance.readingMin / 60).toFixed(1)}j
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">Rasio R : L</div>
-              <div className="text-xl font-bold font-mono text-slate-900 mt-1 tabular-nums">
-                {kpis.balance.ratioLabel}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">Streak Terbaik</div>
-              <div className="text-xl font-bold font-mono text-red-600 mt-1 tabular-nums">
-                {kpis.longestStreak}h
-              </div>
-            </div>
+        <div className="p-4 sm:p-5">
+          <div className="text-xs text-[#9aa0ac]">Perolehan XP</div>
+          <div className="text-xl font-semibold font-mono text-[#5cd697] mt-1 tabular-nums">
+            {kpis.totalXp.toLocaleString()}
+          </div>
+          <div className="text-[11px] text-[#6c727f] mt-1 font-mono tabular-nums">
+            {kpis.totalCards} kartu baru
+          </div>
+        </div>
+
+        <div className="p-4 sm:p-5">
+          <div className="text-xs text-[#9aa0ac]">Reading : Listening</div>
+          <div className="text-xl font-semibold font-mono text-[#ededef] mt-1 tabular-nums">
+            {kpis.balance.ratioLabel}
+          </div>
+          <div className="text-[11px] text-[#6c727f] mt-1 font-mono tabular-nums">
+            R {(kpis.balance.readingMin / 60).toFixed(1)}j · L{' '}
+            {(kpis.balance.listeningMin / 60).toFixed(1)}j
+          </div>
+        </div>
+
+        <div className="p-4 sm:p-5">
+          <div className="text-xs text-[#9aa0ac]">Streak Terbaik</div>
+          <div className="text-xl font-semibold font-mono text-[#ededef] mt-1 tabular-nums">
+            {kpis.longestStreak} hari
+          </div>
+          <div className="text-[11px] text-[#6c727f] mt-1 font-mono tabular-nums">
+            Saat ini {kpis.currentStreak} hari
           </div>
         </div>
       </div>
 
-      <div className="card-pro p-5">
+      {/* Progress Timeline */}
+      <div className="surface p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
           <div>
-            <h3 className="font-semibold text-slate-900">Progress Timeline</h3>
-            <p className="text-xs text-slate-500">
-              Tren {chartMetric === 'hours' ? 'jam immersion' : 'perolehan XP'} harian
+            <h3 className="text-sm font-semibold text-[#ededef]">
+              Tren Progres
+            </h3>
+            <p className="text-xs text-[#9aa0ac] mt-0.5">
+              {chartMetric === 'hours' ? 'Durasi jam immersion' : 'Perolehan XP'}{' '}
+              per {range === 'all' ? 'bulan' : 'hari'}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+            <div className="flex bg-[#121316] p-0.5 rounded-lg border border-[#242730] text-xs">
               {(
                 [
                   { id: 'hours', label: 'Jam' },
@@ -337,31 +330,31 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                   key={m.id}
                   type="button"
                   onClick={() => setChartMetric(m.id)}
-                  className={`px-3 py-1 rounded-lg font-medium transition cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
                     chartMetric === m.id
-                      ? 'bg-red-600 text-white'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-[#252831] text-[#ededef]'
+                      : 'text-[#6c727f] hover:text-[#ededef]'
                   }`}
                 >
                   {m.label}
                 </button>
               ))}
             </div>
-            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+            <div className="flex bg-[#121316] p-0.5 rounded-lg border border-[#242730] text-xs">
               {(
                 [
                   { id: 'bar', label: 'Bar' },
-                  { id: 'area', label: 'Area' },
+                  { id: 'area', label: 'Garis' },
                 ] as const
               ).map((t) => (
                 <button
                   key={t.id}
                   type="button"
                   onClick={() => setChartType(t.id)}
-                  className={`px-3 py-1 rounded-lg font-medium transition cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
                     chartType === t.id
-                      ? 'bg-slate-900 text-white'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-[#252831] text-[#ededef]'
+                      : 'text-[#6c727f] hover:text-[#ededef]'
                   }`}
                 >
                   {t.label}
@@ -375,65 +368,48 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
           <ResponsiveContainer width="100%" height="100%">
             {chartType === 'bar' ? (
               <BarChart data={timelineData}>
-                <CartesianGrid stroke="#e2e8f0" vertical={false} />
+                <CartesianGrid stroke="#22252d" vertical={false} />
                 <XAxis
                   dataKey="label"
-                  stroke="#64748b"
+                  stroke="#6c727f"
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis
-                  stroke="#64748b"
+                  stroke="#6c727f"
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
                 />
                 <Tooltip
+                  cursor={{ fill: 'rgba(255,255,255,0.03)' }}
                   formatter={(val) => [
                     `${val ?? 0} ${chartMetric === 'hours' ? 'jam' : 'XP'}`,
                     chartMetric === 'hours' ? 'Durasi' : 'XP',
                   ]}
-                  contentStyle={{
-                    backgroundColor: '#ffffff',
-                    borderColor: '#e2e8f0',
-                    borderRadius: '12px',
-                    color: '#0f172a',
-                    boxShadow: '0 8px 20px rgba(15,23,42,0.08)',
-                  }}
+                  contentStyle={TOOLTIP_STYLE}
+                  itemStyle={{ color: '#ededef' }}
+                  labelStyle={{ color: '#9aa0ac', marginBottom: '2px' }}
                 />
                 <Bar
                   dataKey={chartMetric}
-                  fill={chartMetric === 'hours' ? '#dc2626' : '#be123c'}
-                  radius={[6, 6, 0, 0]}
+                  fill={seriesColor}
+                  radius={[4, 4, 0, 0]}
                 />
               </BarChart>
             ) : (
               <AreaChart data={timelineData}>
-                <defs>
-                  <linearGradient id="timelineFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop
-                      offset="5%"
-                      stopColor={chartMetric === 'hours' ? '#dc2626' : '#be123c'}
-                      stopOpacity={0.28}
-                    />
-                    <stop
-                      offset="95%"
-                      stopColor={chartMetric === 'hours' ? '#dc2626' : '#be123c'}
-                      stopOpacity={0}
-                    />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#e2e8f0" vertical={false} />
+                <CartesianGrid stroke="#22252d" vertical={false} />
                 <XAxis
                   dataKey="label"
-                  stroke="#64748b"
+                  stroke="#6c727f"
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis
-                  stroke="#64748b"
+                  stroke="#6c727f"
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
@@ -443,20 +419,17 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                     `${val ?? 0} ${chartMetric === 'hours' ? 'jam' : 'XP'}`,
                     chartMetric === 'hours' ? 'Durasi' : 'XP',
                   ]}
-                  contentStyle={{
-                    backgroundColor: '#ffffff',
-                    borderColor: '#e2e8f0',
-                    borderRadius: '12px',
-                    color: '#0f172a',
-                    boxShadow: '0 8px 20px rgba(15,23,42,0.08)',
-                  }}
+                  contentStyle={TOOLTIP_STYLE}
+                  itemStyle={{ color: '#ededef' }}
+                  labelStyle={{ color: '#9aa0ac', marginBottom: '2px' }}
                 />
                 <Area
                   type="monotone"
                   dataKey={chartMetric}
-                  stroke={chartMetric === 'hours' ? '#dc2626' : '#be123c'}
+                  stroke={seriesColor}
                   strokeWidth={2}
-                  fill="url(#timelineFill)"
+                  fill={seriesColor}
+                  fillOpacity={0.12}
                 />
               </AreaChart>
             )}
@@ -464,11 +437,14 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
         </div>
       </div>
 
+      {/* Media Distribution */}
       <div className="grid lg:grid-cols-2 gap-6">
-        <div className="card-pro p-5 flex flex-col">
+        <div className="surface p-5 flex flex-col">
           <div className="flex items-center justify-between gap-2 mb-4">
-            <h3 className="font-semibold text-slate-900">Distribusi Media</h3>
-            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+            <h3 className="text-sm font-semibold text-[#ededef]">
+              Distribusi Media
+            </h3>
+            <div className="flex bg-[#121316] p-0.5 rounded-lg border border-[#242730] text-xs">
               {(
                 [
                   { id: 'minutes', label: 'Waktu' },
@@ -480,10 +456,10 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                   key={m.id}
                   type="button"
                   onClick={() => setPieMetric(m.id)}
-                  className={`px-2.5 py-1 rounded-lg font-medium transition cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
                     pieMetric === m.id
-                      ? 'bg-red-600 text-white'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-[#252831] text-[#ededef]'
+                      : 'text-[#6c727f] hover:text-[#ededef]'
                   }`}
                 >
                   {m.label}
@@ -493,7 +469,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
           </div>
 
           {mediaDistribution.length === 0 ? (
-            <div className="flex-1 min-h-56 flex items-center justify-center text-sm text-slate-400">
+            <div className="flex-1 min-h-56 flex items-center justify-center text-sm text-[#6c727f]">
               Belum ada data pada filter ini.
             </div>
           ) : (
@@ -504,9 +480,11 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                     data={mediaDistribution}
                     dataKey="value"
                     nameKey="name"
-                    innerRadius={58}
+                    innerRadius={60}
                     outerRadius={88}
-                    paddingAngle={3}
+                    paddingAngle={2}
+                    stroke="#16181c"
+                    strokeWidth={2}
                   >
                     {mediaDistribution.map((entry) => (
                       <Cell key={entry.name} fill={entry.color} />
@@ -523,13 +501,8 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                       }`,
                       'Total',
                     ]}
-                    contentStyle={{
-                      backgroundColor: '#ffffff',
-                      borderColor: '#e2e8f0',
-                      borderRadius: '12px',
-                      color: '#0f172a',
-                      boxShadow: '0 8px 20px rgba(15,23,42,0.08)',
-                    }}
+                    contentStyle={TOOLTIP_STYLE}
+                    itemStyle={{ color: '#ededef' }}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -537,16 +510,16 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
           )}
         </div>
 
-        <div className="card-pro p-5">
-          <h3 className="font-semibold text-slate-900 mb-4">
+        <div className="surface p-5">
+          <h3 className="text-sm font-semibold text-[#ededef] mb-4">
             Rincian per Tipe Media
           </h3>
           {mediaDistribution.length === 0 ? (
-            <p className="text-sm text-slate-400 py-12 text-center">
+            <p className="text-sm text-[#6c727f] py-12 text-center">
               Belum ada data media.
             </p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3.5">
               {mediaDistribution.map((item) => {
                 const pct = totalPieValue
                   ? Math.round((item.value / totalPieValue) * 100)
@@ -554,23 +527,23 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                 return (
                   <div key={item.name} className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-2 text-slate-800 font-medium">
+                      <span className="flex items-center gap-2 text-[#ededef] font-medium">
                         <span
-                          className="w-2.5 h-2.5 rounded-full"
+                          className="w-2 h-2 rounded-full"
                           style={{ backgroundColor: item.color }}
                         />
                         {item.name}
                       </span>
-                      <span className="text-slate-500 font-mono tabular-nums">
-                        {(item.minutes / 60).toFixed(1)}j • {item.xp} XP •{' '}
-                        <span className="text-slate-900 font-semibold">
+                      <span className="text-[#9aa0ac] font-mono tabular-nums">
+                        {(item.minutes / 60).toFixed(1)}j · {item.xp} XP ·{' '}
+                        <span className="text-[#ededef] font-medium">
                           {pct}%
                         </span>
                       </span>
                     </div>
-                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="progress-track h-1.5">
                       <div
-                        className="h-full rounded-full animate-bar"
+                        className="h-full rounded-full"
                         style={{
                           width: `${pct}%`,
                           backgroundColor: item.color,
@@ -585,28 +558,29 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
         </div>
       </div>
 
-      <div className="card-pro p-5">
+      {/* Milestone Roadmap */}
+      <div className="surface p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
-            <h3 className="font-semibold text-slate-900">
+            <h3 className="text-sm font-semibold text-[#ededef]">
               Peta Jalan Milestone ({kpis.allHours.toFixed(1)}j /{' '}
               {kpis.milestone.nextMilestone}j)
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-[#9aa0ac] mt-0.5">
               {kpis.estDaysToNext
-                ? `Dengan pace 30 hari terakhirmu, milestone ${kpis.milestone.nextMilestone} jam tercapai dalam ~${kpis.estDaysToNext} hari.`
-                : 'Terus tambah sesi immersion untuk membuka proyeksi menuju milestone berikutnya.'}
+                ? `Dengan rata-rata 30 hari terakhir, target ${kpis.milestone.nextMilestone} jam tercapai dalam ~${kpis.estDaysToNext} hari.`
+                : 'Catat sesi secara rutin untuk melihat estimasi pencapaian milestone berikutnya.'}
             </p>
           </div>
-          <span className="text-xs font-mono font-semibold text-red-600">
+          <span className="text-xs font-mono font-medium text-[#5cd697] tabular-nums">
             {Math.round(kpis.milestone.progress)}% menuju{' '}
             {kpis.milestone.nextMilestone}j
           </span>
         </div>
 
-        <div className="h-2 rounded-full bg-slate-100 overflow-hidden mb-5">
+        <div className="progress-track h-1.5 mb-5">
           <div
-            className="h-full bg-gradient-to-r from-red-600 to-rose-500 rounded-full animate-bar"
+            className="progress-fill h-full"
             style={{ width: `${kpis.milestone.progress}%` }}
           />
         </div>
@@ -614,24 +588,23 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
         <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
           {kpis.milestone.milestones.map((m) => {
             const reached = kpis.allHours >= m;
+            const isNext = m === kpis.milestone.nextMilestone && !reached;
             return (
               <div
                 key={m}
-                className={`p-2.5 rounded-xl border text-center transition ${
+                className={`p-2.5 rounded-lg border text-center ${
                   reached
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                    : m === kpis.milestone.nextMilestone
-                      ? 'bg-red-50 border-red-200 text-red-700'
-                      : 'bg-slate-50 border-slate-200 text-slate-400'
+                    ? 'bg-[#14291f] border-[#214a36] text-[#5cd697]'
+                    : isNext
+                      ? 'bg-[#1e2128] border-[#3d4352] text-[#ededef]'
+                      : 'bg-[#121316] border-[#22252d] text-[#6c727f]'
                 }`}
               >
-                <div className="text-sm font-bold font-mono">{m}j</div>
+                <div className="text-sm font-semibold font-mono tabular-nums">
+                  {m}j
+                </div>
                 <div className="text-[10px] mt-0.5">
-                  {reached
-                    ? 'Tercapai'
-                    : m === kpis.milestone.nextMilestone
-                      ? 'Target'
-                      : 'Terkunci'}
+                  {reached ? 'Tercapai' : isNext ? 'Target' : 'Terkunci'}
                 </div>
               </div>
             );

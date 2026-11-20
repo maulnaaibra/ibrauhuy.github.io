@@ -3,6 +3,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { LandingPage } from './pages/LandingPage';
+import { AuthPage } from './pages/AuthPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { SettingsPage } from './pages/SettingsPage';
 
@@ -14,16 +15,17 @@ export function App() {
           position="bottom-right"
           toastOptions={{
             style: {
-              background: '#ffffff',
-              color: '#0f172a',
-              border: '1px solid #e2e8f0',
-              borderRadius: '12px',
-              boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.08)',
+              background: '#16181c',
+              color: '#ededef',
+              border: '1px solid #242730',
+              borderRadius: '10px',
             },
           }}
         />
         <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<AuthPage />} />
+          <Route path="/auth/callback" element={<AuthPage />} />
           <Route
             path="/dashboard"
             element={
