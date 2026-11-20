@@ -9,7 +9,7 @@ import { SettingsPage } from './pages/SettingsPage';
 export function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <Toaster
           position="bottom-right"
           toastOptions={{

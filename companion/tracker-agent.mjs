@@ -384,6 +384,7 @@ function sendJson(res, statusCode, data) {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, X-Anki-Url',
+    'Access-Control-Allow-Private-Network': 'true',
   });
   res.end(JSON.stringify(data));
 }
@@ -444,6 +445,7 @@ function proxyToAnki(targetUrl, bodyStr, res) {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, X-Anki-Url',
+          'Access-Control-Allow-Private-Network': 'true',
         });
         res.end(data);
       });
@@ -472,6 +474,7 @@ const server = http.createServer(async (req, res) => {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, X-Anki-Url',
+      'Access-Control-Allow-Private-Network': 'true',
     });
     res.end();
     return;

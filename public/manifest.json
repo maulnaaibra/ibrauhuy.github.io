@@ -2,13 +2,13 @@
   "name": "ImmersionTrack — Immersion Progress Tracker",
   "short_name": "ImmersionTrack",
   "description": "Lacak, gamifikasi, dan analisis progres immersion bahasamu di PC & HP.",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#0e1218",
   "theme_color": "#6366f1",
   "icons": [
     {
-      "src": "/favicon.svg",
+      "src": "favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml"
     }
