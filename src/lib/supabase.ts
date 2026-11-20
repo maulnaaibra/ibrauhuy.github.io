@@ -2,6 +2,10 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const RUNTIME_SUPABASE_KEY = 'immersiontrack_supabase_config_v1';
 
+const DEFAULT_SUPABASE_URL = 'https://zxdkyvxxtpnmitlcrhql.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4ZGt5dnh4dHBubWl0bGNyaHFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxODg5MDgsImV4cCI6MjExMDc2NDkwOH0.JT8Gz0PiN6bebXRMbgIKCTtSV-P0dALkERk3W2bgR1E';
+
 const envUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() ?? '';
 const envKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() ?? '';
 
@@ -43,6 +47,15 @@ export function getSupabaseConfig(): {
   configured: boolean;
   source: 'env' | 'local' | 'none';
 } {
+  const local = readRuntimeConfig();
+  if (local) {
+    return {
+      url: local.url,
+      anonKey: local.anonKey,
+      configured: true,
+      source: 'local',
+    };
+  }
   if (isRealConfig(envUrl, envKey)) {
     return {
       url: envUrl,
@@ -51,13 +64,12 @@ export function getSupabaseConfig(): {
       source: 'env',
     };
   }
-  const local = readRuntimeConfig();
-  if (local) {
+  if (isRealConfig(DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY)) {
     return {
-      url: local.url,
-      anonKey: local.anonKey,
+      url: DEFAULT_SUPABASE_URL,
+      anonKey: DEFAULT_SUPABASE_ANON_KEY,
       configured: true,
-      source: 'local',
+      source: 'env',
     };
   }
   return {
@@ -146,16 +158,20 @@ export async function testSupabaseConnection(
       signal: controller.signal,
     });
     clearTimeout(timer);
+    const text = await res.text();
 
-    if (res.ok) {
+    if (
+      res.ok ||
+      text.includes('42501') ||
+      text.includes('permission denied for table')
+    ) {
       return {
         ok: true,
         tablesReady: true,
-        message: 'Terhubung! Kredensial valid dan tabel database sudah siap.',
+        message: 'Terhubung! Kredensial valid dan tabel database (RLS aktif) sudah siap.',
       };
     }
 
-    const text = await res.text();
     if (res.status === 401 || res.status === 403) {
       return {
         ok: false,
