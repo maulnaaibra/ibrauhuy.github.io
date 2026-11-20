@@ -6,7 +6,7 @@ const DEMO_LOGS_KEY = 'immersiontrack_demo_logs_v2';
 const DEMO_PROFILE_KEY = 'immersiontrack_demo_profile_v2';
 const GOALS_STORAGE_PREFIX = 'immersiontrack_goals_v1_';
 
-export const DEMO_USER_ID = 'demo-learner-local';
+export const DEMO_USER_ID = 'local-workspace-user';
 
 function dateOffset(daysAgo: number): string {
   const d = new Date();
@@ -23,7 +23,7 @@ function dateFuture(daysAhead: number): string {
 export function createDefaultDemoProfile(): Profile {
   return {
     id: DEMO_USER_ID,
-    full_name: 'Maulana (Demo)',
+    full_name: 'Maulana',
     avatar_url: null,
     target_language: 'Japanese',
     daily_goal_minutes: 90,
@@ -82,7 +82,7 @@ export function createDemoLogs(): ImmersionLog[] {
   return entries.map((item, idx) => {
     const logged_date = dateOffset(item.daysAgo);
     return {
-      id: `demo-log-${idx + 1}`,
+      id: `log-${idx + 1}`,
       user_id: DEMO_USER_ID,
       title: item.title,
       category: item.category,
@@ -128,7 +128,13 @@ export function loadDemoProfile(): Profile {
   try {
     const raw = localStorage.getItem(DEMO_PROFILE_KEY);
     if (raw) {
-      return JSON.parse(raw) as Profile;
+      const parsed = JSON.parse(raw) as Profile;
+      if (parsed.full_name === 'Maulana (Demo)') {
+        const cleaned = { ...parsed, full_name: 'Maulana' };
+        saveDemoProfile(cleaned);
+        return cleaned;
+      }
+      return parsed;
     }
   } catch {
     // ignore storage errors
@@ -199,4 +205,41 @@ export function saveUserGoals(userId: string, goals: CustomGoal[]): void {
   } catch {
     // ignore storage errors
   }
+}
+
+export interface WorkspaceBackup {
+  version: 1;
+  exportedAt: string;
+  profile: Profile | null;
+  logs: ImmersionLog[];
+  goals: CustomGoal[];
+}
+
+export function exportWorkspaceJson(
+  logs: ImmersionLog[],
+  profile: Profile | null,
+  goals: CustomGoal[]
+): string {
+  const payload: WorkspaceBackup = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    profile,
+    logs,
+    goals,
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
+export function parseWorkspaceBackup(raw: string): WorkspaceBackup {
+  const parsed = JSON.parse(raw) as Partial<WorkspaceBackup>;
+  if (!Array.isArray(parsed.logs)) {
+    throw new Error('Format file backup tidak valid (data logs tidak ditemukan).');
+  }
+  return {
+    version: 1,
+    exportedAt: parsed.exportedAt || new Date().toISOString(),
+    profile: parsed.profile ?? null,
+    logs: parsed.logs,
+    goals: Array.isArray(parsed.goals) ? parsed.goals : [],
+  };
 }

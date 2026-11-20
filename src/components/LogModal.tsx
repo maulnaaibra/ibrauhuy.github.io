@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Sparkles, X } from 'lucide-react';
+import { MediaCover } from '../components/MediaCover';
 import {
   CATEGORY_META,
   PRIMARY_CATEGORIES,
@@ -67,6 +68,7 @@ export const LogModal: React.FC<LogModalProps> = ({
   if (!isOpen) return null;
 
   const estimatedXp = calculateXp(category, duration, cardsMined);
+  const currentMeta = getCategoryMeta(category);
   const selectableCategories: ImmersionCategory[] = PRIMARY_CATEGORIES.includes(
     category as (typeof PRIMARY_CATEGORIES)[number]
   )
@@ -92,49 +94,59 @@ export const LogModal: React.FC<LogModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
       <div
         role="dialog"
         aria-modal="true"
         aria-label={editingLog ? 'Edit Sesi Immersion' : 'Catat Sesi Immersion'}
-        className="w-full max-w-lg rounded-2xl bg-[#171c26] border border-white/[0.1] p-6 shadow-2xl my-auto"
+        className="w-full max-w-lg rounded-2xl bg-white border border-slate-200 p-6 shadow-2xl my-auto animate-scale-in"
       >
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2.5 flex-wrap">
-            <h2 className="text-lg font-bold text-white">
+            <h2 className="text-lg font-bold text-slate-900">
               {editingLog ? 'Edit Sesi Immersion' : 'Catat Sesi Immersion'}
             </h2>
-            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
               <Sparkles className="w-3 h-3" />+{estimatedXp} XP
             </span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1.5">
-              Judul Media / Konten
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="Contoh: Sousou no Frieren / Steins;Gate / Podcast"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#11151c] border border-white/[0.08] text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+          <div className="flex items-start gap-3.5">
+            <MediaCover
+              title={title || currentMeta.label}
+              category={category}
+              className="w-14 h-20 rounded-xl mt-0.5"
             />
+            <div className="flex-1 min-w-0">
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                Judul Media / Konten
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="Contoh: Sousou no Frieren / Steins;Gate"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-red-500 focus:bg-white"
+              />
+              <p className="text-[11px] text-slate-400 mt-1.5">
+                Sampul media otomatis ditampilkan di riwayat aktivitas Anda.
+              </p>
+            </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1.5">
-              Tipe Media ({getCategoryMeta(category).xpPerHour} XP/jam)
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">
+              Tipe Media ({currentMeta.xpPerHour} XP/jam)
             </label>
             <div className="grid grid-cols-3 gap-1.5">
               {selectableCategories.map((cat) => {
@@ -147,8 +159,8 @@ export const LogModal: React.FC<LogModalProps> = ({
                     onClick={() => setCategory(cat)}
                     className={`px-2.5 py-2 rounded-xl text-xs font-medium border flex items-center gap-2 transition cursor-pointer text-left ${
                       active
-                        ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm'
-                        : 'bg-[#11151c] border-white/[0.06] text-slate-400 hover:text-slate-200 hover:border-white/[0.15]'
+                        ? 'bg-red-50 border-red-500 text-red-700 font-semibold'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
                     }`}
                   >
                     <span
@@ -164,7 +176,7 @@ export const LogModal: React.FC<LogModalProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-medium text-slate-400">
+              <label className="text-xs font-medium text-slate-600">
                 Durasi (menit)
               </label>
               <div className="flex items-center gap-1 flex-wrap">
@@ -175,8 +187,8 @@ export const LogModal: React.FC<LogModalProps> = ({
                     onClick={() => setDuration(preset)}
                     className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition cursor-pointer ${
                       duration === preset
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-[#11151c] text-slate-400 hover:text-white border border-white/[0.06]'
+                        ? 'bg-red-600 text-white'
+                        : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
                     }`}
                   >
                     {preset}m
@@ -191,13 +203,13 @@ export const LogModal: React.FC<LogModalProps> = ({
               max={1440}
               value={duration}
               onChange={(e) => setDuration(Number(e.target.value))}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#11151c] border border-white/[0.08] text-sm font-mono text-white focus:outline-none focus:border-indigo-500"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">
                 Tanggal
               </label>
               <input
@@ -205,12 +217,12 @@ export const LogModal: React.FC<LogModalProps> = ({
                 required
                 value={loggedDate}
                 onChange={(e) => setLoggedDate(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#11151c] border border-white/[0.08] text-sm text-white focus:outline-none focus:border-indigo-500"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">
                 Kartu / Kosakata (+4 XP/kartu)
               </label>
               <input
@@ -218,13 +230,13 @@ export const LogModal: React.FC<LogModalProps> = ({
                 min={0}
                 value={cardsMined}
                 onChange={(e) => setCardsMined(Number(e.target.value))}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#11151c] border border-white/[0.08] text-sm font-mono text-white focus:outline-none focus:border-indigo-500"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1.5">
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">
               Catatan Sesi (opsional)
             </label>
             <textarea
@@ -232,22 +244,22 @@ export const LogModal: React.FC<LogModalProps> = ({
               placeholder="Episode berapa, tingkat pemahaman, atau kosakata menarik..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#11151c] border border-white/[0.08] text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 resize-none"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-red-500 focus:bg-white resize-none"
             />
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/[0.06]">
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-[#11151c] border border-white/[0.08] hover:bg-slate-800 text-sm font-medium text-slate-300 transition cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-sm font-medium text-slate-700 transition cursor-pointer"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold text-white transition disabled:opacity-60 cursor-pointer shadow-lg shadow-indigo-600/20"
+              className="btn-crimson px-5 py-2 rounded-xl text-sm font-semibold disabled:opacity-60 cursor-pointer"
             >
               {submitting
                 ? 'Menyimpan...'

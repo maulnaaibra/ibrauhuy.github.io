@@ -24,13 +24,13 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const DEMO_USER = {
+const LOCAL_USER = {
   id: DEMO_USER_ID,
-  email: 'demo@immersiontrack.app',
+  email: 'maulana@nihongotracker.my.id',
   aud: 'authenticated',
   role: 'authenticated',
   app_metadata: {},
-  user_metadata: { full_name: 'Maulana (Demo)' },
+  user_metadata: { full_name: 'Maulana' },
   created_at: new Date().toISOString(),
 } as unknown as User;
 
@@ -144,7 +144,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const activeUser: User | null = isDemoMode
-    ? DEMO_USER
+    ? LOCAL_USER
     : (session?.user ?? null);
 
   return (

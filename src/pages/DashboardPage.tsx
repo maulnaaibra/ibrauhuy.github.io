@@ -11,20 +11,16 @@ import {
   LogOut,
   MonitorSmartphone,
   Plus,
-  RotateCcw,
   Settings,
   Sparkles,
   Target,
-  Trash2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import {
-  clearDemoLogs,
   DEMO_USER_ID,
   loadDemoLogs,
   loadUserGoals,
-  resetDemoLogs,
   saveDemoLogs,
   saveUserGoals,
 } from '../lib/demoData';
@@ -37,6 +33,7 @@ import {
   type CompanionStatus,
   type PendingTrackedSession,
 } from '../lib/companionClient';
+import { MediaCover } from '../components/MediaCover';
 import { useAuth } from '../context/AuthContext';
 import {
   getCategoryMeta,
@@ -203,7 +200,7 @@ export const DashboardPage: React.FC = () => {
           freshSessions.map((s) => s.id)
         );
       } catch {
-        // ignore ack failure; ref protects against double-import in session
+        // ignore ack failure
       }
 
       if (notify) {
@@ -338,10 +335,10 @@ export const DashboardPage: React.FC = () => {
         );
         saveDemoLogs(updated);
         setLogs(updated);
-        toast.success('Sesi diperbarui (Mode Demo)');
+        toast.success('Sesi diperbarui');
       } else {
         const created: ImmersionLog = {
-          id: `demo-${Date.now()}`,
+          id: `log-${Date.now()}`,
           user_id: user.id,
           ...payload,
           created_at: new Date().toISOString(),
@@ -544,15 +541,13 @@ export const DashboardPage: React.FC = () => {
 
   const renderDeltaBadge = (pct: number | null) => {
     if (pct === null) {
-      return <span className="text-[11px] text-slate-500">Baru bulan ini</span>;
+      return <span className="text-[11px] text-slate-400">Baru bulan ini</span>;
     }
     const positive = pct >= 0;
     return (
       <span
-        className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-          positive
-            ? 'bg-emerald-500/15 text-emerald-300'
-            : 'bg-rose-500/15 text-rose-300'
+        className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
+          positive ? 'text-emerald-600' : 'text-red-600'
         }`}
       >
         {positive ? '▲' : '▼'} {Math.abs(pct)}% vs bulan lalu
@@ -580,30 +575,30 @@ export const DashboardPage: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-[#0e1218] text-slate-100">
-      <header className="sticky top-0 z-30 bg-[#0e1218]/90 backdrop-blur-md border-b border-white/[0.08]">
+    <div className="min-h-screen bg-gradient-to-b from-red-50/40 via-slate-50 to-slate-50 text-slate-900">
+      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200/80">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 shrink-0">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center font-bold text-white">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-red-600 to-rose-700 flex items-center justify-center font-bold text-white shadow-sm shadow-red-600/25">
               I
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-bold text-sm sm:text-base leading-tight">
+                <h1 className="font-bold text-sm sm:text-base leading-tight text-slate-900">
                   ImmersionTrack
                 </h1>
-                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full bg-indigo-500/15 border border-indigo-500/30 text-[10px] font-mono font-semibold text-indigo-300">
+                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full bg-red-50 border border-red-200/80 text-[10px] font-mono font-semibold text-red-700">
                   Lv.{stats.skills.overall.level}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-500">
                 {profile?.target_language ?? 'Japanese'} •{' '}
                 {stats.skills.overall.rankTitle}
               </p>
             </div>
           </div>
 
-          <nav className="hidden lg:flex items-center gap-1 bg-[#171c26] p-1 rounded-xl border border-white/[0.07]">
+          <nav className="hidden lg:flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/80">
             {navTabs.map((tab) => {
               const active = activeTab === tab.id;
               return (
@@ -611,10 +606,10 @@ export const DashboardPage: React.FC = () => {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                     active
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >
                   <tab.icon className="w-3.5 h-3.5" />
@@ -631,7 +626,7 @@ export const DashboardPage: React.FC = () => {
             <button
               type="button"
               onClick={() => openNewLogModal()}
-              className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-lg shadow-indigo-600/20"
+              className="btn-crimson px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span className="hidden sm:inline">Catat Sesi</span>
@@ -641,20 +636,20 @@ export const DashboardPage: React.FC = () => {
             <Link
               to="/settings"
               title="Pengaturan"
-              className="p-2 rounded-xl bg-[#171c26] border border-white/[0.08] hover:border-white/[0.2] text-slate-300 transition"
+              className="p-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-slate-600 hover:text-slate-900 transition"
             >
               <Settings className="w-4 h-4" />
             </Link>
 
-            <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-white/[0.08]">
+            <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-slate-200">
               {profile?.avatar_url ? (
                 <img
                   src={profile.avatar_url}
                   alt={profile.full_name ?? 'User'}
-                  className="w-8 h-8 rounded-full object-cover border border-white/[0.15]"
+                  className="w-8 h-8 rounded-full object-cover border border-slate-200"
                 />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500/30 to-pink-500/30 border border-white/[0.12] flex items-center justify-center text-xs font-bold text-white">
+                <div className="w-8 h-8 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-xs font-bold text-red-700">
                   {avatarInitial}
                 </div>
               )}
@@ -664,14 +659,14 @@ export const DashboardPage: React.FC = () => {
               type="button"
               onClick={signOut}
               title="Keluar"
-              className="p-2 rounded-xl bg-[#171c26] border border-white/[0.08] hover:bg-red-500/15 hover:text-red-300 hover:border-red-500/30 text-slate-400 transition cursor-pointer"
+              className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-red-50 hover:text-red-700 hover:border-red-200 text-slate-500 transition cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        <div className="lg:hidden border-t border-white/[0.06] overflow-x-auto">
+        <div className="lg:hidden border-t border-slate-200/80 overflow-x-auto bg-white">
           <div className="max-w-6xl mx-auto px-4 py-2 flex items-center gap-1.5 min-w-max">
             {navTabs.map((tab) => {
               const active = activeTab === tab.id;
@@ -682,8 +677,8 @@ export const DashboardPage: React.FC = () => {
                   onClick={() => setActiveTab(tab.id)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
                     active
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-[#171c26] text-slate-400 hover:text-white border border-white/[0.06]'
+                      ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   <tab.icon className="w-3.5 h-3.5" />
@@ -698,56 +693,23 @@ export const DashboardPage: React.FC = () => {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {isDemoMode && (
-          <div className="px-4 py-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-            <span className="text-indigo-200">
-              <strong>Mode Demo Lokal:</strong> semua catatan tersimpan otomatis
-              di browser Anda.
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setLogs(resetDemoLogs());
-                  toast.success('Data contoh demo dipulihkan');
-                }}
-                className="px-2.5 py-1 rounded-lg bg-[#171c26] border border-white/[0.1] hover:text-white text-slate-300 inline-flex items-center gap-1 cursor-pointer"
-              >
-                <RotateCcw className="w-3 h-3" />
-                Reset Demo
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setLogs(clearDemoLogs());
-                  toast.success('Riwayat dikosongkan — siap mulai dari 0!');
-                }}
-                className="px-2.5 py-1 rounded-lg bg-[#171c26] border border-white/[0.1] hover:text-rose-300 text-slate-300 inline-flex items-center gap-1 cursor-pointer"
-              >
-                <Trash2 className="w-3 h-3" />
-                Mulai Kosong
-              </button>
-            </div>
-          </div>
-        )}
-
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-7 space-y-6">
         {companionConnected && companionStatus?.activeSession && (
           <button
             type="button"
             onClick={() => setActiveTab('devices')}
-            className="w-full px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-between gap-3 text-xs text-left hover:bg-emerald-500/15 transition cursor-pointer"
+            className="w-full px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-3 text-xs text-left hover:bg-emerald-100/70 transition cursor-pointer animate-fade-in"
           >
-            <span className="flex items-center gap-2 text-emerald-200 truncate">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            <span className="flex items-center gap-2 text-emerald-900 truncate">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
               <span>
-                <strong>PC Companion aktif merekam:</strong>{' '}
+                <strong>PC Tracker aktif merekam:</strong>{' '}
                 {companionStatus.activeSession.title} (
                 {Math.floor(companionStatus.activeSession.activeSeconds / 60)}m{' '}
                 {companionStatus.activeSession.activeSeconds % 60}d)
               </span>
             </span>
-            <span className="text-emerald-300 font-semibold shrink-0">
+            <span className="text-emerald-700 font-semibold shrink-0">
               Kelola →
             </span>
           </button>
@@ -756,20 +718,17 @@ export const DashboardPage: React.FC = () => {
         {loadingLogs ? (
           <div className="grid sm:grid-cols-3 gap-4">
             {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="h-40 rounded-2xl bg-[#171c26] border border-white/[0.08] animate-pulse"
-              />
+              <div key={i} className="card-pro h-40 animate-pulse" />
             ))}
           </div>
         ) : activeTab === 'overview' ? (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div key="tab-overview" className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 animate-fade-up">
               <div>
-                <p className="text-[11px] uppercase tracking-wider font-semibold text-slate-400">
-                  Welcome back
+                <p className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">
+                  Ringkasan Progres
                 </p>
-                <h2 className="text-2xl font-bold text-white mt-0.5">
+                <h2 className="text-2xl font-bold text-slate-900 mt-0.5">
                   {profile?.full_name || user?.email || 'Learner'}
                 </h2>
               </div>
@@ -778,98 +737,91 @@ export const DashboardPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => openNewLogModal()}
-                  className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white inline-flex items-center gap-1.5 cursor-pointer"
+                  className="btn-crimson px-3.5 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5" />+ Create Log
+                  <Plus className="w-3.5 h-3.5" />
+                  Catat Sesi
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab('devices')}
-                  className="px-3.5 py-2 rounded-xl bg-[#171c26] border border-white/[0.08] hover:border-white/[0.2] text-xs font-semibold text-slate-200 inline-flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 inline-flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
                 >
                   <MonitorSmartphone
                     className={`w-3.5 h-3.5 ${
-                      companionConnected ? 'text-emerald-400' : 'text-indigo-400'
+                      companionConnected ? 'text-emerald-600' : 'text-red-600'
                     }`}
                   />
-                  {companionConnected ? 'PC Terhubung' : 'Connect Device'}
+                  {companionConnected ? 'PC Terhubung' : 'Hubungkan Perangkat'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab('stats')}
-                  className="px-3.5 py-2 rounded-xl bg-[#171c26] border border-white/[0.08] hover:border-white/[0.2] text-xs font-semibold text-slate-200 inline-flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 inline-flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
                 >
-                  <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
-                  Stats
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('goals')}
-                  className="px-3.5 py-2 rounded-xl bg-[#171c26] border border-white/[0.08] hover:border-white/[0.2] text-xs font-semibold text-slate-200 inline-flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Target className="w-3.5 h-3.5 text-emerald-400" />
-                  Goals
+                  <BarChart3 className="w-3.5 h-3.5 text-slate-500" />
+                  Analitik
                 </button>
               </div>
             </div>
 
-            <div className="grid lg:grid-cols-3 gap-4">
-              <div className="p-5 rounded-2xl bg-[#171c26] border border-white/[0.08] space-y-4">
+            <div className="grid lg:grid-cols-3 gap-4 animate-fade-up delay-1">
+              <div className="card-pro p-5 space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                    Progress & RPG Level
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Level & Pengalaman
                   </span>
-                  <span className="inline-flex items-center gap-1 text-xs font-mono font-semibold text-indigo-300">
+                  <span className="inline-flex items-center gap-1 text-xs font-mono font-semibold text-red-600">
                     <Sparkles className="w-3.5 h-3.5" />
                     {stats.skills.overall.totalXp.toLocaleString()} XP
                   </span>
                 </div>
 
                 <div>
-                  <div className="flex items-baseline justify-between mb-1.5">
-                    <span className="text-2xl font-bold text-white">
+                  <div className="flex items-baseline justify-between mb-2">
+                    <span className="text-2xl font-bold text-slate-900">
                       Level {stats.skills.overall.level}
                     </span>
-                    <span className="text-xs font-mono text-slate-400">
+                    <span className="text-xs font-mono text-slate-500">
                       {stats.skills.overall.currentLevelXp} /{' '}
                       {stats.skills.overall.nextLevelXp} XP
                     </span>
                   </div>
-                  <div className="h-2 rounded-full bg-[#11151c] overflow-hidden">
+                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-indigo-500 to-violet-400 rounded-full transition-all"
+                      className="h-full bg-gradient-to-r from-red-600 to-rose-500 rounded-full animate-bar"
                       style={{ width: `${stats.skills.overall.progressPct}%` }}
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div className="p-2.5 rounded-xl bg-[#11151c] border border-white/[0.05]">
-                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/70">
+                    <div className="flex items-center justify-between text-[11px] text-slate-600">
                       <span>Listening</span>
-                      <span className="font-mono text-cyan-300 font-semibold">
+                      <span className="font-mono text-slate-900 font-semibold">
                         Lv.{stats.skills.listening.level}
                       </span>
                     </div>
-                    <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden mt-1.5">
+                    <div className="h-1 rounded-full bg-slate-200 overflow-hidden mt-1.5">
                       <div
-                        className="h-full bg-cyan-400 rounded-full"
+                        className="h-full bg-red-600 rounded-full animate-bar"
                         style={{
                           width: `${stats.skills.listening.progressPct}%`,
                         }}
                       />
                     </div>
                   </div>
-                  <div className="p-2.5 rounded-xl bg-[#11151c] border border-white/[0.05]">
-                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/70">
+                    <div className="flex items-center justify-between text-[11px] text-slate-600">
                       <span>Reading</span>
-                      <span className="font-mono text-violet-300 font-semibold">
+                      <span className="font-mono text-slate-900 font-semibold">
                         Lv.{stats.skills.reading.level}
                       </span>
                     </div>
-                    <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden mt-1.5">
+                    <div className="h-1 rounded-full bg-slate-200 overflow-hidden mt-1.5">
                       <div
-                        className="h-full bg-violet-400 rounded-full"
+                        className="h-full bg-rose-500 rounded-full animate-bar"
                         style={{
                           width: `${stats.skills.reading.progressPct}%`,
                         }}
@@ -879,33 +831,33 @@ export const DashboardPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="p-5 rounded-2xl bg-gradient-to-br from-pink-500/10 via-[#171c26] to-[#171c26] border border-pink-500/20 flex flex-col justify-between gap-4">
+              <div className="card-pro p-5 flex flex-col justify-between gap-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-pink-300">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     Streak & Akumulasi
                   </span>
-                  <Flame className="w-5 h-5 text-pink-400" />
+                  <Flame className="w-4 h-4 text-red-600" />
                 </div>
 
                 <div className="flex items-baseline gap-3">
-                  <span className="text-3xl font-bold font-mono text-white tabular-nums">
+                  <span className="text-3xl font-bold font-mono text-slate-900 tabular-nums">
                     {stats.streak} Hari
                   </span>
-                  <span className="text-xs text-slate-400">
-                    (Terbaik: {stats.longestStreak} hari)
+                  <span className="text-xs text-slate-500">
+                    Terbaik: {stats.longestStreak} hari
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/[0.06] text-xs">
-                  <div className="flex items-center gap-1.5 text-slate-300">
-                    <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100 text-xs">
+                  <div className="flex items-center gap-1.5 text-slate-700">
+                    <Clock className="w-3.5 h-3.5 text-red-600" />
                     <span className="font-mono font-semibold">
                       {stats.totalHours.toFixed(1)}j
                     </span>
                     <span className="text-slate-500">total</span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-slate-300">
-                    <BookOpen className="w-3.5 h-3.5 text-pink-400" />
+                  <div className="flex items-center gap-1.5 text-slate-700">
+                    <BookOpen className="w-3.5 h-3.5 text-slate-500" />
                     <span className="font-mono font-semibold">
                       {stats.totalCards}
                     </span>
@@ -914,72 +866,72 @@ export const DashboardPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-[#171c26] to-[#171c26] border border-emerald-500/20 flex flex-col justify-between gap-4">
+              <div className="card-pro p-5 flex flex-col justify-between gap-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-300">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     Target Hari Ini
                   </span>
-                  <Target className="w-5 h-5 text-emerald-400" />
+                  <Target className="w-4 h-4 text-red-600" />
                 </div>
 
                 <div>
-                  <div className="flex items-baseline justify-between mb-1.5">
-                    <span className="text-2xl font-bold font-mono text-white tabular-nums">
+                  <div className="flex items-baseline justify-between mb-2">
+                    <span className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
                       {stats.todayMinutes}{' '}
-                      <span className="text-sm font-normal text-slate-400">
+                      <span className="text-sm font-normal text-slate-500">
                         / {stats.dailyGoal} mnt
                       </span>
                     </span>
-                    <span className="text-xs font-mono font-semibold text-emerald-300">
+                    <span className="text-xs font-mono font-semibold text-red-600">
                       {stats.dailyProgress}%
                     </span>
                   </div>
-                  <div className="h-2 rounded-full bg-[#11151c] overflow-hidden">
+                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
                     <div
-                      className="h-full bg-emerald-400 rounded-full transition-all"
+                      className="h-full bg-gradient-to-r from-red-600 to-rose-500 rounded-full animate-bar"
                       style={{ width: `${stats.dailyProgress}%` }}
                     />
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between text-xs text-slate-400">
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                   <span>Milestone {stats.milestone.nextMilestone}j</span>
-                  <span className="font-mono text-slate-200">
+                  <span className="font-mono text-slate-800 font-semibold">
                     {Math.round(stats.milestone.progress)}%
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="p-5 rounded-2xl bg-[#171c26] border border-white/[0.08] space-y-4">
+            <div className="card-pro p-5 space-y-4 animate-fade-up delay-2">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                  Progres Bulan Ini vs Bulan Lalu
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Ringkasan Bulan Ini
                 </span>
-                <span className="text-xs text-slate-400 font-mono">
+                <span className="text-xs text-slate-500 font-mono">
                   Rasio Reading : Listening ={' '}
-                  <strong className="text-slate-200">
+                  <strong className="text-slate-900">
                     {stats.balance.ratioLabel}
                   </strong>
                 </span>
               </div>
 
               <div className="grid sm:grid-cols-3 gap-4">
-                <div className="p-4 rounded-xl bg-[#11151c] border border-white/[0.06] space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-violet-400">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     Reading
                   </div>
-                  <div className="text-2xl font-bold font-mono text-white tabular-nums">
+                  <div className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
                     {(stats.monthly.thisMonth.readingMin / 60).toFixed(1)} jam
                   </div>
                   <div>{renderDeltaBadge(stats.monthly.deltas.readingPct)}</div>
                 </div>
 
-                <div className="p-4 rounded-xl bg-[#11151c] border border-white/[0.06] space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-cyan-400">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     Listening
                   </div>
-                  <div className="text-2xl font-bold font-mono text-white tabular-nums">
+                  <div className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
                     {(stats.monthly.thisMonth.listeningMin / 60).toFixed(1)} jam
                   </div>
                   <div>
@@ -987,11 +939,11 @@ export const DashboardPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="p-4 rounded-xl bg-[#11151c] border border-white/[0.06] space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-indigo-400">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     Total Bulan Ini
                   </div>
-                  <div className="text-2xl font-bold font-mono text-white tabular-nums">
+                  <div className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
                     {(stats.monthly.thisMonth.totalMin / 60).toFixed(1)} jam
                   </div>
                   <div>{renderDeltaBadge(stats.monthly.deltas.totalPct)}</div>
@@ -999,31 +951,30 @@ export const DashboardPage: React.FC = () => {
               </div>
             </div>
 
-            <LiveStopwatch
-              onSaveDuration={({ minutes, category, title }) => {
-                openNewLogModal({
-                  duration: minutes,
-                  category,
-                  title,
-                });
-              }}
-            />
+            <div className="animate-fade-up delay-3">
+              <LiveStopwatch
+                onSaveDuration={({ minutes, category, title }) => {
+                  openNewLogModal({
+                    duration: minutes,
+                    category,
+                    title,
+                  });
+                }}
+              />
+            </div>
 
             {stats.recentMedia.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold text-slate-100">
-                      Quick-Log Media Terakhir
-                    </h3>
-                    <p className="text-xs text-slate-400">
-                      Klik satu kali untuk mencatat sesi lanjutan dari media
-                      yang sedang kamu ikuti.
-                    </p>
-                  </div>
+              <div className="space-y-3 animate-fade-up delay-4">
+                <div>
+                  <h3 className="font-semibold text-slate-900">
+                    Media yang Sedang Diikuti
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Pilih media terakhir untuk langsung mencatat sesi lanjutan.
+                  </p>
                 </div>
 
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
                   {stats.recentMedia.map((media) => {
                     const meta = getCategoryMeta(media.category);
                     return (
@@ -1037,31 +988,37 @@ export const DashboardPage: React.FC = () => {
                             duration: 30,
                           })
                         }
-                        className={`p-4 rounded-2xl bg-[#171c26] bg-gradient-to-br ${meta.gradientClass} border border-white/[0.08] hover:border-white/[0.22] text-left flex items-center justify-between gap-3 transition group cursor-pointer`}
+                        className="card-pro-interactive p-3.5 text-left flex items-center gap-3.5 group cursor-pointer"
                       >
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex items-center gap-2">
+                        <MediaCover
+                          title={media.title}
+                          category={media.category}
+                          className="w-14 h-20 rounded-xl"
+                        />
+
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex items-center gap-1.5">
                             <span
-                              className="w-2 h-2 rounded-full shrink-0"
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
                               style={{ backgroundColor: meta.color }}
                             />
-                            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                               {meta.shortLabel}
                             </span>
-                            <span className="text-[10px] text-slate-500 font-mono">
+                            <span className="text-[10px] text-slate-400 font-mono">
                               • {media.sessions} sesi
                             </span>
                           </div>
-                          <div className="font-semibold text-sm text-white truncate">
+                          <div className="font-semibold text-sm text-slate-900 truncate">
                             {media.title}
                           </div>
-                          <div className="text-xs font-mono text-slate-400">
+                          <div className="text-xs font-mono text-slate-500">
                             {(media.totalMinutes / 60).toFixed(1)} jam •{' '}
                             {media.totalXp} XP
                           </div>
                         </div>
 
-                        <span className="px-2.5 py-1.5 rounded-xl bg-[#11151c] border border-white/[0.1] group-hover:bg-indigo-600 group-hover:border-indigo-500 group-hover:text-white text-xs font-semibold text-indigo-300 transition shrink-0">
+                        <span className="px-2.5 py-1.5 rounded-lg bg-slate-100 border border-slate-200 group-hover:bg-red-600 group-hover:border-red-600 group-hover:text-white text-xs font-semibold text-slate-700 transition shrink-0">
                           + Log
                         </span>
                       </button>
@@ -1071,7 +1028,9 @@ export const DashboardPage: React.FC = () => {
               </div>
             )}
 
-            <ActivityHeatmap logs={logs} dailyGoal={stats.dailyGoal} />
+            <div className="animate-fade-up delay-5">
+              <ActivityHeatmap logs={logs} dailyGoal={stats.dailyGoal} />
+            </div>
 
             <ActivityLogList
               logs={logs}
@@ -1082,37 +1041,47 @@ export const DashboardPage: React.FC = () => {
             />
           </div>
         ) : activeTab === 'stats' ? (
-          <ChartsSection logs={logs} />
+          <div key="tab-stats" className="animate-fade-up">
+            <ChartsSection logs={logs} />
+          </div>
         ) : activeTab === 'goals' ? (
-          <GoalsSection
-            logs={logs}
-            dailyGoal={stats.dailyGoal}
-            goals={goals}
-            onAddGoal={handleAddGoal}
-            onDeleteGoal={handleDeleteGoal}
-          />
+          <div key="tab-goals" className="animate-fade-up">
+            <GoalsSection
+              logs={logs}
+              dailyGoal={stats.dailyGoal}
+              goals={goals}
+              onAddGoal={handleAddGoal}
+              onDeleteGoal={handleDeleteGoal}
+            />
+          </div>
         ) : activeTab === 'achievements' ? (
-          <AchievementsSection logs={logs} />
+          <div key="tab-achievements" className="animate-fade-up">
+            <AchievementsSection logs={logs} />
+          </div>
         ) : activeTab === 'devices' ? (
-          <DevicesSection
-            companionUrl={companionSettings.url}
-            onChangeCompanionUrl={(url) => updateCompanionSettings({ url })}
-            companionAutoSync={companionSettings.autoSync}
-            onToggleCompanionAutoSync={(autoSync) =>
-              updateCompanionSettings({ autoSync })
-            }
-            companionStatus={companionStatus}
-            companionChecking={companionChecking}
-            onRefreshCompanion={handleManualRefreshCompanion}
-            onImportPending={(items) => importPendingSessions(items, false)}
-            onSyncAnkiToday={handleSyncAnkiToday}
-          />
+          <div key="tab-devices" className="animate-fade-up">
+            <DevicesSection
+              companionUrl={companionSettings.url}
+              onChangeCompanionUrl={(url) => updateCompanionSettings({ url })}
+              companionAutoSync={companionSettings.autoSync}
+              onToggleCompanionAutoSync={(autoSync) =>
+                updateCompanionSettings({ autoSync })
+              }
+              companionStatus={companionStatus}
+              companionChecking={companionChecking}
+              onRefreshCompanion={handleManualRefreshCompanion}
+              onImportPending={(items) => importPendingSessions(items, false)}
+              onSyncAnkiToday={handleSyncAnkiToday}
+            />
+          </div>
         ) : (
-          <ActivityLogList
-            logs={logs}
-            onEdit={openEditLogModal}
-            onDelete={handleDeleteLog}
-          />
+          <div key="tab-activity" className="animate-fade-up">
+            <ActivityLogList
+              logs={logs}
+              onEdit={openEditLogModal}
+              onDelete={handleDeleteLog}
+            />
+          </div>
         )}
       </main>
 

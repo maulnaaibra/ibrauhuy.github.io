@@ -92,20 +92,20 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({
   }, [logs]);
 
   const getIntensityClass = (mins: number) => {
-    if (mins === 0) return 'bg-white/[0.04] hover:bg-white/[0.1]';
+    if (mins === 0) return 'bg-slate-100 hover:bg-slate-200';
     const ratio = mins / Math.max(1, dailyGoal);
-    if (ratio < 0.35) return 'bg-indigo-950 border border-indigo-800/50';
-    if (ratio < 0.7) return 'bg-indigo-800/80 border border-indigo-600/40';
-    if (ratio < 1) return 'bg-indigo-500 border border-indigo-400/50';
-    return 'bg-emerald-400 border border-emerald-300/60 shadow-[0_0_8px_rgba(52,211,153,0.35)]';
+    if (ratio < 0.35) return 'bg-red-100 border border-red-200';
+    if (ratio < 0.7) return 'bg-red-300 border border-red-300';
+    if (ratio < 1) return 'bg-red-500 border border-red-500';
+    return 'bg-red-700 border border-red-700 shadow-xs';
   };
 
   return (
-    <div className="p-5 rounded-2xl bg-[#171c26] border border-white/[0.08]">
+    <div className="card-pro p-5">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
-          <h3 className="font-semibold text-slate-100">Immersion Activity</h3>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <h3 className="font-semibold text-slate-900">Aktivitas Tahunan</h3>
+          <p className="text-xs text-slate-500 mt-0.5">
             {activeDays} hari aktif • {totalHours.toFixed(1)} jam dalam 364 hari
             terakhir
           </p>
@@ -113,18 +113,18 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({
 
         <div className="flex items-center gap-3 flex-wrap">
           {selectedDay && (
-            <span className="text-xs px-2.5 py-1 rounded-lg bg-[#11151c] border border-white/[0.08] text-slate-300 font-mono">
+            <span className="text-xs px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 font-mono">
               {selectedDay.dateStr}: {selectedDay.minutes}m ({selectedDay.sessions}{' '}
               sesi)
             </span>
           )}
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
             <span>Kurang</span>
-            <span className="w-3 h-3 rounded-[3px] bg-white/[0.04]" />
-            <span className="w-3 h-3 rounded-[3px] bg-indigo-950 border border-indigo-800/50" />
-            <span className="w-3 h-3 rounded-[3px] bg-indigo-800/80" />
-            <span className="w-3 h-3 rounded-[3px] bg-indigo-500" />
-            <span className="w-3 h-3 rounded-[3px] bg-emerald-400" />
+            <span className="w-3 h-3 rounded-[3px] bg-slate-100 border border-slate-200" />
+            <span className="w-3 h-3 rounded-[3px] bg-red-100 border border-red-200" />
+            <span className="w-3 h-3 rounded-[3px] bg-red-300" />
+            <span className="w-3 h-3 rounded-[3px] bg-red-500" />
+            <span className="w-3 h-3 rounded-[3px] bg-red-700" />
             <span>Target</span>
           </div>
         </div>
@@ -141,7 +141,7 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({
           </div>
 
           <div className="flex gap-2">
-            <div className="grid grid-rows-7 gap-1 text-[10px] text-slate-500 pr-1">
+            <div className="grid grid-rows-7 gap-1 text-[10px] text-slate-400 pr-1">
               <span className="h-3.5 leading-[14px]"></span>
               <span className="h-3.5 leading-[14px]">Sen</span>
               <span className="h-3.5 leading-[14px]"></span>

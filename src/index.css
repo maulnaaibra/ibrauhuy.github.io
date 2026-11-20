@@ -1,14 +1,55 @@
 @import "tailwindcss";
 
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes barGrow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   html {
     font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background-color: #0e1218;
-    color: #f1f5f9;
+    background-color: #f8fafc;
+    color: #0f172a;
+    scroll-behavior: smooth;
   }
 
   .font-mono {
@@ -21,15 +62,108 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: #0e1218;
+    background: #f1f5f9;
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #273043;
+    background: #cbd5e1;
     border-radius: 9999px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #37435c;
+    background: #94a3b8;
+  }
+}
+
+@layer utilities {
+  .animate-fade-up {
+    animation: fadeUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.25s ease-out both;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .animate-bar {
+    transform-origin: left;
+    animation: barGrow 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .delay-1 {
+    animation-delay: 60ms;
+  }
+
+  .delay-2 {
+    animation-delay: 120ms;
+  }
+
+  .delay-3 {
+    animation-delay: 180ms;
+  }
+
+  .delay-4 {
+    animation-delay: 240ms;
+  }
+
+  .delay-5 {
+    animation-delay: 300ms;
+  }
+
+  .card-pro {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.02);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 0.25s ease,
+      box-shadow 0.25s ease;
+  }
+
+  .card-pro:hover {
+    border-color: #cbd5e1;
+  }
+
+  .card-pro-interactive {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.02);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 0.25s ease,
+      box-shadow 0.25s ease;
+  }
+
+  .card-pro-interactive:hover {
+    transform: translateY(-2px);
+    border-color: #fca5a5;
+    box-shadow: 0 12px 24px -8px rgba(220, 38, 38, 0.12), 0 4px 12px rgba(15, 23, 42, 0.05);
+  }
+
+  .btn-crimson {
+    background-image: linear-gradient(135deg, #dc2626 0%, #be123c 100%);
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.22);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.2s ease,
+      filter 0.2s ease;
+  }
+
+  .btn-crimson:hover {
+    filter: brightness(0.95);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(220, 38, 38, 0.28);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-fade-in,
+  .animate-scale-in,
+  .animate-bar {
+    animation: none !important;
   }
 }

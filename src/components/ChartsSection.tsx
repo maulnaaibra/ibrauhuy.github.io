@@ -69,8 +69,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
     const totalXp = filteredLogs.reduce((sum, l) => sum + getLogXp(l), 0);
     const totalCards = filteredLogs.reduce((sum, l) => sum + l.cards_mined, 0);
     const activeDays = new Set(filteredLogs.map((l) => l.logged_date)).size;
-    const spanDays =
-      range === 'all' ? Math.max(1, activeDays) : range;
+    const spanDays = range === 'all' ? Math.max(1, activeDays) : range;
     const dailyAvgMinutes = Math.round(totalMinutes / Math.max(1, spanDays));
 
     const balance = getReadingListeningBalance(filteredLogs);
@@ -202,7 +201,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
 
   return (
     <div className="space-y-6">
-      <div className="p-3 rounded-2xl bg-[#171c26] border border-white/[0.08] flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="card-pro p-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 flex-wrap">
           {(
             [
@@ -218,8 +217,8 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
               onClick={() => setRange(item.id)}
               className={`px-3 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer ${
                 range === item.id
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-[#11151c] text-slate-400 hover:text-white border border-white/[0.06]'
+                  ? 'bg-red-600 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:text-slate-900'
               }`}
             >
               {item.label}
@@ -242,8 +241,8 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
               onClick={() => setTrackFilter(tr.id)}
               className={`px-3 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer ${
                 trackFilter === tr.id
-                  ? 'bg-white/[0.12] text-white border border-white/[0.15]'
-                  : 'bg-[#11151c] text-slate-400 hover:text-white border border-white/[0.06]'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:text-slate-900'
               }`}
             >
               {tr.label}
@@ -253,64 +252,64 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
-        <div className="p-5 rounded-2xl bg-[#171c26] border border-white/[0.08]">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-4">
+        <div className="card-pro p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-4">
             Totals (Periode Dipilih)
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
-              <div className="text-xs text-slate-400">Total XP</div>
-              <div className="text-xl font-bold font-mono text-indigo-400 mt-1 tabular-nums">
+              <div className="text-xs text-slate-500">Total XP</div>
+              <div className="text-xl font-bold font-mono text-red-600 mt-1 tabular-nums">
                 {kpis.totalXp.toLocaleString()}
               </div>
             </div>
             <div>
-              <div className="text-xs text-slate-400">Total Jam</div>
-              <div className="text-xl font-bold font-mono text-white mt-1 tabular-nums">
+              <div className="text-xs text-slate-500">Total Jam</div>
+              <div className="text-xl font-bold font-mono text-slate-900 mt-1 tabular-nums">
                 {kpis.totalHours.toFixed(1)}j
               </div>
             </div>
             <div>
-              <div className="text-xs text-slate-400">Jumlah Sesi</div>
-              <div className="text-xl font-bold font-mono text-white mt-1 tabular-nums">
+              <div className="text-xs text-slate-500">Jumlah Sesi</div>
+              <div className="text-xl font-bold font-mono text-slate-900 mt-1 tabular-nums">
                 {kpis.logCount}
               </div>
             </div>
             <div>
-              <div className="text-xs text-slate-400">Rata-rata / Hari</div>
-              <div className="text-xl font-bold font-mono text-emerald-400 mt-1 tabular-nums">
+              <div className="text-xs text-slate-500">Rata-rata / Hari</div>
+              <div className="text-xl font-bold font-mono text-emerald-600 mt-1 tabular-nums">
                 {kpis.dailyAvgMinutes}m
               </div>
             </div>
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-[#171c26] border border-white/[0.08]">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-4">
+        <div className="card-pro p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-4">
             Balance & Konsistensi
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
-              <div className="text-xs text-slate-400">Listening</div>
-              <div className="text-xl font-bold font-mono text-cyan-400 mt-1 tabular-nums">
+              <div className="text-xs text-slate-500">Listening</div>
+              <div className="text-xl font-bold font-mono text-slate-900 mt-1 tabular-nums">
                 {(kpis.balance.listeningMin / 60).toFixed(1)}j
               </div>
             </div>
             <div>
-              <div className="text-xs text-slate-400">Reading</div>
-              <div className="text-xl font-bold font-mono text-violet-400 mt-1 tabular-nums">
+              <div className="text-xs text-slate-500">Reading</div>
+              <div className="text-xl font-bold font-mono text-slate-900 mt-1 tabular-nums">
                 {(kpis.balance.readingMin / 60).toFixed(1)}j
               </div>
             </div>
             <div>
-              <div className="text-xs text-slate-400">Rasio R : L</div>
-              <div className="text-xl font-bold font-mono text-white mt-1 tabular-nums">
+              <div className="text-xs text-slate-500">Rasio R : L</div>
+              <div className="text-xl font-bold font-mono text-slate-900 mt-1 tabular-nums">
                 {kpis.balance.ratioLabel}
               </div>
             </div>
             <div>
-              <div className="text-xs text-slate-400">Streak Terbaik</div>
-              <div className="text-xl font-bold font-mono text-pink-400 mt-1 tabular-nums">
+              <div className="text-xs text-slate-500">Streak Terbaik</div>
+              <div className="text-xl font-bold font-mono text-red-600 mt-1 tabular-nums">
                 {kpis.longestStreak}h
               </div>
             </div>
@@ -318,16 +317,16 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
         </div>
       </div>
 
-      <div className="p-5 rounded-2xl bg-[#171c26] border border-white/[0.08]">
+      <div className="card-pro p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
           <div>
-            <h3 className="font-semibold text-slate-100">Progress Timeline</h3>
-            <p className="text-xs text-slate-400">
+            <h3 className="font-semibold text-slate-900">Progress Timeline</h3>
+            <p className="text-xs text-slate-500">
               Tren {chartMetric === 'hours' ? 'jam immersion' : 'perolehan XP'} harian
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex bg-[#11151c] p-1 rounded-xl border border-white/[0.06] text-xs">
+            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
               {(
                 [
                   { id: 'hours', label: 'Jam' },
@@ -340,15 +339,15 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                   onClick={() => setChartMetric(m.id)}
                   className={`px-3 py-1 rounded-lg font-medium transition cursor-pointer ${
                     chartMetric === m.id
-                      ? 'bg-indigo-600 text-white'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-red-600 text-white'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   {m.label}
                 </button>
               ))}
             </div>
-            <div className="flex bg-[#11151c] p-1 rounded-xl border border-white/[0.06] text-xs">
+            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
               {(
                 [
                   { id: 'bar', label: 'Bar' },
@@ -361,8 +360,8 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                   onClick={() => setChartType(t.id)}
                   className={`px-3 py-1 rounded-lg font-medium transition cursor-pointer ${
                     chartType === t.id
-                      ? 'bg-white/[0.12] text-white'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   {t.label}
@@ -376,10 +375,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
           <ResponsiveContainer width="100%" height="100%">
             {chartType === 'bar' ? (
               <BarChart data={timelineData}>
-                <CartesianGrid
-                  stroke="rgba(255,255,255,0.05)"
-                  vertical={false}
-                />
+                <CartesianGrid stroke="#e2e8f0" vertical={false} />
                 <XAxis
                   dataKey="label"
                   stroke="#64748b"
@@ -399,15 +395,16 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                     chartMetric === 'hours' ? 'Durasi' : 'XP',
                   ]}
                   contentStyle={{
-                    backgroundColor: '#11151c',
-                    borderColor: 'rgba(255,255,255,0.12)',
+                    backgroundColor: '#ffffff',
+                    borderColor: '#e2e8f0',
                     borderRadius: '12px',
-                    color: '#f8fafc',
+                    color: '#0f172a',
+                    boxShadow: '0 8px 20px rgba(15,23,42,0.08)',
                   }}
                 />
                 <Bar
                   dataKey={chartMetric}
-                  fill={chartMetric === 'hours' ? '#6366f1' : '#ec4899'}
+                  fill={chartMetric === 'hours' ? '#dc2626' : '#be123c'}
                   radius={[6, 6, 0, 0]}
                 />
               </BarChart>
@@ -417,20 +414,17 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                   <linearGradient id="timelineFill" x1="0" y1="0" x2="0" y2="1">
                     <stop
                       offset="5%"
-                      stopColor={chartMetric === 'hours' ? '#6366f1' : '#ec4899'}
-                      stopOpacity={0.35}
+                      stopColor={chartMetric === 'hours' ? '#dc2626' : '#be123c'}
+                      stopOpacity={0.28}
                     />
                     <stop
                       offset="95%"
-                      stopColor={chartMetric === 'hours' ? '#6366f1' : '#ec4899'}
+                      stopColor={chartMetric === 'hours' ? '#dc2626' : '#be123c'}
                       stopOpacity={0}
                     />
                   </linearGradient>
                 </defs>
-                <CartesianGrid
-                  stroke="rgba(255,255,255,0.05)"
-                  vertical={false}
-                />
+                <CartesianGrid stroke="#e2e8f0" vertical={false} />
                 <XAxis
                   dataKey="label"
                   stroke="#64748b"
@@ -450,16 +444,17 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                     chartMetric === 'hours' ? 'Durasi' : 'XP',
                   ]}
                   contentStyle={{
-                    backgroundColor: '#11151c',
-                    borderColor: 'rgba(255,255,255,0.12)',
+                    backgroundColor: '#ffffff',
+                    borderColor: '#e2e8f0',
                     borderRadius: '12px',
-                    color: '#f8fafc',
+                    color: '#0f172a',
+                    boxShadow: '0 8px 20px rgba(15,23,42,0.08)',
                   }}
                 />
                 <Area
                   type="monotone"
                   dataKey={chartMetric}
-                  stroke={chartMetric === 'hours' ? '#6366f1' : '#ec4899'}
+                  stroke={chartMetric === 'hours' ? '#dc2626' : '#be123c'}
                   strokeWidth={2}
                   fill="url(#timelineFill)"
                 />
@@ -470,10 +465,10 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
-        <div className="p-5 rounded-2xl bg-[#171c26] border border-white/[0.08] flex flex-col">
+        <div className="card-pro p-5 flex flex-col">
           <div className="flex items-center justify-between gap-2 mb-4">
-            <h3 className="font-semibold text-slate-100">Distribusi Media</h3>
-            <div className="flex bg-[#11151c] p-1 rounded-xl border border-white/[0.06] text-xs">
+            <h3 className="font-semibold text-slate-900">Distribusi Media</h3>
+            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
               {(
                 [
                   { id: 'minutes', label: 'Waktu' },
@@ -487,8 +482,8 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                   onClick={() => setPieMetric(m.id)}
                   className={`px-2.5 py-1 rounded-lg font-medium transition cursor-pointer ${
                     pieMetric === m.id
-                      ? 'bg-indigo-600 text-white'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-red-600 text-white'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   {m.label}
@@ -498,7 +493,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
           </div>
 
           {mediaDistribution.length === 0 ? (
-            <div className="flex-1 min-h-56 flex items-center justify-center text-sm text-slate-500">
+            <div className="flex-1 min-h-56 flex items-center justify-center text-sm text-slate-400">
               Belum ada data pada filter ini.
             </div>
           ) : (
@@ -529,10 +524,11 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                       'Total',
                     ]}
                     contentStyle={{
-                      backgroundColor: '#11151c',
-                      borderColor: 'rgba(255,255,255,0.12)',
+                      backgroundColor: '#ffffff',
+                      borderColor: '#e2e8f0',
                       borderRadius: '12px',
-                      color: '#f8fafc',
+                      color: '#0f172a',
+                      boxShadow: '0 8px 20px rgba(15,23,42,0.08)',
                     }}
                   />
                 </PieChart>
@@ -541,12 +537,12 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
           )}
         </div>
 
-        <div className="p-5 rounded-2xl bg-[#171c26] border border-white/[0.08]">
-          <h3 className="font-semibold text-slate-100 mb-4">
+        <div className="card-pro p-5">
+          <h3 className="font-semibold text-slate-900 mb-4">
             Rincian per Tipe Media
           </h3>
           {mediaDistribution.length === 0 ? (
-            <p className="text-sm text-slate-500 py-12 text-center">
+            <p className="text-sm text-slate-400 py-12 text-center">
               Belum ada data media.
             </p>
           ) : (
@@ -558,21 +554,23 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                 return (
                   <div key={item.name} className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-2 text-slate-200 font-medium">
+                      <span className="flex items-center gap-2 text-slate-800 font-medium">
                         <span
                           className="w-2.5 h-2.5 rounded-full"
                           style={{ backgroundColor: item.color }}
                         />
                         {item.name}
                       </span>
-                      <span className="text-slate-400 font-mono tabular-nums">
+                      <span className="text-slate-500 font-mono tabular-nums">
                         {(item.minutes / 60).toFixed(1)}j • {item.xp} XP •{' '}
-                        <span className="text-slate-200">{pct}%</span>
+                        <span className="text-slate-900 font-semibold">
+                          {pct}%
+                        </span>
                       </span>
                     </div>
-                    <div className="h-1.5 rounded-full bg-[#11151c] overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
                       <div
-                        className="h-full rounded-full transition-all"
+                        className="h-full rounded-full animate-bar"
                         style={{
                           width: `${pct}%`,
                           backgroundColor: item.color,
@@ -587,28 +585,28 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
         </div>
       </div>
 
-      <div className="p-5 rounded-2xl bg-[#171c26] border border-white/[0.08]">
+      <div className="card-pro p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
-            <h3 className="font-semibold text-slate-100">
+            <h3 className="font-semibold text-slate-900">
               Peta Jalan Milestone ({kpis.allHours.toFixed(1)}j /{' '}
               {kpis.milestone.nextMilestone}j)
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-500 mt-0.5">
               {kpis.estDaysToNext
                 ? `Dengan pace 30 hari terakhirmu, milestone ${kpis.milestone.nextMilestone} jam tercapai dalam ~${kpis.estDaysToNext} hari.`
                 : 'Terus tambah sesi immersion untuk membuka proyeksi menuju milestone berikutnya.'}
             </p>
           </div>
-          <span className="text-xs font-mono font-semibold text-indigo-300">
+          <span className="text-xs font-mono font-semibold text-red-600">
             {Math.round(kpis.milestone.progress)}% menuju{' '}
             {kpis.milestone.nextMilestone}j
           </span>
         </div>
 
-        <div className="h-2 rounded-full bg-[#11151c] overflow-hidden mb-5">
+        <div className="h-2 rounded-full bg-slate-100 overflow-hidden mb-5">
           <div
-            className="h-full bg-gradient-to-r from-indigo-500 to-emerald-400 rounded-full transition-all"
+            className="h-full bg-gradient-to-r from-red-600 to-rose-500 rounded-full animate-bar"
             style={{ width: `${kpis.milestone.progress}%` }}
           />
         </div>
@@ -621,10 +619,10 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                 key={m}
                 className={`p-2.5 rounded-xl border text-center transition ${
                   reached
-                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
                     : m === kpis.milestone.nextMilestone
-                      ? 'bg-indigo-500/10 border-indigo-500/40 text-indigo-300'
-                      : 'bg-[#11151c] border-white/[0.06] text-slate-500'
+                      ? 'bg-red-50 border-red-200 text-red-700'
+                      : 'bg-slate-50 border-slate-200 text-slate-400'
                 }`}
               >
                 <div className="text-sm font-bold font-mono">{m}j</div>
