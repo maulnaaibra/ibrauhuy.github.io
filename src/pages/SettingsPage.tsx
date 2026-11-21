@@ -10,9 +10,7 @@ import {
   Download,
   Image,
   Palette,
-  RotateCcw,
   Save,
-  Trash2,
   Upload,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -35,17 +33,14 @@ import {
   testSupabaseConnection,
 } from '../lib/supabase';
 import {
-  clearDemoLogs,
   exportWorkspaceJson,
   loadDemoLogs,
   loadUserGoals,
   parseWorkspaceBackup,
-  resetDemoLogs,
-  saveDemoLogs,
   saveUserGoals,
 } from '../lib/demoData';
 import { useAuth } from '../context/AuthContext';
-import type { Profile } from '../types';
+import type { ImmersionLog, Profile } from '../types';
 import { getLocalDateString } from '../utils/stats';
 
 const LANGUAGE_PRESETS = [
@@ -60,16 +55,12 @@ const GOAL_PRESETS = [30, 60, 90, 120, 180];
 interface SettingsFormProps {
   initialProfile: Profile | null;
   userId: string;
-  isDemoMode: boolean;
-  onUpdateDemoProfile: (patch: Partial<Profile>) => void;
   onRefreshProfile: () => Promise<void>;
 }
 
 const SettingsForm: React.FC<SettingsFormProps> = ({
   initialProfile,
   userId,
-  isDemoMode,
-  onUpdateDemoProfile,
   onRefreshProfile,
 }) => {
   const [fullName, setFullName] = useState(
@@ -93,13 +84,6 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
       daily_goal_minutes: Math.max(5, Number(dailyGoal)),
     };
 
-    if (isDemoMode) {
-      onUpdateDemoProfile(payload);
-      toast.success('Pengaturan profil diperbarui!');
-      setSaving(false);
-      return;
-    }
-
     const { error } = await supabase.from('profiles').upsert({
       id: userId,
       ...payload,
@@ -117,7 +101,7 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
   return (
     <form onSubmit={handleSave} className="space-y-5">
       <div>
-        <label className="block text-xs font-semibold text-[#5c3d40] mb-1.5">
+        <label className="block text-xs font-semibold text-slate-600 mb-1.5">
           Nama Tampilan
         </label>
         <input
@@ -125,13 +109,13 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           placeholder="Nama kamu"
-          className="w-full px-3.5 py-2.5 rounded-xl bg-[#fffaf6] border border-[#e7d1c3] text-sm font-medium text-[#241113] focus:outline-none focus:border-[#59171b] focus:bg-white"
+          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white transition"
         />
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs font-semibold text-[#5c3d40]">
+          <label className="text-xs font-semibold text-slate-600">
             Bahasa Target
           </label>
           <div className="flex flex-wrap gap-1">
@@ -142,8 +126,8 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
                 onClick={() => setTargetLanguage(lang)}
                 className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${
                   targetLanguage === lang
-                    ? 'bg-[#59171b] text-[#fff8f2]'
-                    : 'bg-[#faf2ec] text-[#5c3d40] hover:text-[#241113] border border-[#e7d1c3]'
+                    ? 'bg-rose-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
                 }`}
               >
                 {lang}
@@ -157,13 +141,13 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
           placeholder="Contoh: Japanese, Korean, Spanish"
           value={targetLanguage}
           onChange={(e) => setTargetLanguage(e.target.value)}
-          className="w-full px-3.5 py-2.5 rounded-xl bg-[#fffaf6] border border-[#e7d1c3] text-sm font-medium text-[#241113] focus:outline-none focus:border-[#59171b] focus:bg-white"
+          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white transition"
         />
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs font-semibold text-[#5c3d40]">
+          <label className="text-xs font-semibold text-slate-600">
             Target Harian (menit)
           </label>
           <div className="flex flex-wrap gap-1">
@@ -174,8 +158,8 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
                 onClick={() => setDailyGoal(mins)}
                 className={`px-2 py-0.5 rounded-md text-[11px] font-semibold font-mono transition cursor-pointer ${
                   dailyGoal === mins
-                    ? 'bg-[#59171b] text-[#fff8f2]'
-                    : 'bg-[#faf2ec] text-[#5c3d40] hover:text-[#241113] border border-[#e7d1c3]'
+                    ? 'bg-rose-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
                 }`}
               >
                 {mins}m
@@ -190,7 +174,7 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
           max={1440}
           value={dailyGoal}
           onChange={(e) => setDailyGoal(Number(e.target.value))}
-          className="w-full px-3.5 py-2.5 rounded-xl bg-[#fffaf6] border border-[#e7d1c3] text-sm font-mono text-[#241113] focus:outline-none focus:border-[#59171b] focus:bg-white"
+          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white transition"
         />
       </div>
 
@@ -207,11 +191,10 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
 };
 
 export const SettingsPage: React.FC = () => {
-  const { user, profile, isDemoMode, updateDemoProfile, refreshProfile, signOut } =
-    useAuth();
-  const [confirmClear, setConfirmClear] = useState(false);
+  const { user, profile, refreshProfile } = useAuth();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const bgUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const [backingUp, setBackingUp] = useState(false);
 
   const [appearance, setAppearance] = useState<AppearanceSettings>(
     loadAppearanceSettings
@@ -283,7 +266,7 @@ export const SettingsPage: React.FC = () => {
   const [migratingLogs, setMigratingLogs] = useState(false);
 
   const handleMigrateLocalToCloud = async () => {
-    if (!user || isDemoMode) return;
+    if (!user) return;
     const localLogs = loadDemoLogs();
     if (localLogs.length === 0) {
       toast('Tidak ada data lokal untuk disinkronkan.');
@@ -360,52 +343,88 @@ export const SettingsPage: React.FC = () => {
     toast.success('Koneksi lokal Supabase dihapus.');
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!user) return;
-    const logs = loadDemoLogs();
-    const goals = loadUserGoals(user.id);
-    const json = exportWorkspaceJson(logs, profile, goals);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `immersiontrack-backup-${getLocalDateString()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success('Backup JSON berhasil diunduh');
+    setBackingUp(true);
+    try {
+      const { data, error } = await supabase
+        .from('immersion_logs')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('logged_date', { ascending: false });
+      if (error) throw error;
+
+      const logs = (data as ImmersionLog[]) ?? [];
+      const goals = loadUserGoals(user.id);
+      const json = exportWorkspaceJson(logs, profile, goals);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `immersiontrack-backup-${getLocalDateString()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Backup JSON berhasil diunduh (${logs.length} sesi)`);
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : 'Gagal mengekspor data backup'
+      );
+    } finally {
+      setBackingUp(false);
+    }
   };
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
+    setBackingUp(true);
     try {
       const text = await file.text();
       const backup = parseWorkspaceBackup(text);
-      saveDemoLogs(backup.logs);
+      if (backup.logs.length > 0) {
+        const rows = backup.logs.map((l) => ({
+          user_id: user.id,
+          title: l.title,
+          category: l.category,
+          duration_minutes: l.duration_minutes,
+          cards_mined: l.cards_mined,
+          notes: l.notes,
+          logged_date: l.logged_date,
+        }));
+        const { error } = await supabase.from('immersion_logs').insert(rows);
+        if (error) throw error;
+      }
       if (backup.goals.length > 0) {
         saveUserGoals(user.id, backup.goals);
       }
       if (backup.profile) {
-        updateDemoProfile(backup.profile);
+        await supabase.from('profiles').upsert({
+          full_name: backup.profile.full_name ?? null,
+          target_language: backup.profile.target_language ?? 'Japanese',
+          daily_goal_minutes: backup.profile.daily_goal_minutes ?? 90,
+          id: user.id,
+        });
+        await refreshProfile();
       }
       toast.success(
-        `Backup dipulihkan (${backup.logs.length} sesi immersion)!`
+        `Backup dipulihkan ke cloud (${backup.logs.length} sesi immersion)!`
       );
     } catch (err: unknown) {
       toast.error(
         err instanceof Error ? err.message : 'Gagal membaca file backup'
       );
     } finally {
+      setBackingUp(false);
       e.target.value = '';
     }
   };
 
   return (
-    <div className="app-bg-canvas text-[#241113] px-4 py-10">
+    <div className="app-bg-canvas text-slate-900 px-4 py-10">
       <div className="max-w-2xl mx-auto space-y-6 animate-fade-up">
         <Link
           to="/dashboard"
-          className="inline-flex items-center gap-2 text-sm font-semibold text-[#5c3d40] hover:text-[#59171b] app-canvas-subtitle transition"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-rose-600 app-canvas-subtitle transition"
         >
           <ArrowLeft className="w-4 h-4" />
           Kembali ke Dashboard
@@ -413,10 +432,10 @@ export const SettingsPage: React.FC = () => {
 
         <div className="card-pro p-6 space-y-5">
           <div>
-            <h1 className="text-xl font-extrabold text-[#241113]">
+            <h1 className="text-xl font-extrabold text-slate-900">
               Pengaturan Immersion
             </h1>
-            <p className="text-sm text-[#5c3d40] mt-1">
+            <p className="text-sm text-slate-500 mt-1">
               Sesuaikan nama tampilan, bahasa target, dan target durasi harian.
             </p>
           </div>
@@ -426,8 +445,6 @@ export const SettingsPage: React.FC = () => {
               key={`${profile?.id ?? 'none'}-${profile?.daily_goal_minutes ?? 'init'}-${profile?.target_language ?? ''}`}
               initialProfile={profile}
               userId={user.id}
-              isDemoMode={isDemoMode}
-              onUpdateDemoProfile={updateDemoProfile}
               onRefreshProfile={refreshProfile}
             />
           )}
@@ -436,16 +453,16 @@ export const SettingsPage: React.FC = () => {
         <div className="card-pro p-6 space-y-5">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-[#fff3e8] border border-[#f2c9ab] text-[#59171b]">
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-600">
                 <Palette className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-base font-extrabold text-[#241113]">
+                <h2 className="text-base font-extrabold text-slate-900">
                   Tampilan & Background Website
                 </h2>
-                <p className="text-xs text-[#5c3d40] mt-0.5">
-                  Pilih tema gradasi Burgundy–Cream atau unggah wallpaper
-                  sendiri. Tersimpan otomatis di browser Anda.
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Pilih tema warna cerah/elegan atau unggah wallpaper sendiri.
+                  Tersimpan otomatis di browser Anda.
                 </p>
               </div>
             </div>
@@ -457,7 +474,7 @@ export const SettingsPage: React.FC = () => {
                 saveAppearanceSettings(DEFAULT_APPEARANCE);
                 toast.success('Background dikembalikan ke default.');
               }}
-              className="text-xs font-bold text-[#59171b] hover:underline shrink-0 cursor-pointer"
+              className="text-xs font-bold text-rose-600 hover:underline shrink-0 cursor-pointer"
             >
               Reset Default
             </button>
@@ -473,8 +490,8 @@ export const SettingsPage: React.FC = () => {
                   onClick={() => handleSelectPreset(preset.id)}
                   className={`p-3 rounded-xl border text-left transition cursor-pointer space-y-2 ${
                     active
-                      ? 'border-[#59171b] bg-[#fff5ed] ring-2 ring-[#59171b]/20'
-                      : 'border-[#ead6c9] bg-white hover:border-[#b3746d]'
+                      ? 'border-rose-500 bg-rose-50/70 ring-2 ring-rose-500/20'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
                   }`}
                 >
                   <div
@@ -482,13 +499,13 @@ export const SettingsPage: React.FC = () => {
                     style={{ background: preset.swatchStyle }}
                   />
                   <div>
-                    <div className="text-xs font-extrabold text-[#241113] flex items-center justify-between gap-1">
+                    <div className="text-xs font-extrabold text-slate-900 flex items-center justify-between gap-1">
                       <span>{preset.name}</span>
                       {active && (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-[#59171b] shrink-0" />
+                        <CheckCircle2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
                       )}
                     </div>
-                    <p className="text-[11px] text-[#5c3d40] mt-0.5 leading-snug">
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
                       {preset.description}
                     </p>
                   </div>
@@ -497,10 +514,10 @@ export const SettingsPage: React.FC = () => {
             })}
           </div>
 
-          <div className="p-4 rounded-xl bg-[#fffaf6] border border-[#ead6c9] space-y-3">
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-[#241113]">
-                <Image className="w-4 h-4 text-[#59171b]" />
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                <Image className="w-4 h-4 text-rose-600" />
                 Gunakan Gambar / Wallpaper Kustom
               </div>
               <button
@@ -529,11 +546,11 @@ export const SettingsPage: React.FC = () => {
                 placeholder="Atau tempel URL gambar (https://...)"
                 value={customBgUrlInput}
                 onChange={(e) => setCustomBgUrlInput(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-xl bg-white border border-[#e7d1c3] text-xs font-medium text-[#241113] focus:outline-none focus:border-[#59171b]"
+                className="flex-1 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium text-slate-900 focus:outline-none focus:border-rose-500"
               />
               <button
                 type="submit"
-                className="px-4 py-2 rounded-xl bg-white border border-[#e7d1c3] hover:border-[#59171b] text-xs font-bold text-[#59171b] cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:border-rose-300 text-xs font-bold text-rose-600 cursor-pointer"
               >
                 Pakai URL
               </button>
@@ -541,8 +558,8 @@ export const SettingsPage: React.FC = () => {
 
             {appearance.preset === 'custom' && (
               <div className="flex items-center justify-between gap-3 pt-1">
-                <span className="text-[11px] font-semibold text-[#5c3d40]">
-                  Kepekatan Lapisan Burgundy:
+                <span className="text-[11px] font-semibold text-slate-600">
+                  Kepekatan Lapisan Gelap:
                 </span>
                 <div className="flex gap-1.5">
                   {(
@@ -560,8 +577,8 @@ export const SettingsPage: React.FC = () => {
                       }
                       className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer border ${
                         appearance.customOverlayStrength === opt.id
-                          ? 'bg-[#59171b] text-[#fff8f2] border-[#59171b]'
-                          : 'bg-white text-[#5c3d40] border-[#e7d1c3]'
+                          ? 'bg-rose-600 text-white border-rose-600'
+                          : 'bg-white text-slate-600 border-slate-200'
                       }`}
                     >
                       {opt.label}
@@ -576,7 +593,7 @@ export const SettingsPage: React.FC = () => {
         <div className="card-pro p-6 space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-[#fff3e8] border border-[#f2c9ab] text-[#59171b]">
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-600">
                 <Database className="w-5 h-5" />
               </div>
               <div>
@@ -646,9 +663,9 @@ export const SettingsPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleCopySql}
-                className="px-3.5 py-2 rounded-xl bg-white border border-[#e7d1c3] hover:bg-[#fffaf6] text-xs font-bold text-[#241113] inline-flex items-center gap-1.5 cursor-pointer"
+                className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-800 inline-flex items-center gap-1.5 cursor-pointer"
               >
-                <Copy className="w-3.5 h-3.5 text-[#59171b]" />
+                <Copy className="w-3.5 h-3.5 text-rose-600" />
                 Salin Skrip SQL Tabel & RLS
               </button>
 
@@ -662,7 +679,7 @@ export const SettingsPage: React.FC = () => {
                 </button>
               )}
 
-              {!isDemoMode && user && (
+              {user && loadDemoLogs().length > 0 && (
                 <button
                   type="button"
                   disabled={migratingLogs}
@@ -690,15 +707,6 @@ export const SettingsPage: React.FC = () => {
                 <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>{sbStatusMsg}</span>
               </span>
-              {sbTablesReady && isDemoMode && (
-                <button
-                  type="button"
-                  onClick={() => signOut()}
-                  className="underline font-semibold shrink-0 cursor-pointer"
-                >
-                  Login Sekarang
-                </button>
-              )}
             </div>
           )}
 
@@ -723,92 +731,46 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
 
-        {isDemoMode && (
-          <div className="card-pro p-6 space-y-4">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">
-                Manajemen Data & Backup
-              </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Ekspor cadangan riwayat belajar ke JSON, pulihkan dari file,
-                atau atur ulang catatan lokal Anda.
-              </p>
-            </div>
-
-            <div className="grid sm:grid-cols-2 gap-2.5">
-              <button
-                type="button"
-                onClick={handleExport}
-                className="px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 flex items-center justify-center gap-2 transition cursor-pointer"
-              >
-                <Download className="w-4 h-4 text-red-600" />
-                Ekspor Backup JSON
-              </button>
-
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 flex items-center justify-center gap-2 transition cursor-pointer"
-              >
-                <Upload className="w-4 h-4 text-slate-500" />
-                Impor Backup JSON
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/json,.json"
-                onChange={handleImportFile}
-                className="hidden"
-              />
-            </div>
-
-            <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  resetDemoLogs();
-                  toast.success('Data contoh awal dimuat ulang');
-                }}
-                className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:text-slate-900 text-xs font-medium text-slate-600 inline-flex items-center gap-1.5 transition cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Muat Data Contoh
-              </button>
-
-              {confirmClear ? (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      clearDemoLogs();
-                      setConfirmClear(false);
-                      toast.success('Semua riwayat belajar dikosongkan');
-                    }}
-                    className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-xs font-semibold text-white cursor-pointer"
-                  >
-                    Ya, Kosongkan
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmClear(false)}
-                    className="px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-700 cursor-pointer"
-                  >
-                    Batal
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setConfirmClear(true)}
-                  className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:border-red-300 hover:text-red-600 text-xs font-medium text-slate-500 inline-flex items-center gap-1.5 transition cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Kosongkan Semua Data
-                </button>
-              )}
-            </div>
+        <div className="card-pro p-6 space-y-4">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">
+              Manajemen Data & Backup Cloud
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Ekspor cadangan riwayat belajar ke file JSON atau impor data
+              cadangan langsung ke akun Supabase Anda.
+            </p>
           </div>
-        )}
+
+          <div className="grid sm:grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              disabled={backingUp}
+              onClick={handleExport}
+              className="px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60"
+            >
+              <Download className="w-4 h-4 text-rose-600" />
+              Ekspor Backup JSON
+            </button>
+
+            <button
+              type="button"
+              disabled={backingUp}
+              onClick={() => fileInputRef.current?.click()}
+              className="px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60"
+            >
+              <Upload className="w-4 h-4 text-slate-500" />
+              Impor Backup JSON
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={handleImportFile}
+              className="hidden"
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

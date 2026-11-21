@@ -1,10 +1,32 @@
 import { useEffect, useState } from 'react';
+import rawCatalog from '../data/immersionCatalog.json';
 import { getCategoryMeta, type ImmersionCategory } from '../types';
 
-const COVERS_CACHE_KEY = 'immersiontrack_covers_v1';
+const COVERS_CACHE_KEY = 'immersiontrack_covers_v2';
 const ANILIST_ENDPOINT = 'https://graphql.anilist.co';
 
 const inflightRequests = new Map<string, Promise<string | null>>();
+
+const CATALOG_COVER_BY_TITLE = new Map<string, string>();
+for (const entry of rawCatalog as Array<{
+  title?: string;
+  coverImage?: string;
+}>) {
+  if (entry.title && entry.coverImage) {
+    CATALOG_COVER_BY_TITLE.set(
+      entry.title.trim().toLowerCase(),
+      entry.coverImage
+    );
+  }
+}
+
+export function findLocalCatalogCover(title: string): string | null {
+  const key = title.trim().toLowerCase();
+  if (!key) return null;
+  const exact = CATALOG_COVER_BY_TITLE.get(key);
+  if (exact) return `${import.meta.env.BASE_URL}${exact}`;
+  return null;
+}
 
 function readCoverCache(): Record<string, string> {
   try {
@@ -57,7 +79,7 @@ export function generateAnkiLogoDataUrl(title: string): string {
       <stop offset="100%" stop-color="#09111e"/>
     </linearGradient>
     <radialGradient id="ankiHalo" cx="0.5" cy="0.42" r="0.46">
-      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.38"/>
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.42"/>
       <stop offset="100%" stop-color="#0ea5e9" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="ankiStar" x1="0.2" y1="0" x2="0.8" y2="1">
@@ -108,36 +130,35 @@ export function generatePosterSvgDataUrl(
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320" width="240" height="320">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#59171b"/>
-      <stop offset="55%" stop-color="#3c0e11"/>
-      <stop offset="100%" stop-color="#220709"/>
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
     </linearGradient>
     <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#fed7b8"/>
-      <stop offset="100%" stop-color="#f2a988"/>
+      <stop offset="0%" stop-color="#e11d48"/>
+      <stop offset="100%" stop-color="#fb7185"/>
     </linearGradient>
     <radialGradient id="glow" cx="0.85" cy="0.14" r="0.72">
-      <stop offset="0%" stop-color="#fed7b8" stop-opacity="0.34"/>
-      <stop offset="100%" stop-color="#fed7b8" stop-opacity="0"/>
+      <stop offset="0%" stop-color="${meta.color}" stop-opacity="0.32"/>
+      <stop offset="100%" stop-color="${meta.color}" stop-opacity="0"/>
     </radialGradient>
   </defs>
   <rect width="240" height="320" rx="16" fill="url(#bg)"/>
   <rect width="240" height="320" rx="16" fill="url(#glow)"/>
   <rect x="0" y="0" width="240" height="6" fill="url(#accent)"/>
-  <circle cx="195" cy="54" r="76" fill="none" stroke="rgba(254,215,184,0.12)" stroke-width="1"/>
-  <rect x="18" y="22" width="90" height="22" rx="11" fill="rgba(254,215,184,0.16)" stroke="rgba(254,215,184,0.35)" stroke-width="1"/>
-  <circle cx="30" cy="33" r="3.5" fill="#fed7b8"/>
-  <text x="41" y="37" font-family="'Plus Jakarta Sans',system-ui,sans-serif" font-size="10" font-weight="700" fill="#fff3e8">${escapeXml(
+  <circle cx="195" cy="54" r="76" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+  <rect x="18" y="22" width="90" height="22" rx="11" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+  <circle cx="30" cy="33" r="3.5" fill="${meta.color}"/>
+  <text x="41" y="37" font-family="'Plus Jakarta Sans',system-ui,sans-serif" font-size="10" font-weight="700" fill="#f8fafc">${escapeXml(
     meta.shortLabel.toUpperCase()
   )}</text>
-  <text x="120" y="170" text-anchor="middle" font-family="'Plus Jakarta Sans','Noto Sans JP',system-ui,sans-serif" font-size="56" font-weight="800" letter-spacing="-1" fill="rgba(254,215,184,0.22)">${escapeXml(
+  <text x="120" y="170" text-anchor="middle" font-family="'Plus Jakarta Sans','Noto Sans JP',system-ui,sans-serif" font-size="56" font-weight="800" letter-spacing="-1" fill="rgba(255,255,255,0.18)">${escapeXml(
     monogram
   )}</text>
-  <line x1="18" y1="248" x2="222" y2="248" stroke="rgba(254,215,184,0.2)" stroke-width="1"/>
+  <line x1="18" y1="248" x2="222" y2="248" stroke="rgba(255,255,255,0.14)" stroke-width="1"/>
   <text x="18" y="274" font-family="'Plus Jakarta Sans','Noto Sans JP',system-ui,sans-serif" font-size="13.5" font-weight="700" fill="#ffffff">${escapeXml(
     shortTitle
   )}</text>
-  <text x="18" y="294" font-family="'Plus Jakarta Sans',system-ui,sans-serif" font-size="10.5" font-weight="600" fill="#fed7b8">${escapeXml(
+  <text x="18" y="294" font-family="'Plus Jakarta Sans',system-ui,sans-serif" font-size="10.5" font-weight="600" fill="#94a3b8">${escapeXml(
     meta.label
   )}</text>
 </svg>`;
@@ -233,21 +254,29 @@ async function resolveAniListCover(
 export function useMediaCover(
   title: string,
   category: ImmersionCategory | string,
-  enabled = true
+  enabled = true,
+  explicitCoverImage?: string
 ) {
   const key = makeCacheKey(title, category);
   const isAnki = isAnkiMedia(title, category);
   const fallbackUrl = generatePosterSvgDataUrl(title, category);
+
+  const localCatalogUrl = isAnki
+    ? null
+    : explicitCoverImage
+      ? `${import.meta.env.BASE_URL}${explicitCoverImage}`
+      : findLocalCatalogCover(title);
+
   const [resolved, setResolved] = useState<{ key: string; url: string } | null>(
     () => {
-      if (isAnki) return null;
+      if (isAnki || localCatalogUrl) return null;
       const cached = readCoverCache()[key];
       return cached ? { key, url: cached } : null;
     }
   );
 
   useEffect(() => {
-    if (!enabled || isAnki) return;
+    if (!enabled || isAnki || localCatalogUrl) return;
     let active = true;
     const cached = readCoverCache()[key];
     if (cached) {
@@ -266,12 +295,14 @@ export function useMediaCover(
     return () => {
       active = false;
     };
-  }, [key, title, category, enabled, isAnki]);
+  }, [key, title, category, enabled, isAnki, localCatalogUrl]);
 
-  const cachedNow = isAnki ? null : readCoverCache()[key];
+  const cachedNow = isAnki || localCatalogUrl ? null : readCoverCache()[key];
   const remoteUrl = isAnki
     ? null
-    : cachedNow || (resolved && resolved.key === key ? resolved.url : null);
+    : localCatalogUrl ||
+      cachedNow ||
+      (resolved && resolved.key === key ? resolved.url : null);
 
   return {
     coverUrl: remoteUrl || fallbackUrl,

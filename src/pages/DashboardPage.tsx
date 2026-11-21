@@ -21,13 +21,7 @@ import {
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import { COMMUNITY_LEADERBOARD } from '../lib/publicShowcase';
-import {
-  DEMO_USER_ID,
-  loadDemoLogs,
-  loadUserGoals,
-  saveDemoLogs,
-  saveUserGoals,
-} from '../lib/demoData';
+import { loadUserGoals, saveUserGoals } from '../lib/demoData';
 import {
   ackCompanionSessions,
   fetchCompanionStatus,
@@ -113,14 +107,13 @@ const QUICK_LOG_PRESETS: Array<{
 ];
 
 export const DashboardPage: React.FC = () => {
-  const { user, profile, isDemoMode, updateDemoProfile, refreshProfile, signOut } =
-    useAuth();
+  const { user, profile, refreshProfile, signOut } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [logs, setLogs] = useState<ImmersionLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
   const [goals, setGoals] = useState<CustomGoal[]>(() =>
-    loadUserGoals(user?.id ?? DEMO_USER_ID)
+    loadUserGoals(user?.id ?? 'default')
   );
 
   const [companionSettings, setCompanionSettings] = useState<CompanionSettings>(
@@ -150,15 +143,6 @@ export const DashboardPage: React.FC = () => {
     let active = true;
 
     const load = async () => {
-      if (isDemoMode) {
-        if (active) {
-          setLogs(loadDemoLogs());
-          setGoals(loadUserGoals(user.id));
-          setLoadingLogs(false);
-        }
-        return;
-      }
-
       const { data, error } = await supabase
         .from('immersion_logs')
         .select('*')
@@ -180,7 +164,7 @@ export const DashboardPage: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [user, isDemoMode]);
+  }, [user]);
 
   const importPendingSessions = useCallback(
     async (sessions: PendingTrackedSession[], notify = true) => {
@@ -193,51 +177,29 @@ export const DashboardPage: React.FC = () => {
 
       freshSessions.forEach((s) => importedPendingIdsRef.current.add(s.id));
 
-      if (isDemoMode) {
-        const mapped: ImmersionLog[] = freshSessions.map((s) => ({
-          id: s.id,
-          user_id: user.id,
-          title: s.title,
-          category: s.category,
-          duration_minutes: s.duration_minutes,
-          cards_mined: s.cards_mined,
-          notes: s.notes,
-          logged_date: s.logged_date,
-          created_at: s.created_at,
-        }));
+      const rows = freshSessions.map((s) => ({
+        user_id: user.id,
+        title: s.title,
+        category: s.category,
+        duration_minutes: s.duration_minutes,
+        cards_mined: s.cards_mined,
+        notes: s.notes,
+        logged_date: s.logged_date,
+      }));
+      const { data, error } = await supabase
+        .from('immersion_logs')
+        .insert(rows)
+        .select();
 
-        setLogs((prev) => {
-          const existingIds = new Set(prev.map((l) => l.id));
-          const unique = mapped.filter((m) => !existingIds.has(m.id));
-          const next = [...unique, ...prev];
-          saveDemoLogs(next);
-          return next;
-        });
-      } else {
-        const rows = freshSessions.map((s) => ({
-          user_id: user.id,
-          title: s.title,
-          category: s.category,
-          duration_minutes: s.duration_minutes,
-          cards_mined: s.cards_mined,
-          notes: s.notes,
-          logged_date: s.logged_date,
-        }));
-        const { data, error } = await supabase
-          .from('immersion_logs')
-          .insert(rows)
-          .select();
-
-        if (error) {
-          freshSessions.forEach((s) =>
-            importedPendingIdsRef.current.delete(s.id)
-          );
-          toast.error('Gagal menyimpan sesi otomatis dari PC');
-          return;
-        }
-        if (data) {
-          setLogs((prev) => [...(data as ImmersionLog[]), ...prev]);
-        }
+      if (error) {
+        freshSessions.forEach((s) =>
+          importedPendingIdsRef.current.delete(s.id)
+        );
+        toast.error('Gagal menyimpan sesi otomatis dari PC');
+        return;
+      }
+      if (data) {
+        setLogs((prev) => [...(data as ImmersionLog[]), ...prev]);
       }
 
       try {
@@ -261,7 +223,7 @@ export const DashboardPage: React.FC = () => {
         }
       }
     },
-    [user, isDemoMode, companionSettings.url]
+    [user, companionSettings.url]
   );
 
   const pollCompanion = useCallback(async () => {
@@ -302,15 +264,11 @@ export const DashboardPage: React.FC = () => {
       if (goalParam) {
         const parsedGoal = Number(goalParam);
         if (Number.isFinite(parsedGoal) && parsedGoal >= 5 && parsedGoal <= 1440) {
-          if (isDemoMode) {
-            updateDemoProfile({ daily_goal_minutes: parsedGoal });
-          } else {
-            void supabase
-              .from('profiles')
-              .update({ daily_goal_minutes: parsedGoal })
-              .eq('id', user.id)
-              .then(() => refreshProfile());
-          }
+          void supabase
+            .from('profiles')
+            .update({ daily_goal_minutes: parsedGoal })
+            .eq('id', user.id)
+            .then(() => refreshProfile());
         }
       }
 
@@ -332,14 +290,7 @@ export const DashboardPage: React.FC = () => {
     }, 0);
 
     return () => clearTimeout(timer);
-  }, [
-    user,
-    isDemoMode,
-    searchParams,
-    setSearchParams,
-    updateDemoProfile,
-    refreshProfile,
-  ]);
+  }, [user, searchParams, setSearchParams, refreshProfile]);
 
   const handleManualRefreshCompanion = async () => {
     setCompanionChecking(true);
@@ -446,30 +397,6 @@ export const DashboardPage: React.FC = () => {
   }) => {
     if (!user) return;
 
-    if (isDemoMode) {
-      if (editingLog) {
-        const updated = logs.map((l) =>
-          l.id === editingLog.id ? { ...l, ...payload } : l
-        );
-        saveDemoLogs(updated);
-        setLogs(updated);
-        toast.success('Sesi diperbarui');
-      } else {
-        const created: ImmersionLog = {
-          id: `log-${Date.now()}`,
-          user_id: user.id,
-          ...payload,
-          created_at: new Date().toISOString(),
-        };
-        const updated = [created, ...logs];
-        saveDemoLogs(updated);
-        setLogs(updated);
-        toast.success('Sesi berhasil dicatat!');
-      }
-      setEditingLog(null);
-      return;
-    }
-
     if (editingLog) {
       const { data, error } = await supabase
         .from('immersion_logs')
@@ -527,42 +454,6 @@ export const DashboardPage: React.FC = () => {
         l.title.startsWith('Anki')
     );
 
-    if (isDemoMode) {
-      if (existingToday) {
-        const updated = logs.map((l) =>
-          l.id === existingToday.id
-            ? {
-                ...l,
-                title,
-                duration_minutes: durationMinutes,
-                cards_mined: cardsMined,
-                notes,
-              }
-            : l
-        );
-        saveDemoLogs(updated);
-        setLogs(updated);
-        toast.success('Log Anki hari ini diperbarui!');
-      } else {
-        const created: ImmersionLog = {
-          id: `anki-${Date.now()}`,
-          user_id: user.id,
-          title,
-          category: 'study',
-          duration_minutes: durationMinutes,
-          cards_mined: cardsMined,
-          notes,
-          logged_date: todayStr,
-          created_at: new Date().toISOString(),
-        };
-        const updated = [created, ...logs];
-        saveDemoLogs(updated);
-        setLogs(updated);
-        toast.success('Statistik Anki hari ini tersimpan ke log!');
-      }
-      return;
-    }
-
     if (existingToday) {
       const { data, error } = await supabase
         .from('immersion_logs')
@@ -613,14 +504,6 @@ export const DashboardPage: React.FC = () => {
   };
 
   const handleDeleteLog = async (id: string) => {
-    if (isDemoMode) {
-      const updated = logs.filter((l) => l.id !== id);
-      saveDemoLogs(updated);
-      setLogs(updated);
-      toast.success('Sesi dihapus');
-      return;
-    }
-
     const { error } = await supabase
       .from('immersion_logs')
       .delete()
@@ -694,30 +577,30 @@ export const DashboardPage: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen app-bg-canvas text-[#241113]">
-      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-[#ead6c9]">
+    <div className="min-h-screen app-bg-canvas text-slate-900">
+      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-2xs">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          <Link to="/" className="flex items-center gap-3 shrink-0 group">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#59171b] to-[#83262c] flex items-center justify-center font-extrabold text-[#fed7b8] shadow-sm shadow-[#59171b]/25">
+          <Link to="/showcase" className="flex items-center gap-3 shrink-0 group">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-rose-500 to-rose-700 flex items-center justify-center font-extrabold text-white shadow-sm shadow-rose-500/25">
               I
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-extrabold text-sm sm:text-base leading-tight text-[#241113] group-hover:text-[#59171b] transition-colors">
+                <h1 className="font-extrabold text-sm sm:text-base leading-tight text-slate-900 group-hover:text-rose-600 transition-colors">
                   ImmersionTrack
                 </h1>
-                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full bg-[#fff3e8] border border-[#f2c9ab] text-[10px] font-mono text-[#59171b]">
+                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-[10px] font-mono text-rose-700">
                   {stats.stage.code}
                 </span>
               </div>
-              <p className="text-[11px] font-semibold text-[#5c3d40]">
+              <p className="text-[11px] font-semibold text-slate-500">
                 {profile?.target_language ?? 'Japanese'} •{' '}
                 {stats.stage.label}
               </p>
             </div>
           </Link>
 
-          <nav className="hidden lg:flex items-center gap-1 bg-[#f7ece4] p-1 rounded-xl border border-[#e7d1c3]">
+          <nav className="hidden lg:flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/80">
             {navTabs.map((tab) => {
               const active = activeTab === tab.id;
               return (
@@ -727,8 +610,8 @@ export const DashboardPage: React.FC = () => {
                   onClick={() => setActiveTab(tab.id)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                     active
-                      ? 'bg-gradient-to-r from-[#59171b] to-[#83262c] text-[#fff8f2] shadow-xs'
-                      : 'text-[#5c3d40] hover:text-[#241113] hover:bg-white/70'
+                      ? 'bg-gradient-to-r from-rose-600 to-rose-500 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
                   }`}
                 >
                   <tab.icon className="w-3.5 h-3.5" />
@@ -742,24 +625,13 @@ export const DashboardPage: React.FC = () => {
           </nav>
 
           <div className="flex items-center gap-2 shrink-0">
-            {isDemoMode ? (
-              <Link
-                to="/login"
-                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#fff3e8] hover:bg-[#fed7b8]/60 border border-[#f2c9ab] text-xs font-bold text-[#59171b] transition"
-              >
-                <Cloud className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Masuk / Daftar Cloud</span>
-                <span className="sm:hidden">Masuk</span>
-              </Link>
-            ) : (
-              <span
-                title="Data tersinkron dengan akun cloud Supabase"
-                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-700"
-              >
-                <Cloud className="w-3.5 h-3.5" />
-                Cloud Synced
-              </span>
-            )}
+            <span
+              title="Data tersinkron dengan akun cloud Supabase"
+              className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-700"
+            >
+              <Cloud className="w-3.5 h-3.5" />
+              Cloud Synced
+            </span>
 
             <button
               type="button"
@@ -774,20 +646,20 @@ export const DashboardPage: React.FC = () => {
             <Link
               to="/settings"
               title="Pengaturan & Background"
-              className="p-2 rounded-xl bg-white border border-[#e7d1c3] hover:border-[#59171b] text-[#5c3d40] hover:text-[#59171b] transition"
+              className="p-2 rounded-xl bg-white border border-slate-200 hover:border-rose-300 text-slate-600 hover:text-rose-600 transition"
             >
               <Settings className="w-4 h-4" />
             </Link>
 
-            <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-[#ead6c9]">
+            <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-slate-200">
               {profile?.avatar_url ? (
                 <img
                   src={profile.avatar_url}
                   alt={profile.full_name ?? 'User'}
-                  className="w-8 h-8 rounded-full object-cover border border-[#e7d1c3]"
+                  className="w-8 h-8 rounded-full object-cover border border-slate-200"
                 />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-[#fff3e8] border border-[#f2c9ab] flex items-center justify-center text-xs font-extrabold text-[#59171b]">
+                <div className="w-8 h-8 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-xs font-extrabold text-rose-700">
                   {avatarInitial}
                 </div>
               )}
@@ -797,14 +669,14 @@ export const DashboardPage: React.FC = () => {
               type="button"
               onClick={signOut}
               title="Keluar"
-              className="p-2 rounded-xl bg-white border border-[#e7d1c3] hover:bg-[#fff3e8] hover:text-[#59171b] hover:border-[#59171b] text-[#5c3d40] transition cursor-pointer"
+              className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-300 text-slate-600 transition cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        <div className="lg:hidden border-t border-[#ead6c9] overflow-x-auto bg-white">
+        <div className="lg:hidden border-t border-slate-200/80 overflow-x-auto bg-white">
           <div className="max-w-6xl mx-auto px-4 py-2 flex items-center gap-1.5 min-w-max">
             {navTabs.map((tab) => {
               const active = activeTab === tab.id;
@@ -815,8 +687,8 @@ export const DashboardPage: React.FC = () => {
                   onClick={() => setActiveTab(tab.id)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
                     active
-                      ? 'bg-gradient-to-r from-[#59171b] to-[#83262c] text-[#fff8f2]'
-                      : 'bg-[#f7ece4] text-[#5c3d40] hover:text-[#241113]'
+                      ? 'bg-gradient-to-r from-rose-600 to-rose-500 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   <tab.icon className="w-3.5 h-3.5" />
@@ -860,13 +732,13 @@ export const DashboardPage: React.FC = () => {
             ))}
           </div>
         ) : activeTab === 'overview' ? (
-          <div key="tab-overview" className="space-y-6">
+          <div key="tab-overview" className="space-y-6 animate-tab-in">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 animate-fade-up">
               <div>
-                <p className="text-[11px] uppercase tracking-wider font-bold text-[#5c3d40] app-canvas-subtitle">
+                <p className="text-[11px] uppercase tracking-wider font-bold text-slate-500 app-canvas-subtitle">
                   Ringkasan Progres
                 </p>
-                <h2 className="text-2xl font-extrabold text-[#241113] app-canvas-title mt-0.5">
+                <h2 className="text-2xl font-extrabold text-slate-900 app-canvas-title mt-0.5">
                   {profile?.full_name || user?.email || 'Learner'}
                 </h2>
               </div>
@@ -883,19 +755,19 @@ export const DashboardPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setActiveTab('catalog')}
-                  className="px-3.5 py-2 rounded-xl bg-white border border-[#e7d1c3] hover:border-[#59171b] text-xs font-bold text-[#241113] inline-flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                  className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-rose-300 text-xs font-bold text-slate-800 inline-flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
                 >
-                  <Compass className="w-3.5 h-3.5 text-[#59171b]" />
+                  <Compass className="w-3.5 h-3.5 text-rose-600" />
                   Jelajahi Katalog
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab('devices')}
-                  className="px-3.5 py-2 rounded-xl bg-white border border-[#e7d1c3] hover:border-[#59171b] text-xs font-bold text-[#241113] inline-flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                  className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-rose-300 text-xs font-bold text-slate-800 inline-flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
                 >
                   <MonitorSmartphone
                     className={`w-3.5 h-3.5 ${
-                      companionConnected ? 'text-emerald-600' : 'text-[#59171b]'
+                      companionConnected ? 'text-emerald-600' : 'text-rose-600'
                     }`}
                   />
                   {companionConnected ? 'PC Terhubung' : 'Hubungkan Perangkat'}
@@ -906,10 +778,10 @@ export const DashboardPage: React.FC = () => {
             <div className="grid lg:grid-cols-3 gap-4 animate-fade-up delay-1">
               <div className="card-pro p-5 space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#7c5659]">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     Tahap Kemahiran (JLPT)
                   </span>
-                  <span className="inline-flex items-center gap-1 text-xs font-mono text-[#59171b]">
+                  <span className="inline-flex items-center gap-1 text-xs font-mono text-rose-600">
                     <Award className="w-3.5 h-3.5" />
                     {stats.totalHours.toFixed(1)} jam
                   </span>
@@ -917,48 +789,48 @@ export const DashboardPage: React.FC = () => {
 
                 <div>
                   <div className="flex items-baseline justify-between mb-2">
-                    <span className="text-xl font-extrabold text-[#241113]">
+                    <span className="text-xl font-extrabold text-slate-900">
                       {stats.stage.label}
                     </span>
-                    <span className="text-xs font-mono text-[#5c3d40]">
+                    <span className="text-xs font-mono text-slate-500">
                       {stats.totalHours.toFixed(1)} / {stats.stage.nextTargetHours}j
                     </span>
                   </div>
-                  <div className="h-2 rounded-full bg-[#f7e9df] overflow-hidden">
+                  <div className="h-2 rounded-full bg-rose-100 overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-[#59171b] to-[#b54842] rounded-full animate-bar"
+                      className="h-full bg-gradient-to-r from-rose-600 to-rose-400 rounded-full animate-bar"
                       style={{ width: `${stats.stage.progressPct}%` }}
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div className="p-2.5 rounded-xl bg-[#fffaf6] border border-[#ead6c9]">
-                    <div className="flex items-center justify-between text-[11px] font-semibold text-[#5c3d40]">
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600">
                       <span>Listening</span>
-                      <span className="font-mono text-[#241113]">
+                      <span className="font-mono text-slate-900">
                         {(stats.balance.listeningMin / 60).toFixed(1)}j
                       </span>
                     </div>
-                    <div className="h-1.5 rounded-full bg-[#efe0d5] overflow-hidden mt-1.5">
+                    <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden mt-1.5">
                       <div
-                        className="h-full bg-[#59171b] rounded-full animate-bar"
+                        className="h-full bg-rose-600 rounded-full animate-bar"
                         style={{
                           width: `${stats.balance.listeningPct}%`,
                         }}
                       />
                     </div>
                   </div>
-                  <div className="p-2.5 rounded-xl bg-[#fffaf6] border border-[#ead6c9]">
-                    <div className="flex items-center justify-between text-[11px] font-semibold text-[#5c3d40]">
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600">
                       <span>Reading</span>
-                      <span className="font-mono text-[#241113]">
+                      <span className="font-mono text-slate-900">
                         {(stats.balance.readingMin / 60).toFixed(1)}j
                       </span>
                     </div>
-                    <div className="h-1.5 rounded-full bg-[#efe0d5] overflow-hidden mt-1.5">
+                    <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden mt-1.5">
                       <div
-                        className="h-full bg-[#b54842] rounded-full animate-bar"
+                        className="h-full bg-rose-400 rounded-full animate-bar"
                         style={{
                           width: `${stats.balance.readingPct}%`,
                         }}
@@ -970,70 +842,70 @@ export const DashboardPage: React.FC = () => {
 
               <div className="card-pro p-5 flex flex-col justify-between gap-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#7c5659]">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     Streak & Akumulasi
                   </span>
-                  <Flame className="w-4 h-4 text-[#59171b]" />
+                  <Flame className="w-4 h-4 text-rose-600" />
                 </div>
 
                 <div className="flex items-baseline gap-3">
-                  <span className="text-3xl font-extrabold font-mono text-[#241113] tabular-nums">
+                  <span className="text-3xl font-extrabold font-mono text-slate-900 tabular-nums">
                     {stats.streak} Hari
                   </span>
-                  <span className="text-xs font-semibold text-[#5c3d40]">
+                  <span className="text-xs font-semibold text-slate-500">
                     Terbaik: {stats.longestStreak} hari
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 pt-3 border-t border-[#f2e5dc] text-xs font-medium">
-                  <div className="flex items-center gap-1.5 text-[#241113]">
-                    <Clock className="w-3.5 h-3.5 text-[#59171b]" />
+                <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100 text-xs font-medium">
+                  <div className="flex items-center gap-1.5 text-slate-900">
+                    <Clock className="w-3.5 h-3.5 text-rose-600" />
                     <span className="font-mono">
                       {stats.totalHours.toFixed(1)}j
                     </span>
-                    <span className="text-[#5c3d40]">total</span>
+                    <span className="text-slate-500">total</span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-[#241113]">
-                    <BookOpen className="w-3.5 h-3.5 text-[#5c3d40]" />
+                  <div className="flex items-center gap-1.5 text-slate-900">
+                    <BookOpen className="w-3.5 h-3.5 text-slate-500" />
                     <span className="font-mono">
                       {stats.totalCards}
                     </span>
-                    <span className="text-[#5c3d40]">kartu</span>
+                    <span className="text-slate-500">kartu</span>
                   </div>
                 </div>
               </div>
 
               <div className="card-pro p-5 flex flex-col justify-between gap-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#7c5659]">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     Target Hari Ini
                   </span>
-                  <Target className="w-4 h-4 text-[#59171b]" />
+                  <Target className="w-4 h-4 text-rose-600" />
                 </div>
 
                 <div>
                   <div className="flex items-baseline justify-between mb-2">
-                    <span className="text-2xl font-extrabold font-mono text-[#241113] tabular-nums">
+                    <span className="text-2xl font-extrabold font-mono text-slate-900 tabular-nums">
                       {stats.todayMinutes}{' '}
-                      <span className="text-sm font-semibold text-[#5c3d40]">
+                      <span className="text-sm font-semibold text-slate-500">
                         / {stats.dailyGoal} mnt
                       </span>
                     </span>
-                    <span className="text-xs font-mono text-[#59171b]">
+                    <span className="text-xs font-mono text-rose-600">
                       {stats.dailyProgress}%
                     </span>
                   </div>
-                  <div className="h-2 rounded-full bg-[#f7e9df] overflow-hidden">
+                  <div className="h-2 rounded-full bg-rose-100 overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-[#59171b] to-[#b54842] rounded-full animate-bar"
+                      className="h-full bg-gradient-to-r from-rose-600 to-rose-400 rounded-full animate-bar"
                       style={{ width: `${stats.dailyProgress}%` }}
                     />
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-[#f2e5dc] flex items-center justify-between text-xs font-medium text-[#5c3d40]">
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-medium text-slate-500">
                   <span>Milestone {stats.milestone.nextMilestone}j</span>
-                  <span className="font-mono text-[#241113]">
+                  <span className="font-mono text-slate-900">
                     {Math.round(stats.milestone.progress)}%
                   </span>
                 </div>
@@ -1089,8 +961,8 @@ export const DashboardPage: React.FC = () => {
             </div>
 
             <div className="card-pro p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-up delay-3">
-              <div className="flex items-center gap-2 text-xs font-bold text-[#241113] shrink-0">
-                <Zap className="w-4 h-4 text-[#59171b]" />
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-900 shrink-0">
+                <Zap className="w-4 h-4 text-rose-600" />
                 Catat Cepat 1-Klik:
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -1105,7 +977,7 @@ export const DashboardPage: React.FC = () => {
                         duration: preset.duration,
                       })
                     }
-                    className="px-3 py-1.5 rounded-xl bg-[#fffaf6] hover:bg-[#59171b] border border-[#e7d1c3] hover:border-[#59171b] text-xs font-bold text-[#59171b] hover:text-[#fff8f2] transition cursor-pointer"
+                    className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-rose-600 border border-slate-200 hover:border-rose-600 text-xs font-bold text-rose-700 hover:text-white transition cursor-pointer"
                   >
                     {preset.label}
                   </button>
@@ -1128,10 +1000,10 @@ export const DashboardPage: React.FC = () => {
             {stats.recentMedia.length > 0 && (
               <div className="space-y-3 animate-fade-up delay-4">
                 <div>
-                  <h3 className="font-extrabold text-[#241113] app-canvas-title">
+                  <h3 className="font-extrabold text-slate-900 app-canvas-title">
                     Media yang Sedang Diikuti
                   </h3>
-                  <p className="text-xs font-medium text-[#5c3d40] app-canvas-subtitle">
+                  <p className="text-xs font-medium text-slate-500 app-canvas-subtitle">
                     Pilih media terakhir untuk langsung mencatat sesi lanjutan.
                   </p>
                 </div>
@@ -1164,17 +1036,17 @@ export const DashboardPage: React.FC = () => {
                               className="w-1.5 h-1.5 rounded-full shrink-0"
                               style={{ backgroundColor: meta.color }}
                             />
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-[#5c3d40]">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                               {meta.shortLabel}
                             </span>
-                            <span className="text-[10px] text-[#7c5659] font-mono">
+                            <span className="text-[10px] text-slate-400 font-mono">
                               • {media.sessions} sesi
                             </span>
                           </div>
-                          <div className="font-bold text-sm text-[#241113] truncate">
+                          <div className="font-bold text-sm text-slate-900 truncate">
                             {media.title}
                           </div>
-                          <div className="text-xs font-mono text-[#5c3d40]">
+                          <div className="text-xs font-mono text-slate-500">
                             {(media.totalMinutes / 60).toFixed(1)} jam •{' '}
                             {media.sessions} sesi
                             {media.totalCards > 0
@@ -1183,7 +1055,7 @@ export const DashboardPage: React.FC = () => {
                           </div>
                         </div>
 
-                        <span className="px-2.5 py-1.5 rounded-lg bg-[#fff3e8] border border-[#e7c3ad] group-hover:bg-[#59171b] group-hover:border-[#59171b] group-hover:text-[#fff8f2] text-xs font-bold text-[#59171b] transition shrink-0">
+                        <span className="px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-200 group-hover:bg-rose-600 group-hover:border-rose-600 group-hover:text-white text-xs font-bold text-rose-700 transition shrink-0">
                           + Log
                         </span>
                       </button>
@@ -1200,25 +1072,25 @@ export const DashboardPage: React.FC = () => {
             <div className="card-pro p-5 space-y-4 animate-fade-up delay-5">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <Trophy className="w-4 h-4 text-[#59171b]" />
-                  <h3 className="font-extrabold text-[#241113]">
+                  <Trophy className="w-4 h-4 text-rose-600" />
+                  <h3 className="font-extrabold text-slate-900">
                     Peringkat Komunitas
                   </h3>
                 </div>
-                <span className="text-xs font-mono text-[#5c3d40]">
+                <span className="text-xs font-mono text-slate-500">
                   Posisi Anda: #
                   {rankedLeaderboard.findIndex((item) => item.isSelf) + 1} dari{' '}
                   {rankedLeaderboard.length}
                 </span>
               </div>
 
-              <div className="divide-y divide-[#f2e5dc]">
+              <div className="divide-y divide-slate-100">
                 {rankedLeaderboard.map((member, idx) => (
                   <div
                     key={member.id}
                     className={`py-2.5 px-3 rounded-xl flex items-center justify-between gap-3 ${
                       member.isSelf
-                        ? 'bg-[#fff3e8] border border-[#e7c3ad] my-1'
+                        ? 'bg-rose-50/80 border border-rose-200 my-1'
                         : ''
                     }`}
                   >
@@ -1226,27 +1098,27 @@ export const DashboardPage: React.FC = () => {
                       <span
                         className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-mono shrink-0 ${
                           member.isSelf || idx === 0
-                            ? 'bg-gradient-to-br from-[#59171b] to-[#83262c] text-[#fed7b8]'
-                            : 'bg-[#f6ece4] text-[#5c3d40]'
+                            ? 'bg-gradient-to-br from-rose-600 to-rose-500 text-white'
+                            : 'bg-slate-100 text-slate-600'
                         }`}
                       >
                         #{idx + 1}
                       </span>
                       <div className="min-w-0">
-                        <div className="text-sm font-bold text-[#241113] truncate">
+                        <div className="text-sm font-bold text-slate-900 truncate">
                           {member.name}
                         </div>
-                        <div className="text-[11px] font-medium text-[#5c3d40] truncate">
+                        <div className="text-[11px] font-medium text-slate-500 truncate">
                           {member.rankTitle} • {member.favoriteMedia}
                         </div>
                       </div>
                     </div>
 
                     <div className="text-right shrink-0">
-                      <div className="text-sm font-mono text-[#241113]">
+                      <div className="text-sm font-mono text-slate-900">
                         {member.totalHours.toLocaleString('id-ID')} j
                       </div>
-                      <div className="text-[11px] font-mono text-[#59171b] inline-flex items-center gap-1">
+                      <div className="text-[11px] font-mono text-rose-600 inline-flex items-center gap-1">
                         <Flame className="w-3 h-3" />
                         {member.streak}h
                       </div>
@@ -1265,12 +1137,12 @@ export const DashboardPage: React.FC = () => {
             />
           </div>
         ) : activeTab === 'catalog' ? (
-          <div key="tab-catalog" className="space-y-4 animate-fade-up">
+          <div key="tab-catalog" className="space-y-4 animate-tab-in">
             <div>
-              <h2 className="text-xl font-extrabold text-[#241113] app-canvas-title">
+              <h2 className="text-xl font-extrabold text-slate-900 app-canvas-title">
                 Katalog 660+ Media Immersion
               </h2>
-              <p className="text-xs font-medium text-[#5c3d40] app-canvas-subtitle mt-0.5">
+              <p className="text-xs font-medium text-slate-500 app-canvas-subtitle mt-0.5">
                 Pilih novel, anime, manga, visual novel, game, YouTube, atau
                 podcast lalu langsung catat sesinya.
               </p>
@@ -1288,11 +1160,11 @@ export const DashboardPage: React.FC = () => {
             />
           </div>
         ) : activeTab === 'stats' ? (
-          <div key="tab-stats" className="animate-fade-up">
+          <div key="tab-stats" className="animate-tab-in">
             <ChartsSection logs={logs} />
           </div>
         ) : activeTab === 'goals' ? (
-          <div key="tab-goals" className="animate-fade-up">
+          <div key="tab-goals" className="animate-tab-in">
             <GoalsSection
               logs={logs}
               dailyGoal={stats.dailyGoal}
@@ -1302,11 +1174,11 @@ export const DashboardPage: React.FC = () => {
             />
           </div>
         ) : activeTab === 'achievements' ? (
-          <div key="tab-achievements" className="animate-fade-up">
+          <div key="tab-achievements" className="animate-tab-in">
             <AchievementsSection logs={logs} />
           </div>
         ) : activeTab === 'devices' ? (
-          <div key="tab-devices" className="animate-fade-up">
+          <div key="tab-devices" className="animate-tab-in">
             <DevicesSection
               companionUrl={companionSettings.url}
               onChangeCompanionUrl={(url) => updateCompanionSettings({ url })}
@@ -1322,7 +1194,7 @@ export const DashboardPage: React.FC = () => {
             />
           </div>
         ) : (
-          <div key="tab-activity" className="animate-fade-up">
+          <div key="tab-activity" className="animate-tab-in">
             <ActivityLogList
               logs={logs}
               onEdit={openEditLogModal}

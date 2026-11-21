@@ -117,8 +117,8 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
               onClick={() => setCategoryFilter('all')}
               className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
                 categoryFilter === 'all'
-                  ? 'bg-[#59171b] text-[#fff8f2]'
-                  : 'bg-[#fffaf6] text-[#5c3d40] hover:text-[#241113] border border-[#e7d1c3]'
+                  ? 'bg-rose-600 text-white'
+                  : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200'
               }`}
             >
               Semua
@@ -130,8 +130,8 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
                 onClick={() => setCategoryFilter(catKey)}
                 className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
                   categoryFilter === catKey
-                    ? 'bg-[#59171b] text-[#fff8f2]'
-                    : 'bg-[#fffaf6] text-[#5c3d40] hover:text-[#241113] border border-[#e7d1c3]'
+                    ? 'bg-rose-600 text-white'
+                    : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200'
                 }`}
               >
                 {shortLabel}
@@ -175,7 +175,7 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
                         />
                         {meta.label}
                       </span>
-                      <span className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-[#fff3e8] text-[#59171b] border border-[#f2c9ab]">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
                         <Clock className="w-2.5 h-2.5" />
                         {log.duration_minutes} mnt
                       </span>

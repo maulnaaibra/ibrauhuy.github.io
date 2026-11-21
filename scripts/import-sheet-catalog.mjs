@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const OUT_FILE = path.join(ROOT, 'src', 'data', 'immersionCatalog.json');
+const COVERS_DIR = path.join(ROOT, 'public', 'covers');
 
 const SHEET_ID = '1w42HEKEu2AzZg9K7PI0ma9ICmr2qYEKQ9IF4XxFSnQU';
 
@@ -126,15 +127,86 @@ function cleanText(str) {
   return (str || '').replace(/\s+/g, ' ').trim();
 }
 
-async function fetchTab(tab) {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${tab.gid}`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} fetching ${tab.section}`);
+function decodeHtmlEntities(str) {
+  return (str || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+}
+
+function extractHtmlRowsWithImages(html) {
+  const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+  const imgRegex = /<img[^>]+src="([^"]+)"/i;
+  const rows = [];
+
+  let trMatch;
+  while ((trMatch = trRegex.exec(html)) !== null) {
+    const trBody = trMatch[1];
+    const imgMatch = trBody.match(imgRegex);
+    if (!imgMatch) continue;
+
+    const cells = [];
+    let tdMatch;
+    tdRegex.lastIndex = 0;
+    while ((tdMatch = tdRegex.exec(trBody)) !== null) {
+      const text = cleanText(
+        decodeHtmlEntities(tdMatch[1].replace(/<[^>]+>/g, ' '))
+      );
+      cells.push(text);
+    }
+
+    rows.push({
+      imgUrl: decodeHtmlEntities(imgMatch[1]),
+      cells,
+    });
   }
-  const csvText = await res.text();
+
+  return rows;
+}
+
+function normalizeKey(str) {
+  return cleanText(str).toLowerCase();
+}
+
+function extFromContentType(ct) {
+  const lower = (ct || '').toLowerCase();
+  if (lower.includes('png')) return 'png';
+  if (lower.includes('webp')) return 'webp';
+  if (lower.includes('gif')) return 'gif';
+  return 'jpg';
+}
+
+async function fetchTab(tab) {
+  const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${tab.gid}`;
+  const htmlUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/htmlview/sheet?headers=true&gid=${tab.gid}`;
+
+  const [csvRes, htmlRes] = await Promise.all([fetch(csvUrl), fetch(htmlUrl)]);
+  if (!csvRes.ok) {
+    throw new Error(`HTTP ${csvRes.status} fetching CSV ${tab.section}`);
+  }
+  if (!htmlRes.ok) {
+    throw new Error(`HTTP ${htmlRes.status} fetching HTML ${tab.section}`);
+  }
+
+  const csvText = await csvRes.text();
+  const htmlText = await htmlRes.text();
+
   const matrix = parseCsv(csvText);
   if (matrix.length < 2) return [];
+
+  const htmlImageRows = extractHtmlRowsWithImages(htmlText);
+  const titleToImgMap = new Map();
+  for (const hr of htmlImageRows) {
+    for (const c of hr.cells) {
+      if (c && !titleToImgMap.has(normalizeKey(c))) {
+        titleToImgMap.set(normalizeKey(c), hr.imgUrl);
+      }
+    }
+  }
 
   const headers = matrix[0].map((h) => cleanText(h).toLowerCase());
   const idx = (names) => headers.findIndex((h) => names.includes(h));
@@ -161,6 +233,12 @@ async function fetchTab(tab) {
     const description = descIdx >= 0 ? cleanText(cols[descIdx]) : '';
     const exampleVideo = sampleIdx >= 0 ? cleanText(cols[sampleIdx]) : '';
 
+    const dataIndex = items.length;
+    const matchedUrl =
+      titleToImgMap.get(normalizeKey(title)) ??
+      htmlImageRows[dataIndex]?.imgUrl ??
+      null;
+
     items.push({
       id: `${tab.gid}-${r}`,
       section: tab.section,
@@ -172,9 +250,52 @@ async function fetchTab(tab) {
       description,
       exampleVideo: exampleVideo || undefined,
       suggestedMinutes: tab.suggestedMinutes,
+      _sourceImgUrl: matchedUrl,
     });
   }
   return items;
+}
+
+async function downloadCoversBatch(items, concurrency = 16) {
+  await fs.mkdir(COVERS_DIR, { recursive: true });
+  let cursor = 0;
+  let downloaded = 0;
+  let totalBytes = 0;
+  let failed = 0;
+
+  async function worker() {
+    while (cursor < items.length) {
+      const i = cursor++;
+      const item = items[i];
+      const imgUrl = item._sourceImgUrl;
+      delete item._sourceImgUrl;
+
+      if (!imgUrl) {
+        failed++;
+        continue;
+      }
+
+      try {
+        const res = await fetch(imgUrl);
+        if (!res.ok) {
+          failed++;
+          continue;
+        }
+        const ext = extFromContentType(res.headers.get('content-type'));
+        const filename = `${item.id}.${ext}`;
+        const buf = Buffer.from(await res.arrayBuffer());
+        await fs.writeFile(path.join(COVERS_DIR, filename), buf);
+        item.coverImage = `covers/${filename}`;
+        downloaded++;
+        totalBytes += buf.length;
+      } catch {
+        failed++;
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return { downloaded, failed, totalBytes };
 }
 
 async function main() {
@@ -184,9 +305,16 @@ async function main() {
     console.log(`${tab.section} (gid=${tab.gid}): ${items.length} items`);
     all.push(...items);
   }
+
+  const { downloaded, failed, totalBytes } = await downloadCoversBatch(all, 16);
+  const totalMb = (totalBytes / (1024 * 1024)).toFixed(2);
+  console.log(
+    `Downloaded covers: ${downloaded}/${all.length} (failed=${failed}, total=${totalMb} MB)`
+  );
+
   await fs.mkdir(path.dirname(OUT_FILE), { recursive: true });
   await fs.writeFile(OUT_FILE, JSON.stringify(all), 'utf8');
-  console.log(`Total catalog entries written: ${all.length} -> ${OUT_FILE}`);
+  console.log(`Catalog JSON updated: ${OUT_FILE}`);
 }
 
 main().catch((err) => {

@@ -1,17 +1,34 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronUp, KeyRound, Mail, Plus, User as UserIcon, X } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  ChevronUp,
+  KeyRound,
+  Mail,
+  Plus,
+  Server,
+  User as UserIcon,
+  X,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
   clearCustomGoogleClientId,
+  clearGoicAuthEndpoint,
   completeGoogleSignInToSupabase,
   decodeGoogleJwt,
+  getGoicAuthEndpoint,
   getGoogleClientId,
   getRememberedGoogleAccounts,
   hasCustomGoogleClientId,
   saveCustomGoogleClientId,
+  saveGoicAuthEndpoint,
   type RememberedGoogleAccount,
 } from '../lib/googleAuth';
-import { isGoogleProviderEnabled, isSupabaseConfigured, supabase } from '../lib/supabase';
+import {
+  isGoogleProviderEnabled,
+  isSupabaseConfigured,
+  supabase,
+} from '../lib/supabase';
 
 interface GoogleAccountsNamespace {
   accounts?: {
@@ -41,7 +58,9 @@ interface GoogleSignInButtonProps {
   disabled?: boolean;
 }
 
-const GoogleLogoSvg: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+const GoogleLogoSvg: React.FC<{ className?: string }> = ({
+  className = 'w-4 h-4',
+}) => (
   <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
     <path
       fill="#4285F4"
@@ -78,11 +97,12 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
 
-  const [showGsiSetup, setShowGsiSetup] = useState(false);
+  const [showAdvancedOidc, setShowAdvancedOidc] = useState(false);
   const [clientIdInput, setClientIdInput] = useState(() =>
     hasCustomGoogleClientId() ? getGoogleClientId() : ''
   );
   const [customGsiReady, setCustomGsiReady] = useState(hasCustomGoogleClientId);
+  const [goicUrlInput, setGoicUrlInput] = useState(getGoicAuthEndpoint);
   const gsiContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -133,6 +153,12 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
     if (!isSupabaseConfigured) {
       onRequireSupabaseSetup?.();
       toast.error('Hubungkan kredensial Supabase terlebih dahulu.');
+      return;
+    }
+
+    const goicEndpoint = getGoicAuthEndpoint();
+    if (goicEndpoint) {
+      window.location.href = goicEndpoint;
       return;
     }
 
@@ -205,13 +231,22 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
     toast.success('Google Client ID tersimpan! Tombol Google Sign-In native aktif.');
   };
 
+  const handleSaveGoicUrl = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!saveGoicAuthEndpoint(goicUrlInput)) {
+      toast.error('Masukkan URL server GOIC valid (misal: https://auth.domain.com/auth/o8/google).');
+      return;
+    }
+    toast.success('Endpoint GOIC tersimpan! Klik "Lanjutkan dengan Google" akan mengarah ke server GOIC.');
+  };
+
   return (
     <>
       <button
         type="button"
         onClick={handleMainClick}
         disabled={disabled || busy}
-        className="w-full py-2.5 px-4 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800 font-semibold text-sm flex items-center justify-center gap-2.5 transition cursor-pointer shadow-2xs disabled:opacity-60"
+        className="w-full py-2.5 px-4 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800 font-bold text-sm flex items-center justify-center gap-2.5 transition cursor-pointer shadow-2xs disabled:opacity-60"
       >
         <GoogleLogoSvg className="w-4 h-4 shrink-0" />
         {busy ? 'Menghubungkan Google...' : 'Lanjutkan dengan Google'}
@@ -228,7 +263,7 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
             role="dialog"
             aria-modal="true"
             aria-label="Masuk dengan Google"
-            className="w-full max-w-sm rounded-2xl bg-white border border-slate-200 p-6 shadow-2xl space-y-4 animate-scale-in text-left"
+            className="w-full max-w-sm rounded-2xl bg-white border border-slate-200 p-6 shadow-2xl space-y-4 animate-scale-in text-left max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2.5">
@@ -236,10 +271,10 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
                   <GoogleLogoSvg className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">
+                  <h3 className="text-base font-extrabold text-slate-900">
                     Masuk dengan Google
                   </h3>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] font-medium text-slate-500">
                     Pilih atau masukkan akun Gmail untuk sinkronisasi cloud
                   </p>
                 </div>
@@ -263,7 +298,7 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
                     setCustomGsiReady(false);
                     setClientIdInput('');
                   }}
-                  className="text-[11px] text-slate-500 hover:text-red-600 cursor-pointer"
+                  className="text-[11px] text-slate-500 hover:text-rose-600 cursor-pointer"
                 >
                   Hapus Google Client ID kustom
                 </button>
@@ -272,7 +307,7 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
 
             {remembered.length > 0 && (
               <div className="space-y-2">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                   Akun Google Tersimpan
                 </div>
                 <div className="space-y-1.5">
@@ -289,28 +324,28 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
                           acc.sub
                         )
                       }
-                      className="w-full p-2.5 rounded-xl bg-[#fffaf6] hover:bg-[#fff3e8] border border-[#e7d1c3] hover:border-[#59171b] flex items-center gap-3 text-left transition cursor-pointer disabled:opacity-60"
+                      className="w-full p-2.5 rounded-xl bg-slate-50 hover:bg-rose-50/70 border border-slate-200 hover:border-rose-200 flex items-center gap-3 text-left transition cursor-pointer disabled:opacity-60"
                     >
                       {acc.picture ? (
                         <img
                           src={acc.picture}
                           alt={acc.name}
-                          className="w-8 h-8 rounded-full object-cover border border-[#e7d1c3] shrink-0"
+                          className="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0"
                         />
                       ) : (
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#59171b] to-[#83262c] text-[#fed7b8] font-extrabold text-xs flex items-center justify-center shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-rose-500 to-rose-700 text-white font-extrabold text-xs flex items-center justify-center shrink-0">
                           {acc.name[0]?.toUpperCase() || 'G'}
                         </div>
                       )}
                       <div className="min-w-0 flex-1">
-                        <div className="text-sm font-bold text-[#241113] truncate">
+                        <div className="text-sm font-bold text-slate-900 truncate">
                           {acc.name}
                         </div>
-                        <div className="text-xs font-medium text-[#5c3d40] truncate">
+                        <div className="text-xs font-medium text-slate-500 truncate">
                           {acc.email}
                         </div>
                       </div>
-                      <Check className="w-4 h-4 text-[#59171b] shrink-0" />
+                      <Check className="w-4 h-4 text-rose-600 shrink-0" />
                     </button>
                   ))}
                 </div>
@@ -319,9 +354,9 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowAddForm(true)}
-                    className="w-full py-2 px-3 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="w-full py-2 px-3 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <Plus className="w-3.5 h-3.5 text-red-600" />
+                    <Plus className="w-3.5 h-3.5 text-rose-600" />
                     Gunakan Akun Google Lain
                   </button>
                 )}
@@ -338,7 +373,7 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
                     placeholder="nama@gmail.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white"
                   />
                 </div>
                 <div className="relative">
@@ -348,13 +383,13 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
                     placeholder="Nama Tampilan (opsional)"
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={busy}
-                  className="btn-crimson w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                  className="btn-crimson w-full py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                 >
                   <GoogleLogoSvg className="w-4 h-4 bg-white rounded-full p-0.5" />
                   {busy ? 'Memproses...' : 'Masuk dengan Akun Google Ini'}
@@ -365,37 +400,81 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
             <div className="pt-2 border-t border-slate-100">
               <button
                 type="button"
-                onClick={() => setShowGsiSetup(!showGsiSetup)}
-                className="text-[11px] font-medium text-slate-500 hover:text-slate-800 inline-flex items-center gap-1 cursor-pointer"
+                onClick={() => setShowAdvancedOidc(!showAdvancedOidc)}
+                className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 inline-flex items-center gap-1 cursor-pointer"
               >
                 <KeyRound className="w-3 h-3" />
-                Hubungkan Google Cloud Client ID (opsional)
-                {showGsiSetup ? (
+                Hubungkan GOIC Server / Google Client ID (opsional)
+                {showAdvancedOidc ? (
                   <ChevronUp className="w-3 h-3" />
                 ) : (
                   <ChevronDown className="w-3 h-3" />
                 )}
               </button>
-              {showGsiSetup && (
-                <form
-                  onSubmit={handleSaveClientId}
-                  className="mt-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2"
-                >
-                  <input
-                    type="text"
-                    required
-                    placeholder="xxxx.apps.googleusercontent.com"
-                    value={clientIdInput}
-                    onChange={(e) => setClientIdInput(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-[11px] font-mono text-slate-900 focus:outline-none focus:border-red-500"
-                  />
-                  <button
-                    type="submit"
-                    className="w-full py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-semibold cursor-pointer"
+              {showAdvancedOidc && (
+                <div className="mt-2 space-y-2">
+                  <form
+                    onSubmit={handleSaveClientId}
+                    className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2"
                   >
-                    Aktifkan Popup Google GSI
-                  </button>
-                </form>
+                    <div className="text-[10px] font-bold text-slate-500 uppercase">
+                      Google Identity Client ID
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      placeholder="xxxx.apps.googleusercontent.com"
+                      value={clientIdInput}
+                      onChange={(e) => setClientIdInput(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-[11px] font-mono text-slate-900 focus:outline-none focus:border-rose-500"
+                    />
+                    <button
+                      type="submit"
+                      className="w-full py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-bold cursor-pointer"
+                    >
+                      Aktifkan Popup Google GSI
+                    </button>
+                  </form>
+
+                  <form
+                    onSubmit={handleSaveGoicUrl}
+                    className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2"
+                  >
+                    <div className="text-[10px] font-bold text-slate-500 uppercase inline-flex items-center gap-1">
+                      <Server className="w-3 h-3" />
+                      Endpoint Server GOIC (`adhocore/goic`)
+                    </div>
+                    <input
+                      type="url"
+                      required
+                      placeholder="https://auth.domain.com/auth/o8/google"
+                      value={goicUrlInput}
+                      onChange={(e) => setGoicUrlInput(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-[11px] font-mono text-slate-900 focus:outline-none focus:border-rose-500"
+                    />
+                    <div className="flex gap-1.5">
+                      <button
+                        type="submit"
+                        className="flex-1 py-1.5 rounded-lg bg-rose-600 text-white text-[11px] font-bold cursor-pointer"
+                      >
+                        Simpan Endpoint GOIC
+                      </button>
+                      {getGoicAuthEndpoint() && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearGoicAuthEndpoint();
+                            setGoicUrlInput('');
+                            toast.success('Endpoint GOIC dihapus.');
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-[11px] font-semibold text-slate-600 cursor-pointer"
+                        >
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                </div>
               )}
             </div>
           </div>

@@ -138,8 +138,8 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
             onClick={() => setRarityFilter(item.id)}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
               rarityFilter === item.id
-                ? 'bg-[#59171b] text-[#fff8f2]'
-                : 'bg-white text-[#5c3d40] hover:text-[#241113] border border-[#e7d1c3]'
+                ? 'bg-rose-600 text-white'
+                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
             }`}
           >
             {item.label}
@@ -189,14 +189,14 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
                   <span>
                     {ach.currentLabel} / {ach.targetLabel}
                   </span>
-                  <span className="text-[#59171b] font-bold">
+                  <span className="text-rose-600 font-bold">
                     {ach.progressPct}%
                   </span>
                 </div>
-                <div className="h-1.5 rounded-full bg-[#f7e9df] overflow-hidden">
+                <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
                   <div
                     className={`h-full rounded-full animate-bar ${
-                      ach.unlocked ? 'bg-emerald-600' : 'bg-[#59171b]'
+                      ach.unlocked ? 'bg-emerald-600' : 'bg-rose-500'
                     }`}
                     style={{ width: `${ach.progressPct}%` }}
                   />

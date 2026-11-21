@@ -64,22 +64,22 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
 
   return (
     <div className="space-y-6">
-      <div className="card-pro p-5 border-t-2 border-t-[#59171b]">
+      <div className="card-pro p-5 border-t-2 border-t-rose-600">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <Target className="w-4 h-4 text-[#59171b]" />
-              <span className="text-xs font-bold uppercase tracking-wider text-[#5c3d40]">
+              <Target className="w-4 h-4 text-rose-600" />
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 Target Harian Aktif
               </span>
             </div>
-            <div className="text-2xl font-extrabold font-mono text-[#241113] tabular-nums">
+            <div className="text-2xl font-extrabold font-mono text-slate-900 tabular-nums">
               {todayMinutes}{' '}
-              <span className="text-sm font-semibold text-[#5c3d40]">
+              <span className="text-sm font-semibold text-slate-500">
                 / {dailyGoal} menit ({dailyPct}%)
               </span>
             </div>
-            <p className="text-xs font-medium text-[#5c3d40]">
+            <p className="text-xs font-medium text-slate-500">
               {dailyRemaining === 0
                 ? 'Target harian tercapai! Pertahankan konsistensimu.'
                 : `Butuh ${dailyRemaining} menit lagi hari ini untuk mencapai target.`}
@@ -88,15 +88,15 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
 
           <Link
             to="/settings"
-            className="px-4 py-2 rounded-xl bg-[#fffaf6] border border-[#e7d1c3] hover:border-[#59171b] text-xs font-bold text-[#59171b] transition self-start sm:self-center"
+            className="px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:border-rose-300 text-xs font-bold text-rose-600 transition self-start sm:self-center"
           >
             Ubah Target Harian
           </Link>
         </div>
 
-        <div className="h-2 rounded-full bg-[#f7e9df] overflow-hidden mt-4">
+        <div className="h-2 rounded-full bg-rose-100 overflow-hidden mt-4">
           <div
-            className="h-full bg-gradient-to-r from-[#59171b] to-[#b54842] rounded-full animate-bar"
+            className="h-full bg-gradient-to-r from-rose-600 to-rose-400 rounded-full animate-bar"
             style={{ width: `${dailyPct}%` }}
           />
         </div>

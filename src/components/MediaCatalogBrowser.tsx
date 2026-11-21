@@ -34,6 +34,7 @@ export interface SheetCatalogItem {
   difficultyExplanation: string;
   description: string;
   exampleVideo?: string;
+  coverImage?: string;
   suggestedMinutes: number;
 }
 
@@ -64,17 +65,17 @@ const DIFFICULTY_FILTERS: Array<{ id: DifficultyTier; label: string }> = [
 function getRankingBadgeStyle(tier: string): string {
   switch (tier) {
     case 'Very Easy':
-      return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
     case 'Easy':
-      return 'bg-[#fff3e8] text-[#59171b] border-[#f2c3a4]';
+      return 'bg-sky-50 text-sky-700 border-sky-200';
     case 'Medium':
-      return 'bg-amber-50 text-amber-800 border-amber-200';
+      return 'bg-amber-50 text-amber-700 border-amber-200';
     case 'Hard':
-      return 'bg-rose-50 text-[#59171b] border-rose-200';
+      return 'bg-rose-50 text-rose-700 border-rose-200';
     case 'Very Hard':
-      return 'bg-[#59171b] text-[#fed7b8] border-[#59171b]';
+      return 'bg-rose-700 text-white border-rose-700';
     default:
-      return 'bg-[#f8efe8] text-[#5c3d40] border-[#e7d1c3]';
+      return 'bg-slate-100 text-slate-600 border-slate-200';
   }
 }
 
@@ -143,7 +144,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
       <div className="card-pro p-4 sm:p-5 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 text-[#7c5659] absolute left-3.5 top-3" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
             <input
               type="text"
               value={searchQuery}
@@ -152,7 +153,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                 setVisibleLimit(pageSize);
               }}
               placeholder="Cari judul novel, anime, manga, VN, atau kata kunci..."
-              className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-[#fffaf6] border border-[#e7d1c3] text-sm font-medium text-[#241113] placeholder:text-[#8e6d70] focus:outline-none focus:border-[#59171b] focus:bg-white transition"
+              className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-rose-500 focus:bg-white transition"
             />
           </div>
 
@@ -164,8 +165,8 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                 onClick={() => handleSelectTier(tier.id)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
                   tierFilter === tier.id
-                    ? 'bg-[#59171b] text-[#fff8f2] border-[#59171b] shadow-xs'
-                    : 'bg-white text-[#5c3d40] border-[#e7d1c3] hover:border-[#59171b]'
+                    ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-rose-300 hover:text-slate-900'
                 }`}
               >
                 {tier.label}
@@ -184,18 +185,18 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                 key={sec}
                 type="button"
                 onClick={() => handleSelectSection(sec)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap border transition cursor-pointer inline-flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap border transition-all cursor-pointer inline-flex items-center gap-1.5 ${
                   active
-                    ? 'bg-gradient-to-r from-[#59171b] to-[#83262c] text-[#fff8f2] border-[#59171b] shadow-xs'
-                    : 'bg-[#fffaf6] text-[#5c3d40] border-[#ead6c9] hover:border-[#a9524c] hover:text-[#241113]'
+                    ? 'bg-gradient-to-r from-rose-600 to-rose-700 text-white border-rose-600 shadow-xs'
+                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-rose-300 hover:text-slate-900'
                 }`}
               >
                 <span>{sec}</span>
                 <span
                   className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono ${
                     active
-                      ? 'bg-[#fed7b8]/25 text-[#fed7b8]'
-                      : 'bg-[#f4e4d9] text-[#59171b]'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-slate-200/80 text-slate-700'
                   }`}
                 >
                   {count}
@@ -207,7 +208,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
       </div>
 
       {/* Results Header */}
-      <div className="flex items-center justify-between text-xs font-semibold text-[#5c3d40] app-canvas-subtitle px-1">
+      <div className="flex items-center justify-between text-xs font-semibold text-slate-500 app-canvas-subtitle px-1">
         <span>
           Menampilkan {visibleItems.length} dari {filteredItems.length} judul
           {section !== 'Semua' ? ` di ${section}` : ''}
@@ -218,8 +219,8 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
       {/* Grid */}
       {visibleItems.length === 0 ? (
         <div className="card-pro p-10 text-center space-y-2">
-          <BookOpen className="w-6 h-6 text-[#59171b] mx-auto opacity-60" />
-          <p className="text-sm font-bold text-[#241113]">
+          <BookOpen className="w-6 h-6 text-rose-600 mx-auto opacity-70" />
+          <p className="text-sm font-bold text-slate-900">
             Tidak ada media yang cocok dengan pencarianmu.
           </p>
           <button
@@ -229,14 +230,17 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
               setTierFilter('all');
               setSearchQuery('');
             }}
-            className="text-xs font-bold text-[#59171b] underline cursor-pointer"
+            className="text-xs font-bold text-rose-600 underline cursor-pointer"
           >
             Reset Semua Filter
           </button>
         </div>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {visibleItems.map((item) => {
+        <div
+          key={`${section}-${tierFilter}`}
+          className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-tab-in"
+        >
+          {visibleItems.map((item, idx) => {
             const meta = getCategoryMeta(item.category);
             const blurb =
               item.difficultyExplanation ||
@@ -247,13 +251,15 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
             return (
               <div
                 key={item.id}
-                className="card-pro-interactive p-4 flex flex-col justify-between gap-3.5"
+                style={{ animationDelay: `${Math.min(idx % pageSize, 8) * 35}ms` }}
+                className="card-pro-interactive p-4 flex flex-col justify-between gap-3.5 group animate-fade-up"
               >
                 <div className="space-y-3">
                   <div className="flex items-start gap-3.5">
                     <MediaCover
                       title={item.title}
                       category={item.category}
+                      coverImage={item.coverImage}
                       className="w-16 h-22 rounded-xl"
                     />
                     <div className="min-w-0 flex-1 space-y-1.5">
@@ -265,20 +271,20 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                         >
                           {item.ranking}
                         </span>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#7c5659]">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                           {item.section}
                         </span>
                       </div>
-                      <h3 className="font-bold text-sm text-[#241113] leading-snug line-clamp-2">
+                      <h3 className="font-bold text-sm text-slate-900 leading-snug line-clamp-2 group-hover:text-rose-700 transition-colors">
                         {item.title}
                       </h3>
-                      <div className="text-[11px] font-mono text-[#5c3d40]">
+                      <div className="text-[11px] font-mono text-slate-500">
                         {meta.shortLabel} • ~{item.suggestedMinutes} mnt/sesi
                       </div>
                     </div>
                   </div>
 
-                  <p className="text-xs text-[#5c3d40] leading-relaxed line-clamp-3">
+                  <p className="text-xs text-slate-600 leading-relaxed line-clamp-3">
                     {blurb}
                   </p>
                 </div>
@@ -299,12 +305,14 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                     Mulai Immersion
                   </button>
 
-                  {(item.description || item.difficultyExplanation || item.exampleVideo) && (
+                  {(item.description ||
+                    item.difficultyExplanation ||
+                    item.exampleVideo) && (
                     <button
                       type="button"
                       onClick={() => setSelectedDetail(item)}
                       title="Lihat detail & sinopsis"
-                      className="p-2 rounded-xl bg-[#fffaf6] hover:bg-[#fed7b8]/40 border border-[#e7d1c3] text-[#59171b] transition cursor-pointer"
+                      className="p-2 rounded-xl bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-300 text-slate-600 hover:text-rose-600 transition cursor-pointer"
                     >
                       <Info className="w-4 h-4" />
                     </button>
@@ -321,7 +329,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
           <button
             type="button"
             onClick={() => setVisibleLimit((prev) => prev + pageSize)}
-            className="px-6 py-2.5 rounded-xl bg-white hover:bg-[#fff3e8] border border-[#dfc3b1] text-[#59171b] text-xs font-bold shadow-xs transition cursor-pointer"
+            className="px-6 py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-300 text-rose-600 text-xs font-bold shadow-xs transition cursor-pointer"
           >
             Muat {Math.min(pageSize, filteredItems.length - visibleLimit)} Judul
             Lainnya ({filteredItems.length - visibleLimit} tersisa)
@@ -332,7 +340,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
       {/* Detail Modal */}
       {selectedDetail && (
         <div
-          className="fixed inset-0 z-50 bg-[#241113]/55 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+          className="fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
           onClick={(e) => {
             if (e.target === e.currentTarget) setSelectedDetail(null);
           }}
@@ -340,13 +348,14 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
           <div
             role="dialog"
             aria-modal="true"
-            className="w-full max-w-lg rounded-2xl bg-[#fffdfb] border border-[#e7d1c3] p-6 shadow-2xl space-y-4 animate-scale-in max-h-[88vh] overflow-y-auto"
+            className="w-full max-w-lg rounded-2xl bg-white border border-slate-200 p-6 shadow-2xl space-y-4 animate-scale-in max-h-[88vh] overflow-y-auto"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3.5">
                 <MediaCover
                   title={selectedDetail.title}
                   category={selectedDetail.category}
+                  coverImage={selectedDetail.coverImage}
                   className="w-16 h-22 rounded-xl"
                 />
                 <div className="space-y-1">
@@ -358,11 +367,11 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                     >
                       {selectedDetail.ranking}
                     </span>
-                    <span className="text-xs font-bold text-[#7c5659]">
+                    <span className="text-xs font-bold text-slate-500">
                       {selectedDetail.section}
                     </span>
                   </div>
-                  <h3 className="text-base font-extrabold text-[#241113]">
+                  <h3 className="text-base font-extrabold text-slate-900">
                     {selectedDetail.title}
                   </h3>
                 </div>
@@ -370,18 +379,18 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
               <button
                 type="button"
                 onClick={() => setSelectedDetail(null)}
-                className="p-1.5 rounded-lg text-[#7c5659] hover:text-[#241113] hover:bg-[#f9ebe0] cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {selectedDetail.difficultyExplanation && (
-              <div className="p-3.5 rounded-xl bg-[#fff5ed] border border-[#f2d0ba] space-y-1">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-[#59171b]">
+              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 space-y-1">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-rose-700">
                   Catatan Tingkat Kesulitan
                 </div>
-                <p className="text-xs text-[#241113] leading-relaxed">
+                <p className="text-xs text-slate-800 leading-relaxed">
                   {selectedDetail.difficultyExplanation}
                 </p>
               </div>
@@ -389,31 +398,31 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
 
             {selectedDetail.description && (
               <div className="space-y-1">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-[#7c5659]">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   Sinopsis & Deskripsi
                 </div>
-                <p className="text-xs text-[#5c3d40] leading-relaxed">
+                <p className="text-xs text-slate-600 leading-relaxed">
                   {selectedDetail.description}
                 </p>
               </div>
             )}
 
             {selectedDetail.exampleVideo && (
-              <div className="p-3 rounded-xl bg-[#faf4ef] border border-[#e7d1c3] space-y-1">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-[#7c5659]">
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   Contoh Konten / Video
                 </div>
-                <p className="text-xs font-semibold text-[#241113]">
+                <p className="text-xs font-semibold text-slate-800">
                   {selectedDetail.exampleVideo}
                 </p>
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#efe0d5]">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setSelectedDetail(null)}
-                className="px-4 py-2 rounded-xl bg-white border border-[#e7d1c3] text-xs font-bold text-[#5c3d40] hover:text-[#241113] cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:text-slate-900 cursor-pointer"
               >
                 Tutup
               </button>

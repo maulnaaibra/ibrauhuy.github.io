@@ -5,8 +5,42 @@ export const DEFAULT_GOOGLE_CLIENT_ID =
   '215759558209-l0kg3386oaplun7r7qhpf6jv2rbum5st.apps.googleusercontent.com';
 
 const CUSTOM_GOOGLE_CLIENT_KEY = 'immersiontrack_google_client_id_v1';
+const GOIC_ENDPOINT_KEY = 'immersiontrack_goic_endpoint_v1';
 const REMEMBERED_ACCOUNTS_KEY = 'immersiontrack_google_accounts_v1';
 const LEGACY_GSI_INFOS_KEY = 'infos';
+
+export function getGoicAuthEndpoint(): string {
+  const envGoic = (
+    import.meta.env.VITE_GOIC_GOOGLE_URL as string | undefined
+  )?.trim();
+  if (envGoic) return envGoic;
+  try {
+    return localStorage.getItem(GOIC_ENDPOINT_KEY)?.trim() ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function saveGoicAuthEndpoint(url: string): boolean {
+  const clean = url.trim().replace(/\/+$/, '');
+  if (!clean.startsWith('https://') && !clean.startsWith('http://')) {
+    return false;
+  }
+  try {
+    localStorage.setItem(GOIC_ENDPOINT_KEY, clean);
+  } catch {
+    // ignore storage errors
+  }
+  return true;
+}
+
+export function clearGoicAuthEndpoint(): void {
+  try {
+    localStorage.removeItem(GOIC_ENDPOINT_KEY);
+  } catch {
+    // ignore storage errors
+  }
+}
 
 export interface GoogleProfilePayload {
   email: string;

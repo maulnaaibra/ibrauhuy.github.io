@@ -15,17 +15,24 @@ export function App() {
           position="bottom-right"
           toastOptions={{
             style: {
-              background: '#fffdfb',
-              color: '#241113',
-              border: '1px solid #ead6c9',
+              background: '#ffffff',
+              color: '#0f172a',
+              border: '1px solid #e2e8f0',
               borderRadius: '12px',
               fontWeight: 600,
-              boxShadow: '0 10px 25px -5px rgba(89, 23, 27, 0.14)',
+              boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.1)',
             },
           }}
         />
         <Routes>
-          <Route path="/" element={<LandingPage />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <Navigate to="/dashboard" replace />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/login" element={<AuthPage />} />
           <Route path="/auth/callback" element={<AuthPage />} />
           <Route
@@ -37,6 +44,14 @@ export function App() {
             }
           />
           <Route
+            path="/showcase"
+            element={
+              <ProtectedRoute>
+                <LandingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/settings"
             element={
               <ProtectedRoute>
@@ -44,7 +59,7 @@ export function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

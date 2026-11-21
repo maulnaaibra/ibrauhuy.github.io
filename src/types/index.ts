@@ -97,15 +97,15 @@ export const PRIMARY_CATEGORIES: PrimaryMediaCategory[] = [
   'study',
 ];
 
-const UNIFIED_BADGE = 'bg-[#fffaf6] text-[#5c3d40] border-[#e7d1c3]';
-const UNIFIED_GRADIENT = 'from-[#fed7b8]/30 to-transparent';
+const UNIFIED_BADGE = 'bg-slate-50 text-slate-600 border-slate-200';
+const UNIFIED_GRADIENT = 'from-rose-100/50 to-transparent';
 
 export const CATEGORY_META: Record<ImmersionCategory, CategoryMeta> = {
   anime: {
     label: 'Anime',
     shortLabel: 'Anime',
     track: 'listening',
-    color: '#59171b',
+    color: '#e11d48',
     badgeClass: UNIFIED_BADGE,
     gradientClass: UNIFIED_GRADIENT,
     xpPerHour: 135,

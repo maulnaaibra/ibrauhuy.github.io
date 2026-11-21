@@ -155,8 +155,8 @@ export const LogModal: React.FC<LogModalProps> = ({
                     onClick={() => setCategory(cat)}
                     className={`px-2.5 py-2 rounded-xl text-xs font-semibold border flex items-center gap-2 transition cursor-pointer text-left ${
                       active
-                        ? 'bg-[#fff3e8] border-[#59171b] text-[#59171b] font-bold'
-                        : 'bg-[#fffaf6] border-[#e7d1c3] text-[#5c3d40] hover:text-[#241113] hover:border-[#b3746d]'
+                        ? 'bg-rose-50 border-rose-500 text-rose-700 font-bold'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
                     }`}
                   >
                     <span
@@ -183,8 +183,8 @@ export const LogModal: React.FC<LogModalProps> = ({
                     onClick={() => setDuration(preset)}
                     className={`px-2 py-0.5 rounded-md text-[11px] font-bold transition cursor-pointer ${
                       duration === preset
-                        ? 'bg-[#59171b] text-[#fff8f2]'
-                        : 'bg-[#fffaf6] text-[#5c3d40] hover:text-[#241113] border border-[#e7d1c3]'
+                        ? 'bg-rose-600 text-white'
+                        : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200'
                     }`}
                   >
                     {preset}m

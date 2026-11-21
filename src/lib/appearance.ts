@@ -1,9 +1,9 @@
 export type BackgroundPresetId =
-  | 'burgundy-cream'
-  | 'burgundy-velvet'
-  | 'ivory-clean'
-  | 'rose-dusk'
-  | 'wine-night'
+  | 'porcelain-clean'
+  | 'sakura-mist'
+  | 'sky-breeze'
+  | 'warm-cream'
+  | 'midnight-slate'
   | 'custom';
 
 export type CustomOverlayStrength = 'light' | 'medium' | 'strong';
@@ -22,50 +22,48 @@ export interface BackgroundPresetMeta {
   isDarkCanvas: boolean;
 }
 
-const APPEARANCE_STORAGE_KEY = 'immersiontrack_appearance_v1';
+const APPEARANCE_STORAGE_KEY = 'immersiontrack_appearance_v2';
 
 export const BACKGROUND_PRESETS: BackgroundPresetMeta[] = [
   {
-    id: 'burgundy-cream',
-    name: 'Burgundy & Peach Cream',
-    description: 'Gradasi lembut peach #fed7b8 berpadu aksen maroon #59171b',
-    swatchStyle:
-      'linear-gradient(135deg, #fed7b8 0%, #fff4eb 55%, #f5d0c5 100%)',
+    id: 'porcelain-clean',
+    name: 'Putih Bersih Modern',
+    description: 'Latar putih bersih & abu netral dengan aksen crimson cerah',
+    swatchStyle: 'linear-gradient(135deg, #ffffff 0%, #f1f5f9 60%, #ffe4e6 100%)',
     isDarkCanvas: false,
   },
   {
-    id: 'burgundy-velvet',
-    name: 'Gradasi Wine Velvet',
-    description: 'Gradasi penuh dari peach terang #fed7b8 ke maroon #59171b',
-    swatchStyle:
-      'linear-gradient(160deg, #fed7b8 0%, #b06c64 48%, #59171b 100%)',
-    isDarkCanvas: true,
-  },
-  {
-    id: 'ivory-clean',
-    name: 'Putih Gading Bersih',
-    description: 'Latar bersih terang dengan sentuhan hangat minimal',
-    swatchStyle: 'linear-gradient(135deg, #ffffff 0%, #fdf5ee 100%)',
+    id: 'sakura-mist',
+    name: 'Sakura & Putih Lembut',
+    description: 'Gradasi tipis merah muda sakura ke putih yang sejuk di mata',
+    swatchStyle: 'linear-gradient(135deg, #fff1f2 0%, #ffffff 55%, #fce7f3 100%)',
     isDarkCanvas: false,
   },
   {
-    id: 'rose-dusk',
-    name: 'Peach Senja Hangat',
-    description: 'Nuansa aprikot & terracotta lembut yang nyaman di mata',
-    swatchStyle: 'linear-gradient(135deg, #fed7b8 0%, #f2baa8 52%, #e69e8e 100%)',
+    id: 'sky-breeze',
+    name: 'Biru Langit Segar',
+    description: 'Gradasi biru langit muda & putih bersih yang menenangkan',
+    swatchStyle: 'linear-gradient(135deg, #e0f2fe 0%, #ffffff 55%, #eff6ff 100%)',
     isDarkCanvas: false,
   },
   {
-    id: 'wine-night',
-    name: 'Burgundy Malam',
-    description: 'Latar merah marun tua #59171b yang tenang untuk sesi malam',
-    swatchStyle: 'linear-gradient(145deg, #2b090c 0%, #59171b 60%, #7d252a 100%)',
+    id: 'warm-cream',
+    name: 'Krem Hangat & Coral',
+    description: 'Latar putih gading hangat yang lembut untuk membaca lama',
+    swatchStyle: 'linear-gradient(135deg, #fff7ed 0%, #ffffff 58%, #fef2f2 100%)',
+    isDarkCanvas: false,
+  },
+  {
+    id: 'midnight-slate',
+    name: 'Gelap Elegan (Midnight)',
+    description: 'Latar slate gelap modern yang nyaman untuk sesi belajar malam',
+    swatchStyle: 'linear-gradient(145deg, #0f172a 0%, #1e293b 65%, #334155 100%)',
     isDarkCanvas: true,
   },
 ];
 
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
-  preset: 'burgundy-cream',
+  preset: 'porcelain-clean',
   customImageUrl: '',
   customOverlayStrength: 'medium',
 };
@@ -76,11 +74,11 @@ export function loadAppearanceSettings(): AppearanceSettings {
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<AppearanceSettings>;
       const validPresets: BackgroundPresetId[] = [
-        'burgundy-cream',
-        'burgundy-velvet',
-        'ivory-clean',
-        'rose-dusk',
-        'wine-night',
+        'porcelain-clean',
+        'sakura-mist',
+        'sky-breeze',
+        'warm-cream',
+        'midnight-slate',
         'custom',
       ];
       const preset = validPresets.includes(parsed.preset as BackgroundPresetId)
@@ -129,10 +127,10 @@ export function applyAppearanceToDocument(settings: AppearanceSettings): void {
 
   const overlayAlpha =
     settings.customOverlayStrength === 'light'
-      ? '0.28'
+      ? '0.22'
       : settings.customOverlayStrength === 'strong'
-        ? '0.72'
-        : '0.50';
+        ? '0.68'
+        : '0.45';
   root.style.setProperty('--app-custom-overlay', overlayAlpha);
 }
 
