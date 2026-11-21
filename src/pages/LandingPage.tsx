@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -22,7 +22,6 @@ import {
 import toast from 'react-hot-toast';
 import {
   getSupabaseConfig,
-  isGoogleProviderEnabled,
   isSupabaseConfigured,
   saveRuntimeSupabaseConfig,
   supabase,
@@ -36,13 +35,13 @@ import {
   type CatalogLevelFilter,
 } from '../lib/publicShowcase';
 import { getCategoryMeta, type ImmersionCategory } from '../types';
+import { GoogleSignInButton } from '../components/GoogleSignInButton';
 import { MediaCover } from '../components/MediaCover';
 import { useAuth } from '../context/AuthContext';
 
 export const LandingPage: React.FC = () => {
   const { user, isDemoMode, enterDemoMode, updateDemoProfile } = useAuth();
   const navigate = useNavigate();
-  const emailInputRef = useRef<HTMLInputElement | null>(null);
 
   const isCloudLoggedIn = Boolean(user && !isDemoMode);
 
@@ -80,19 +79,17 @@ export const LandingPage: React.FC = () => {
       year: 'numeric',
     }).format(targetDate);
 
-    const projectedXp = target.hours * 145;
-    const projectedLevel = Math.floor(Math.sqrt(projectedXp / 100)) + 1;
     const animeEpisodes = Math.round((target.hours * 0.45 * 60) / 24);
     const mangaVolumes = Math.round(target.hours * 0.35 * 1.4);
     const estimatedCards = Math.round(target.hours * 4.5);
+    const weeklyHours = ((calcMinutes * 7) / 60).toFixed(1);
 
     return {
       target,
       daysNeeded,
       monthsNeeded,
       etaLabel,
-      projectedXp,
-      projectedLevel,
+      weeklyHours,
       animeEpisodes,
       mangaVolumes,
       estimatedCards,
@@ -156,35 +153,6 @@ export const LandingPage: React.FC = () => {
       toast.error('URL atau Anon Key tidak valid');
     }
     setTestingSb(false);
-  };
-
-  const handleGoogleLogin = async () => {
-    if (!sbReady && !isSupabaseConfigured) {
-      setShowSupabaseSetup(true);
-      toast.error('Hubungkan kredensial Supabase terlebih dahulu di bawah.');
-      return;
-    }
-    setAuthLoading(true);
-    const enabled = await isGoogleProviderEnabled();
-    if (!enabled) {
-      toast.error(
-        'Login Google belum diaktifkan di server Supabase. Silakan daftar/masuk instan menggunakan Email & Password di atas!'
-      );
-      setAuthLoading(false);
-      emailInputRef.current?.focus();
-      return;
-    }
-
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}auth/callback`,
-      },
-    });
-    if (error) {
-      toast.error(error.message);
-      setAuthLoading(false);
-    }
   };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
@@ -370,7 +338,7 @@ export const LandingPage: React.FC = () => {
           <div className="flex flex-wrap items-center justify-center gap-2 pt-3 text-xs text-slate-600 animate-fade-up delay-2">
             {[
               '9 Kategori Media',
-              'Analitik & XP Otomatis',
+              'Analitik & Tahap JLPT',
               'Desktop Tracker + AnkiConnect',
               'Sinkronisasi Cloud Supabase',
             ].map((pill) => (
@@ -410,21 +378,21 @@ export const LandingPage: React.FC = () => {
                 <div className="card-pro p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                      Level & Progres
+                      Tahap Immersion
                     </span>
                     <span className="text-xs font-mono font-semibold text-red-600">
-                      6,420 XP
+                      34.3 / 150 Jam
                     </span>
                   </div>
-                  <div className="text-2xl font-bold font-mono text-slate-900">
-                    Level 14
+                  <div className="text-2xl font-bold text-slate-900">
+                    Tahap N5 · Dasar
                   </div>
                   <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                    <div className="h-full w-3/4 bg-gradient-to-r from-red-600 to-rose-500 rounded-full animate-bar" />
+                    <div className="h-full w-1/4 bg-gradient-to-r from-red-600 to-rose-500 rounded-full animate-bar" />
                   </div>
                   <div className="flex justify-between text-[11px] text-slate-500 font-mono">
-                    <span>Listening Lv.11</span>
-                    <span>Reading Lv.9</span>
+                    <span>Listening 19.8 jam</span>
+                    <span>Reading 14.5 jam</span>
                   </div>
                 </div>
 
@@ -463,19 +431,19 @@ export const LandingPage: React.FC = () => {
                     title: 'Sousou no Frieren',
                     category: 'anime' as const,
                     label: 'Anime',
-                    stat: '8.5 jam • 1,180 XP',
+                    stat: '8.5 jam • 21 episode',
                   },
                   {
                     title: 'Steins;Gate',
                     category: 'visual_novel' as const,
                     label: 'Visual Novel',
-                    stat: '6.2 jam • 1,120 XP',
+                    stat: '6.2 jam • 9 sesi',
                   },
                   {
                     title: 'Yotsuba&! Vol. 4',
                     category: 'manga' as const,
                     label: 'Manga',
-                    stat: '4.1 jam • 690 XP',
+                    stat: '4.1 jam • 82 kartu',
                   },
                 ].map((card) => (
                   <div
@@ -625,10 +593,10 @@ export const LandingPage: React.FC = () => {
                 </div>
                 <div className="px-3 py-1.5 rounded-xl bg-white border border-red-200 text-right shrink-0">
                   <div className="text-[10px] font-semibold uppercase text-slate-500">
-                    Proyeksi RPG
+                    Beban Mingguan
                   </div>
                   <div className="text-sm font-mono font-bold text-red-600">
-                    Lv.{calculatorResult.projectedLevel}
+                    {calculatorResult.weeklyHours} jam/mgg
                   </div>
                 </div>
               </div>
@@ -734,7 +702,7 @@ export const LandingPage: React.FC = () => {
                           {item.title}
                         </h3>
                         <div className="text-[11px] font-mono text-slate-500">
-                          {meta.shortLabel} • {meta.xpPerHour} XP/jam
+                          {meta.shortLabel} • ~{item.suggestedMinutes} mnt/sesi
                         </div>
                       </div>
                     </div>
@@ -795,8 +763,8 @@ export const LandingPage: React.FC = () => {
               },
               {
                 icon: Award,
-                title: 'Milestone & Achievement',
-                desc: 'Level Overall, Listening, Reading, heatmap tahunan, dan pencapaian hingga ribuan jam.',
+                title: 'Milestone & Pencapaian',
+                desc: 'Pantau tahap kemahiran N5–N1, heatmap tahunan, keseimbangan input, dan pencapaian belajar.',
               },
             ].map((item) => (
               <div key={item.title} className="card-pro p-5 space-y-3">
@@ -927,8 +895,8 @@ export const LandingPage: React.FC = () => {
                   Siap mencatatkan perjalanan bahasamu sendiri?
                 </h3>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Buat akun gratis dengan email untuk menyimpan seluruh riwayat,
-                  statistik XP, dan target harian secara otomatis di cloud.
+                  Buat akun gratis dengan Google atau email untuk menyimpan
+                  riwayat belajar, jam immersion, dan target harian di cloud.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Link
@@ -1074,7 +1042,6 @@ export const LandingPage: React.FC = () => {
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 <input
-                  ref={emailInputRef}
                   type="email"
                   required
                   placeholder="Email"
@@ -1126,14 +1093,14 @@ export const LandingPage: React.FC = () => {
               <div className="h-px flex-1 bg-slate-200" />
             </div>
 
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
+            <GoogleSignInButton
+              onSuccess={() => {
+                setShowAuthModal(false);
+                navigate('/dashboard');
+              }}
+              onRequireSupabaseSetup={() => setShowSupabaseSetup(true)}
               disabled={authLoading}
-              className="w-full py-2.5 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 font-semibold text-sm flex items-center justify-center gap-2 hover:bg-slate-50 transition disabled:opacity-60 cursor-pointer shadow-2xs"
-            >
-              Lanjutkan dengan Google
-            </button>
+            />
           </div>
         </div>
       )}

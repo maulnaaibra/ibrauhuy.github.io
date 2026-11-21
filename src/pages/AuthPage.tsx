@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Link,
   Navigate,
@@ -8,7 +8,6 @@ import {
 } from 'react-router-dom';
 import {
   ArrowLeft,
-  CheckCircle2,
   Copy,
   Database,
   KeyRound,
@@ -21,13 +20,13 @@ import {
 import toast from 'react-hot-toast';
 import {
   getSupabaseConfig,
-  isGoogleProviderEnabled,
   isSupabaseConfigured,
   saveRuntimeSupabaseConfig,
   SUPABASE_SCHEMA_SQL,
   supabase,
   testSupabaseConnection,
 } from '../lib/supabase';
+import { GoogleSignInButton } from '../components/GoogleSignInButton';
 import { useAuth } from '../context/AuthContext';
 
 type AuthMode = 'signin' | 'signup' | 'forgot' | 'reset';
@@ -44,7 +43,6 @@ export const AuthPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const emailInputRef = useRef<HTMLInputElement | null>(null);
 
   const fromPath =
     (location.state as { from?: string } | null)?.from || '/dashboard';
@@ -135,31 +133,6 @@ export const AuthPage: React.FC = () => {
       toast.success('Skrip SQL disalin! Jalankan di SQL Editor Supabase.');
     } catch {
       toast.error('Gagal menyalin otomatis. Salin dari Pengaturan.');
-    }
-  };
-
-  const handleGoogleLogin = async () => {
-    if (!ensureConfigured()) return;
-    setSubmitting(true);
-    const enabled = await isGoogleProviderEnabled();
-    if (!enabled) {
-      toast.error(
-        'Login Google belum diaktifkan di server Supabase. Silakan daftar/masuk instan menggunakan Email & Password di atas!'
-      );
-      setSubmitting(false);
-      emailInputRef.current?.focus();
-      return;
-    }
-
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}auth/callback`,
-      },
-    });
-    if (error) {
-      toast.error(error.message);
-      setSubmitting(false);
     }
   };
 
@@ -382,7 +355,6 @@ export const AuthPage: React.FC = () => {
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 <input
-                  ref={emailInputRef}
                   type="email"
                   required
                   placeholder="Alamat Email"
@@ -465,15 +437,11 @@ export const AuthPage: React.FC = () => {
                 <div className="h-px flex-1 bg-slate-200" />
               </div>
 
-              <button
-                type="button"
-                onClick={handleGoogleLogin}
+              <GoogleSignInButton
+                onSuccess={() => navigate(fromPath, { replace: true })}
+                onRequireSupabaseSetup={() => setShowSetup(true)}
                 disabled={submitting}
-                className="w-full py-2.5 px-4 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-sm flex items-center justify-center gap-2 transition cursor-pointer shadow-2xs disabled:opacity-60"
-              >
-                <CheckCircle2 className="w-4 h-4 text-red-600" />
-                Lanjutkan dengan Google
-              </button>
+              />
             </>
           )}
 

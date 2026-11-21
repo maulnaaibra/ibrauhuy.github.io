@@ -7,6 +7,95 @@ import {
   type SkillTrack,
 } from '../types';
 
+export interface ImmersionStageInfo {
+  code: 'N5' | 'N4' | 'N3' | 'N2' | 'N1' | 'Native';
+  label: string;
+  prevTargetHours: number;
+  nextTargetHours: number;
+  nextStageName: string;
+  progressPct: number;
+  remainingHours: number;
+}
+
+const IMMERSION_STAGES: Array<{
+  minHours: number;
+  nextHours: number;
+  code: ImmersionStageInfo['code'];
+  label: string;
+  nextStageName: string;
+}> = [
+  {
+    minHours: 0,
+    nextHours: 150,
+    code: 'N5',
+    label: 'Tahap N5 · Dasar',
+    nextStageName: 'JLPT N5',
+  },
+  {
+    minHours: 150,
+    nextHours: 400,
+    code: 'N4',
+    label: 'Tahap N4 · Percakapan',
+    nextStageName: 'JLPT N4',
+  },
+  {
+    minHours: 400,
+    nextHours: 950,
+    code: 'N3',
+    label: 'Tahap N3 · Menengah',
+    nextStageName: 'JLPT N3',
+  },
+  {
+    minHours: 950,
+    nextHours: 1600,
+    code: 'N2',
+    label: 'Tahap N2 · Mahir',
+    nextStageName: 'JLPT N2',
+  },
+  {
+    minHours: 1600,
+    nextHours: 2600,
+    code: 'N1',
+    label: 'Tahap N1 · Fasih',
+    nextStageName: 'JLPT N1',
+  },
+  {
+    minHours: 2600,
+    nextHours: 2600,
+    code: 'Native',
+    label: 'Native Fluency',
+    nextStageName: 'Native',
+  },
+];
+
+export const getImmersionStage = (totalHours: number): ImmersionStageInfo => {
+  const safeHours = Math.max(0, totalHours);
+  const stage =
+    [...IMMERSION_STAGES]
+      .reverse()
+      .find((s) => safeHours >= s.minHours) ?? IMMERSION_STAGES[0];
+
+  const span = stage.nextHours - stage.minHours;
+  const progressPct =
+    span <= 0
+      ? 100
+      : Math.min(100, Math.round(((safeHours - stage.minHours) / span) * 100));
+  const remainingHours = Math.max(
+    0,
+    Number((stage.nextHours - safeHours).toFixed(1))
+  );
+
+  return {
+    code: stage.code,
+    label: stage.label,
+    prevTargetHours: stage.minHours,
+    nextTargetHours: stage.nextHours,
+    nextStageName: stage.nextStageName,
+    progressPct,
+    remainingHours,
+  };
+};
+
 export const MILESTONES = [25, 100, 300, 600, 1000, 1500, 2500];
 
 export const getLocalDateString = (date = new Date()): string => {
@@ -268,7 +357,7 @@ export interface RecentMediaCard {
   title: string;
   category: ImmersionCategory;
   totalMinutes: number;
-  totalXp: number;
+  totalCards: number;
   sessions: number;
   lastDate: string;
 }
@@ -291,17 +380,16 @@ export const getRecentMediaCards = (
     if (!key) continue;
 
     const existing = map.get(key);
-    const xp = getLogXp(log);
     if (existing) {
       existing.totalMinutes += log.duration_minutes;
-      existing.totalXp += xp;
+      existing.totalCards += log.cards_mined;
       existing.sessions += 1;
     } else {
       map.set(key, {
         title: log.title,
         category: log.category,
         totalMinutes: log.duration_minutes,
-        totalXp: xp,
+        totalCards: log.cards_mined,
         sessions: 1,
         lastDate: log.logged_date,
       });

@@ -13,7 +13,6 @@ import {
   MonitorSmartphone,
   Plus,
   Settings,
-  Sparkles,
   Target,
   Trophy,
   Zap,
@@ -48,12 +47,12 @@ import {
 import {
   calculateLongestStreak,
   calculateStreak,
+  getImmersionStage,
   getLocalDateString,
   getMilestoneProgress,
   getMonthlyComparison,
   getReadingListeningBalance,
   getRecentMediaCards,
-  getSkillLevels,
 } from '../utils/stats';
 import { LiveStopwatch } from '../components/LiveStopwatch';
 import { LogModal } from '../components/LogModal';
@@ -395,7 +394,7 @@ export const DashboardPage: React.FC = () => {
       100,
       Math.round((todayMinutes / Math.max(1, dailyGoal)) * 100)
     );
-    const skills = getSkillLevels(logs);
+    const stage = getImmersionStage(totalHours);
     const monthly = getMonthlyComparison(logs);
     const balance = getReadingListeningBalance(logs);
     const recentMedia = getRecentMediaCards(logs, 6);
@@ -409,7 +408,7 @@ export const DashboardPage: React.FC = () => {
       streak,
       longestStreak,
       milestone,
-      skills,
+      stage,
       monthly,
       balance,
       recentMedia,
@@ -421,10 +420,9 @@ export const DashboardPage: React.FC = () => {
       id: user?.id ?? 'self',
       name: `${profile?.full_name || user?.email?.split('@')[0] || 'Anda'} (Anda)`,
       targetLanguage: profile?.target_language ?? 'Japanese',
-      rankTitle: stats.skills.overall.rankTitle,
+      rankTitle: stats.stage.label,
       streak: stats.streak,
       totalHours: Number(stats.totalHours.toFixed(1)),
-      totalXp: stats.skills.overall.totalXp,
       favoriteMedia: stats.recentMedia[0]?.title || 'Belum ada media',
       isSelf: true,
     };
@@ -705,12 +703,12 @@ export const DashboardPage: React.FC = () => {
                   ImmersionTrack
                 </h1>
                 <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full bg-red-50 border border-red-200/80 text-[10px] font-mono font-semibold text-red-700">
-                  Lv.{stats.skills.overall.level}
+                  {stats.stage.code}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500">
                 {profile?.target_language ?? 'Japanese'} •{' '}
-                {stats.skills.overall.rankTitle}
+                {stats.stage.label}
               </p>
             </div>
           </Link>
@@ -905,28 +903,27 @@ export const DashboardPage: React.FC = () => {
               <div className="card-pro p-5 space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Level & Pengalaman
+                    Tahap Kemahiran (JLPT)
                   </span>
                   <span className="inline-flex items-center gap-1 text-xs font-mono font-semibold text-red-600">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    {stats.skills.overall.totalXp.toLocaleString()} XP
+                    <Award className="w-3.5 h-3.5" />
+                    {stats.totalHours.toFixed(1)} jam
                   </span>
                 </div>
 
                 <div>
                   <div className="flex items-baseline justify-between mb-2">
-                    <span className="text-2xl font-bold text-slate-900">
-                      Level {stats.skills.overall.level}
+                    <span className="text-xl font-bold text-slate-900">
+                      {stats.stage.label}
                     </span>
                     <span className="text-xs font-mono text-slate-500">
-                      {stats.skills.overall.currentLevelXp} /{' '}
-                      {stats.skills.overall.nextLevelXp} XP
+                      {stats.totalHours.toFixed(1)} / {stats.stage.nextTargetHours}j
                     </span>
                   </div>
                   <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-red-600 to-rose-500 rounded-full animate-bar"
-                      style={{ width: `${stats.skills.overall.progressPct}%` }}
+                      style={{ width: `${stats.stage.progressPct}%` }}
                     />
                   </div>
                 </div>
@@ -936,14 +933,14 @@ export const DashboardPage: React.FC = () => {
                     <div className="flex items-center justify-between text-[11px] text-slate-600">
                       <span>Listening</span>
                       <span className="font-mono text-slate-900 font-semibold">
-                        Lv.{stats.skills.listening.level}
+                        {(stats.balance.listeningMin / 60).toFixed(1)}j
                       </span>
                     </div>
                     <div className="h-1 rounded-full bg-slate-200 overflow-hidden mt-1.5">
                       <div
                         className="h-full bg-red-600 rounded-full animate-bar"
                         style={{
-                          width: `${stats.skills.listening.progressPct}%`,
+                          width: `${stats.balance.listeningPct}%`,
                         }}
                       />
                     </div>
@@ -952,14 +949,14 @@ export const DashboardPage: React.FC = () => {
                     <div className="flex items-center justify-between text-[11px] text-slate-600">
                       <span>Reading</span>
                       <span className="font-mono text-slate-900 font-semibold">
-                        Lv.{stats.skills.reading.level}
+                        {(stats.balance.readingMin / 60).toFixed(1)}j
                       </span>
                     </div>
                     <div className="h-1 rounded-full bg-slate-200 overflow-hidden mt-1.5">
                       <div
                         className="h-full bg-rose-500 rounded-full animate-bar"
                         style={{
-                          width: `${stats.skills.reading.progressPct}%`,
+                          width: `${stats.balance.readingPct}%`,
                         }}
                       />
                     </div>
@@ -1175,7 +1172,10 @@ export const DashboardPage: React.FC = () => {
                           </div>
                           <div className="text-xs font-mono text-slate-500">
                             {(media.totalMinutes / 60).toFixed(1)} jam •{' '}
-                            {media.totalXp} XP
+                            {media.sessions} sesi
+                            {media.totalCards > 0
+                              ? ` • +${media.totalCards} kartu`
+                              : ''}
                           </div>
                         </div>
 
@@ -1233,7 +1233,7 @@ export const DashboardPage: React.FC = () => {
                           {member.name}
                         </div>
                         <div className="text-[11px] text-slate-500 truncate">
-                          {member.rankTitle} • {member.totalXp.toLocaleString()} XP
+                          {member.rankTitle} • {member.favoriteMedia}
                         </div>
                       </div>
                     </div>

@@ -1,8 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Pencil, Search, Sparkles, Trash2 } from 'lucide-react';
+import { Clock, Pencil, Search, Trash2 } from 'lucide-react';
 import { MediaCover } from '../components/MediaCover';
 import { getCategoryMeta, type ImmersionLog } from '../types';
-import { getLogXp } from '../utils/stats';
 
 interface ActivityLogListProps {
   logs: ImmersionLog[];
@@ -21,7 +20,7 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
 }) => {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'newest' | 'duration' | 'xp'>('newest');
+  const [sortBy, setSortBy] = useState<'newest' | 'duration' | 'cards'>('newest');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const availableCategories = useMemo(() => {
@@ -49,8 +48,8 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
     if (sortBy === 'duration') {
       return [...list].sort((a, b) => b.duration_minutes - a.duration_minutes);
     }
-    if (sortBy === 'xp') {
-      return [...list].sort((a, b) => getLogXp(b) - getLogXp(a));
+    if (sortBy === 'cards') {
+      return [...list].sort((a, b) => b.cards_mined - a.cards_mined);
     }
     return [...list].sort((a, b) => {
       if (a.logged_date !== b.logged_date) {
@@ -102,13 +101,13 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
             <select
               value={sortBy}
               onChange={(e) =>
-                setSortBy(e.target.value as 'newest' | 'duration' | 'xp')
+                setSortBy(e.target.value as 'newest' | 'duration' | 'cards')
               }
               className="px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700 focus:outline-none focus:border-red-500 focus:bg-white"
             >
               <option value="newest">Urutkan: Terbaru</option>
               <option value="duration">Urutkan: Durasi Terlama</option>
-              <option value="xp">Urutkan: XP Terbanyak</option>
+              <option value="cards">Urutkan: Kartu Terbanyak</option>
             </select>
           </div>
 
@@ -150,7 +149,6 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
         <div className="divide-y divide-slate-100">
           {displayLogs.map((log) => {
             const meta = getCategoryMeta(log.category);
-            const xp = getLogXp(log);
             const isConfirming = confirmDeleteId === log.id;
 
             return (
@@ -178,7 +176,8 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
                         {meta.label}
                       </span>
                       <span className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
-                        <Sparkles className="w-2.5 h-2.5" />+{xp} XP
+                        <Clock className="w-2.5 h-2.5" />
+                        {log.duration_minutes} mnt
                       </span>
                     </div>
 

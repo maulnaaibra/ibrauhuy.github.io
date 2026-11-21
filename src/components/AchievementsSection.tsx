@@ -22,27 +22,27 @@ const RARITY_STYLES: Record<
   { label: string; badge: string; iconBg: string }
 > = {
   common: {
-    label: 'Common',
+    label: 'Dasar',
     badge: 'bg-slate-100 text-slate-700 border-slate-200',
     iconBg: 'bg-slate-100 text-slate-600',
   },
   uncommon: {
-    label: 'Uncommon',
+    label: 'Rutin',
     badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     iconBg: 'bg-emerald-50 text-emerald-600',
   },
   rare: {
-    label: 'Rare',
+    label: 'Lanjutan',
     badge: 'bg-sky-50 text-sky-700 border-sky-200',
     iconBg: 'bg-sky-50 text-sky-600',
   },
   epic: {
-    label: 'Epic',
+    label: 'Mahir',
     badge: 'bg-red-50 text-red-700 border-red-200',
     iconBg: 'bg-red-50 text-red-600',
   },
   legendary: {
-    label: 'Legendary',
+    label: 'Master',
     badge: 'bg-amber-50 text-amber-800 border-amber-200',
     iconBg: 'bg-amber-50 text-amber-600',
   },
@@ -85,9 +85,7 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
   const achievements = useMemo(() => computeAchievements(logs), [logs]);
 
   const earnedCount = achievements.filter((a) => a.unlocked).length;
-  const earnedPoints = achievements
-    .filter((a) => a.unlocked)
-    .reduce((sum, a) => sum + a.points, 0);
+  const remainingCount = achievements.length - earnedCount;
   const completionPct = Math.round(
     (earnedCount / Math.max(1, achievements.length)) * 100
   );
@@ -110,9 +108,9 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
           </div>
         </div>
         <div className="card-pro p-4">
-          <div className="text-xs text-slate-500">Poin Achievement</div>
+          <div className="text-xs text-slate-500">Sisa Pencapaian</div>
           <div className="text-2xl font-bold font-mono text-red-600 mt-1 tabular-nums">
-            {earnedPoints}
+            {remainingCount}
           </div>
         </div>
         <div className="card-pro p-4">
@@ -127,11 +125,11 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
         {(
           [
             { id: 'all', label: 'Semua' },
-            { id: 'common', label: 'Common' },
-            { id: 'uncommon', label: 'Uncommon' },
-            { id: 'rare', label: 'Rare' },
-            { id: 'epic', label: 'Epic' },
-            { id: 'legendary', label: 'Legendary' },
+            { id: 'common', label: 'Dasar' },
+            { id: 'uncommon', label: 'Rutin' },
+            { id: 'rare', label: 'Lanjutan' },
+            { id: 'epic', label: 'Mahir' },
+            { id: 'legendary', label: 'Master' },
           ] as const
         ).map((item) => (
           <button
@@ -192,7 +190,7 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
                     {ach.currentLabel} / {ach.targetLabel}
                   </span>
                   <span className="text-red-600 font-semibold">
-                    +{ach.points} pt
+                    {ach.progressPct}%
                   </span>
                 </div>
                 <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">

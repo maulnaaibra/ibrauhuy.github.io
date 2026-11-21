@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Play, Pause, Square, RotateCcw, Sparkles } from 'lucide-react';
+import { Play, Pause, Square, RotateCcw } from 'lucide-react';
 import {
   CATEGORY_META,
   PRIMARY_CATEGORIES,
   type PrimaryMediaCategory,
 } from '../types';
-import { calculateXp } from '../utils/stats';
 
 const TIMER_STORAGE_KEY = 'immersiontrack_active_timer_v1';
 
@@ -112,8 +111,6 @@ export const LiveStopwatch: React.FC<LiveStopwatchProps> = ({
   };
 
   const estimatedMinutes = Math.max(1, Math.round(seconds / 60));
-  const previewXp =
-    seconds > 0 ? calculateXp(timer.category, estimatedMinutes, 0) : 0;
   const meta = CATEGORY_META[timer.category];
 
   const handleToggle = () => {
@@ -195,11 +192,6 @@ export const LiveStopwatch: React.FC<LiveStopwatchProps> = ({
             <div className="text-3xl font-mono font-bold text-slate-900 tabular-nums tracking-tight">
               {formatTime(seconds)}
             </div>
-            {seconds > 0 && (
-              <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
-                <Sparkles className="w-3 h-3" />+{previewXp} XP
-              </span>
-            )}
           </div>
         </div>
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Sparkles, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { MediaCover } from '../components/MediaCover';
 import {
   CATEGORY_META,
@@ -8,7 +8,7 @@ import {
   type ImmersionCategory,
   type ImmersionLog,
 } from '../types';
-import { calculateXp, getLocalDateString } from '../utils/stats';
+import { getLocalDateString } from '../utils/stats';
 
 interface LogModalProps {
   isOpen: boolean;
@@ -67,7 +67,6 @@ export const LogModal: React.FC<LogModalProps> = ({
 
   if (!isOpen) return null;
 
-  const estimatedXp = calculateXp(category, duration, cardsMined);
   const currentMeta = getCategoryMeta(category);
   const selectableCategories: ImmersionCategory[] = PRIMARY_CATEGORIES.includes(
     category as (typeof PRIMARY_CATEGORIES)[number]
@@ -106,9 +105,6 @@ export const LogModal: React.FC<LogModalProps> = ({
             <h2 className="text-lg font-bold text-slate-900">
               {editingLog ? 'Edit Sesi Immersion' : 'Catat Sesi Immersion'}
             </h2>
-            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
-              <Sparkles className="w-3 h-3" />+{estimatedXp} XP
-            </span>
           </div>
           <button
             type="button"
@@ -146,7 +142,7 @@ export const LogModal: React.FC<LogModalProps> = ({
 
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1.5">
-              Tipe Media ({currentMeta.xpPerHour} XP/jam)
+              Tipe Media
             </label>
             <div className="grid grid-cols-3 gap-1.5">
               {selectableCategories.map((cat) => {
@@ -223,7 +219,7 @@ export const LogModal: React.FC<LogModalProps> = ({
 
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                Kartu / Kosakata (+4 XP/kartu)
+                Kartu / Kosakata Baru
               </label>
               <input
                 type="number"

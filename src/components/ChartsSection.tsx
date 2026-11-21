@@ -22,7 +22,6 @@ import {
   calculateLongestStreak,
   calculateStreak,
   getLocalDateString,
-  getLogXp,
   getMilestoneProgress,
   getReadingListeningBalance,
 } from '../utils/stats';
@@ -34,9 +33,9 @@ interface ChartsSectionProps {
 export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
   const [range, setRange] = useState<7 | 30 | 90 | 'all'>(30);
   const [trackFilter, setTrackFilter] = useState<'all' | SkillTrack>('all');
-  const [chartMetric, setChartMetric] = useState<'hours' | 'xp'>('hours');
+  const [chartMetric, setChartMetric] = useState<'hours' | 'cards'>('hours');
   const [chartType, setChartType] = useState<'bar' | 'area'>('bar');
-  const [pieMetric, setPieMetric] = useState<'minutes' | 'xp' | 'sessions'>(
+  const [pieMetric, setPieMetric] = useState<'minutes' | 'cards' | 'sessions'>(
     'minutes'
   );
 
@@ -66,7 +65,6 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
       0
     );
     const totalHours = totalMinutes / 60;
-    const totalXp = filteredLogs.reduce((sum, l) => sum + getLogXp(l), 0);
     const totalCards = filteredLogs.reduce((sum, l) => sum + l.cards_mined, 0);
     const activeDays = new Set(filteredLogs.map((l) => l.logged_date)).size;
     const spanDays = range === 'all' ? Math.max(1, activeDays) : range;
@@ -97,7 +95,6 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
 
     return {
       totalHours,
-      totalXp,
       totalCards,
       logCount: filteredLogs.length,
       dailyAvgMinutes,
@@ -112,23 +109,23 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
 
   const timelineData = useMemo(() => {
     const minutesMap = new Map<string, number>();
-    const xpMap = new Map<string, number>();
+    const cardsMap = new Map<string, number>();
 
     filteredLogs.forEach((l) => {
       minutesMap.set(
         l.logged_date,
         (minutesMap.get(l.logged_date) ?? 0) + l.duration_minutes
       );
-      xpMap.set(l.logged_date, (xpMap.get(l.logged_date) ?? 0) + getLogXp(l));
+      cardsMap.set(l.logged_date, (cardsMap.get(l.logged_date) ?? 0) + l.cards_mined);
     });
 
     if (range === 'all') {
-      const monthMap = new Map<string, { minutes: number; xp: number }>();
+      const monthMap = new Map<string, { minutes: number; cards: number }>();
       filteredLogs.forEach((l) => {
         const monthKey = l.logged_date.slice(0, 7);
-        const cur = monthMap.get(monthKey) ?? { minutes: 0, xp: 0 };
+        const cur = monthMap.get(monthKey) ?? { minutes: 0, cards: 0 };
         cur.minutes += l.duration_minutes;
-        cur.xp += getLogXp(l);
+        cur.cards += l.cards_mined;
         monthMap.set(monthKey, cur);
       });
       return Array.from(monthMap.entries())
@@ -136,7 +133,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
         .map(([monthKey, val]) => ({
           label: monthKey,
           hours: Number((val.minutes / 60).toFixed(2)),
-          xp: val.xp,
+          cards: val.cards,
         }));
     }
 
@@ -153,7 +150,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
           month: 'short',
         }),
         hours: Number((mins / 60).toFixed(2)),
-        xp: xpMap.get(key) ?? 0,
+        cards: cardsMap.get(key) ?? 0,
       });
     }
     return result;
@@ -162,23 +159,22 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
   const mediaDistribution = useMemo(() => {
     const buckets = new Map<
       string,
-      { name: string; color: string; minutes: number; xp: number; sessions: number }
+      { name: string; color: string; minutes: number; cards: number; sessions: number }
     >();
 
     filteredLogs.forEach((l) => {
       const meta = getCategoryMeta(l.category);
       const existing = buckets.get(meta.label);
-      const xp = getLogXp(l);
       if (existing) {
         existing.minutes += l.duration_minutes;
-        existing.xp += xp;
+        existing.cards += l.cards_mined;
         existing.sessions += 1;
       } else {
         buckets.set(meta.label, {
           name: meta.label,
           color: meta.color,
           minutes: l.duration_minutes,
-          xp,
+          cards: l.cards_mined,
           sessions: 1,
         });
       }
@@ -190,8 +186,8 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
         value:
           pieMetric === 'minutes'
             ? item.minutes
-            : pieMetric === 'xp'
-              ? item.xp
+            : pieMetric === 'cards'
+              ? item.cards
               : item.sessions,
       }))
       .sort((a, b) => b.value - a.value);
@@ -258,15 +254,15 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
-              <div className="text-xs text-slate-500">Total XP</div>
+              <div className="text-xs text-slate-500">Total Jam</div>
               <div className="text-xl font-bold font-mono text-red-600 mt-1 tabular-nums">
-                {kpis.totalXp.toLocaleString()}
+                {kpis.totalHours.toFixed(1)}j
               </div>
             </div>
             <div>
-              <div className="text-xs text-slate-500">Total Jam</div>
+              <div className="text-xs text-slate-500">Kartu Anki</div>
               <div className="text-xl font-bold font-mono text-slate-900 mt-1 tabular-nums">
-                {kpis.totalHours.toFixed(1)}j
+                {kpis.totalCards.toLocaleString()}
               </div>
             </div>
             <div>
@@ -322,7 +318,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
           <div>
             <h3 className="font-semibold text-slate-900">Progress Timeline</h3>
             <p className="text-xs text-slate-500">
-              Tren {chartMetric === 'hours' ? 'jam immersion' : 'perolehan XP'} harian
+              Tren {chartMetric === 'hours' ? 'jam immersion' : 'kartu Anki harian'}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -330,7 +326,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
               {(
                 [
                   { id: 'hours', label: 'Jam' },
-                  { id: 'xp', label: 'XP' },
+                  { id: 'cards', label: 'Kartu' },
                 ] as const
               ).map((m) => (
                 <button
@@ -391,8 +387,8 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                 />
                 <Tooltip
                   formatter={(val) => [
-                    `${val ?? 0} ${chartMetric === 'hours' ? 'jam' : 'XP'}`,
-                    chartMetric === 'hours' ? 'Durasi' : 'XP',
+                    `${val ?? 0} ${chartMetric === 'hours' ? 'jam' : 'kartu'}`,
+                    chartMetric === 'hours' ? 'Durasi' : 'Kartu Anki',
                   ]}
                   contentStyle={{
                     backgroundColor: '#ffffff',
@@ -440,8 +436,8 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                 />
                 <Tooltip
                   formatter={(val) => [
-                    `${val ?? 0} ${chartMetric === 'hours' ? 'jam' : 'XP'}`,
-                    chartMetric === 'hours' ? 'Durasi' : 'XP',
+                    `${val ?? 0} ${chartMetric === 'hours' ? 'jam' : 'kartu'}`,
+                    chartMetric === 'hours' ? 'Durasi' : 'Kartu Anki',
                   ]}
                   contentStyle={{
                     backgroundColor: '#ffffff',
@@ -472,7 +468,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
               {(
                 [
                   { id: 'minutes', label: 'Waktu' },
-                  { id: 'xp', label: 'XP' },
+                  { id: 'cards', label: 'Kartu' },
                   { id: 'sessions', label: 'Sesi' },
                 ] as const
               ).map((m) => (
@@ -517,8 +513,8 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                       `${val ?? 0} ${
                         pieMetric === 'minutes'
                           ? 'menit'
-                          : pieMetric === 'xp'
-                            ? 'XP'
+                          : pieMetric === 'cards'
+                            ? 'kartu'
                             : 'sesi'
                       }`,
                       'Total',
@@ -562,7 +558,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                         {item.name}
                       </span>
                       <span className="text-slate-500 font-mono tabular-nums">
-                        {(item.minutes / 60).toFixed(1)}j • {item.xp} XP •{' '}
+                        {(item.minutes / 60).toFixed(1)}j • {item.sessions} sesi •{' '}
                         <span className="text-slate-900 font-semibold">
                           {pct}%
                         </span>

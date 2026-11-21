@@ -45,7 +45,6 @@ import {
   type AnkiSettings,
   type AnkiTodayStats,
 } from '../lib/ankiConnect';
-import { calculateXp } from '../utils/stats';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -432,16 +431,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                         {activeSession.title}
                       </div>
                       <div className="text-xs font-mono text-red-600 mt-0.5">
-                        +
-                        {calculateXp(
-                          activeSession.category,
-                          Math.max(
-                            1,
-                            Math.round(activeSession.activeSeconds / 60)
-                          ),
-                          0
-                        )}{' '}
-                        XP est.
+                        {activeMeta?.label ?? activeSession.category} • Sedang direkam
                       </div>
                     </div>
                     <div className="text-2xl font-mono font-bold text-emerald-600 tabular-nums shrink-0">

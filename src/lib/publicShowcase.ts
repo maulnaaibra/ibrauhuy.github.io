@@ -28,7 +28,6 @@ export interface CommunityLearner {
   rankTitle: string;
   streak: number;
   totalHours: number;
-  totalXp: number;
   favoriteMedia: string;
 }
 
@@ -113,50 +112,45 @@ export const COMMUNITY_LEADERBOARD: CommunityLearner[] = [
     id: 'comm-1',
     name: 'Raka Pratama',
     targetLanguage: 'Japanese',
-    rankTitle: 'Nihongo Tatsujin',
+    rankTitle: 'Tahap N2 · Mahir',
     streak: 94,
     totalHours: 1420.5,
-    totalXp: 214800,
     favoriteMedia: 'Light Novel & Visual Novel',
   },
   {
     id: 'comm-2',
     name: 'Siti Aulia',
     targetLanguage: 'Japanese',
-    rankTitle: 'Senpai Fluent',
+    rankTitle: 'Tahap N2 · Mahir',
     streak: 61,
     totalHours: 985.2,
-    totalXp: 145600,
     favoriteMedia: 'Anime & Podcast',
   },
   {
     id: 'comm-3',
     name: 'Dimas Wijaya',
     targetLanguage: 'Japanese',
-    rankTitle: 'Active Reader',
+    rankTitle: 'Tahap N3 · Menengah',
     streak: 38,
     totalHours: 612.8,
-    totalXp: 89400,
     favoriteMedia: 'Manga & Anki Mining',
   },
   {
     id: 'comm-4',
     name: 'Nadia Kusuma',
     targetLanguage: 'Japanese',
-    rankTitle: 'Consistent Listener',
+    rankTitle: 'Tahap N4 · Percakapan',
     streak: 25,
     totalHours: 348.4,
-    totalXp: 48200,
     favoriteMedia: 'Anime & NHK Easy',
   },
   {
     id: 'comm-5',
     name: 'Fajar Nugroho',
     targetLanguage: 'Japanese',
-    rankTitle: 'Dedicated Starter',
+    rankTitle: 'Tahap N5 · Dasar',
     streak: 14,
     totalHours: 146.0,
-    totalXp: 20150,
     favoriteMedia: 'Anime Slice of Life',
   },
 ];
