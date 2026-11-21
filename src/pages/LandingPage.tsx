@@ -12,7 +12,6 @@ import {
   Lock,
   Mail,
   MonitorSmartphone,
-  Play,
   Sparkles,
   Target,
   Trophy,
@@ -30,12 +29,11 @@ import {
 import {
   COMMUNITY_ACTIVITY_FEED,
   COMMUNITY_LEADERBOARD,
-  CURATED_MEDIA_CATALOG,
   JLPT_MILESTONES,
-  type CatalogLevelFilter,
 } from '../lib/publicShowcase';
-import { getCategoryMeta, type ImmersionCategory } from '../types';
+import type { ImmersionCategory } from '../types';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
+import { MediaCatalogBrowser } from '../components/MediaCatalogBrowser';
 import { MediaCover } from '../components/MediaCover';
 import { useAuth } from '../context/AuthContext';
 
@@ -61,9 +59,6 @@ export const LandingPage: React.FC = () => {
   const [selectedMilestoneCode, setSelectedMilestoneCode] = useState<
     'N4' | 'N3' | 'N2' | 'N1'
   >('N3');
-
-  const [catalogFilter, setCatalogFilter] =
-    useState<CatalogLevelFilter>('all');
 
   const calculatorResult = useMemo(() => {
     const target =
@@ -95,11 +90,6 @@ export const LandingPage: React.FC = () => {
       estimatedCards,
     };
   }, [calcMinutes, selectedMilestoneCode]);
-
-  const filteredCatalog = useMemo(() => {
-    if (catalogFilter === 'all') return CURATED_MEDIA_CATALOG;
-    return CURATED_MEDIA_CATALOG.filter((item) => item.level === catalogFilter);
-  }, [catalogFilter]);
 
   const handleOpenDashboard = () => {
     if (!user) {
@@ -205,42 +195,37 @@ export const LandingPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-red-50/80 via-white to-slate-50 text-slate-900 flex flex-col relative overflow-x-hidden">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-[780px] h-[340px] bg-gradient-to-b from-red-200/40 via-rose-100/25 to-transparent blur-3xl rounded-full"
-      />
-
-      <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-slate-200/80">
+    <div className="min-h-screen app-bg-canvas text-[#241113] flex flex-col relative overflow-x-hidden">
+      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-[#ead6c9]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-red-600 to-rose-700 flex items-center justify-center font-bold text-white shadow-sm shadow-red-600/25">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#59171b] to-[#83262c] flex items-center justify-center font-extrabold text-[#fed7b8] shadow-sm shadow-[#59171b]/25">
               I
             </div>
-            <span className="font-bold text-base tracking-tight text-slate-900">
+            <span className="font-extrabold text-base tracking-tight text-[#241113]">
               ImmersionTrack
             </span>
           </div>
 
-          <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
-            <a href="#preview" className="hover:text-red-700 transition-colors">
+          <nav className="hidden md:flex items-center gap-6 text-sm font-semibold text-[#5c3d40]">
+            <a href="#preview" className="hover:text-[#59171b] transition-colors">
               Ringkasan
             </a>
             <a
               href="#kalkulator"
-              className="hover:text-red-700 transition-colors"
+              className="hover:text-[#59171b] transition-colors"
             >
               Kalkulator JLPT
             </a>
-            <a href="#katalog" className="hover:text-red-700 transition-colors">
-              Katalog Media
+            <a href="#katalog" className="hover:text-[#59171b] transition-colors">
+              Katalog 660 Media
             </a>
-            <a href="#fitur" className="hover:text-red-700 transition-colors">
+            <a href="#fitur" className="hover:text-[#59171b] transition-colors">
               Fitur
             </a>
             <a
               href="#komunitas"
-              className="hover:text-red-700 transition-colors"
+              className="hover:text-[#59171b] transition-colors"
             >
               Komunitas
             </a>
@@ -251,7 +236,7 @@ export const LandingPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleOpenDashboard}
-                className="btn-crimson px-4 py-2 rounded-xl text-sm font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                className="btn-crimson px-4 py-2 rounded-xl text-sm font-bold inline-flex items-center gap-1.5 cursor-pointer"
               >
                 Ke Dashboard Anda
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -264,14 +249,14 @@ export const LandingPage: React.FC = () => {
                     setIsSignUp(false);
                     setShowAuthModal(true);
                   }}
-                  className="px-3.5 py-2 rounded-xl text-sm font-medium text-slate-600 hover:text-red-700 hover:bg-red-50/70 transition cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl text-sm font-bold text-[#59171b] hover:bg-[#fed7b8]/45 transition cursor-pointer"
                 >
                   Masuk Akun
                 </button>
                 <button
                   type="button"
                   onClick={handleOpenDashboard}
-                  className="btn-crimson px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer"
+                  className="btn-crimson px-4 py-2 rounded-xl text-sm font-bold cursor-pointer"
                 >
                   Buka Dashboard
                 </button>
@@ -284,29 +269,29 @@ export const LandingPage: React.FC = () => {
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-14 pb-20 space-y-24 relative z-10">
         {/* Hero */}
         <section className="text-center max-w-3xl mx-auto space-y-6 animate-fade-up">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-red-200/80 text-red-700 text-xs font-semibold shadow-xs">
-            <Sparkles className="w-3.5 h-3.5 text-red-600" />
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/95 border border-[#e4bdae] text-[#59171b] text-xs font-bold shadow-xs">
+            <Sparkles className="w-3.5 h-3.5 text-[#59171b]" />
             Platform Pelacakan & Analitik Immersion Bahasa
           </div>
 
-          <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.08] text-slate-900">
+          <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.08] text-[#241113] app-canvas-title">
             Ukur Konsistensi & Progres{' '}
-            <span className="bg-gradient-to-r from-red-600 to-rose-700 bg-clip-text text-transparent">
+            <span className="app-canvas-accent">
               Immersion Bahasamu
             </span>
           </h1>
 
-          <p className="text-slate-600 text-base sm:text-lg leading-relaxed max-w-2xl mx-auto">
-            Catat setiap sesi menonton anime, membaca manga, visual novel,
-            podcast, hingga review Anki dalam satu dashboard yang bersih dan
-            terstruktur, lengkap dengan pelacakan otomatis dari PC Windows.
+          <p className="text-[#5c3d40] app-canvas-subtitle text-base sm:text-lg font-medium leading-relaxed max-w-2xl mx-auto">
+            Catat setiap sesi menonton anime, membaca novel, manga, visual novel,
+            podcast, hingga review Anki dalam satu dashboard yang bersih, lengkap
+            dengan 660+ katalog rekomendasi media dan pelacakan otomatis Windows.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2 animate-fade-up delay-1">
             <button
               type="button"
               onClick={handleOpenDashboard}
-              className="btn-crimson w-full sm:w-auto px-6 py-3.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 cursor-pointer"
+              className="btn-crimson w-full sm:w-auto px-6 py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 cursor-pointer"
             >
               {isCloudLoggedIn
                 ? 'Lanjutkan Progres Saya'
@@ -317,9 +302,9 @@ export const LandingPage: React.FC = () => {
             {isCloudLoggedIn ? (
               <Link
                 to="/settings"
-                className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-sm transition shadow-xs text-center"
+                className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-white hover:bg-[#fffaf6] border border-[#e7d1c3] text-[#241113] font-bold text-sm transition shadow-xs text-center"
               >
-                Pengaturan Akun Cloud
+                Pengaturan & Background
               </Link>
             ) : (
               <button
@@ -328,23 +313,23 @@ export const LandingPage: React.FC = () => {
                   setIsSignUp(true);
                   setShowAuthModal(true);
                 }}
-                className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-sm transition cursor-pointer shadow-xs"
+                className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-white hover:bg-[#fffaf6] border border-[#e7d1c3] text-[#241113] font-bold text-sm transition cursor-pointer shadow-xs"
               >
                 Daftar & Sinkron Cloud
               </button>
             )}
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-2 pt-3 text-xs text-slate-600 animate-fade-up delay-2">
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-3 text-xs font-semibold text-[#59171b] animate-fade-up delay-2">
             {[
-              '9 Kategori Media',
-              'Analitik & Tahap JLPT',
+              '660+ Katalog Media Jepang',
+              'Analitik & Tahap JLPT N5–N1',
               'Desktop Tracker + AnkiConnect',
-              'Sinkronisasi Cloud Supabase',
+              'Background & Tema Bisa Diubah',
             ].map((pill) => (
               <span
                 key={pill}
-                className="px-3 py-1 rounded-full bg-white border border-slate-200 shadow-2xs"
+                className="px-3.5 py-1 rounded-full bg-white/95 border border-[#ead6c9] shadow-2xs"
               >
                 {pill}
               </span>
@@ -354,72 +339,72 @@ export const LandingPage: React.FC = () => {
 
         {/* Dashboard Preview */}
         <section id="preview" className="animate-fade-up delay-2">
-          <div className="rounded-2xl bg-white border border-slate-200 shadow-xl shadow-slate-200/70 overflow-hidden">
-            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+          <div className="rounded-2xl bg-white/95 border border-[#ead6c9] shadow-xl shadow-[#59171b]/10 overflow-hidden">
+            <div className="px-4 py-3 bg-[#fff8f3] border-b border-[#ead6c9] flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-300" />
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#59171b]" />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#e39d7f]" />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#fed7b8]" />
               </div>
-              <div className="px-4 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-mono text-slate-500">
+              <div className="px-4 py-1 rounded-lg bg-white border border-[#e7d1c3] text-[11px] font-mono text-[#5c3d40]">
                 nihongotracker.my.id/dashboard
               </div>
               <button
                 type="button"
                 onClick={handleOpenDashboard}
-                className="text-[11px] font-semibold text-red-600 hover:text-red-700 cursor-pointer transition-colors"
+                className="text-[11px] font-bold text-[#59171b] hover:underline cursor-pointer transition-colors"
               >
                 Masuk Workspace →
               </button>
             </div>
 
-            <div className="p-5 sm:p-7 space-y-5 bg-slate-50/40">
+            <div className="p-5 sm:p-7 space-y-5 bg-[#fffdfb]">
               <div className="grid md:grid-cols-3 gap-4">
                 <div className="card-pro p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#7c5659]">
                       Tahap Immersion
                     </span>
-                    <span className="text-xs font-mono font-semibold text-red-600">
+                    <span className="text-xs font-mono text-[#59171b]">
                       34.3 / 150 Jam
                     </span>
                   </div>
-                  <div className="text-2xl font-bold text-slate-900">
+                  <div className="text-2xl font-extrabold text-[#241113]">
                     Tahap N5 · Dasar
                   </div>
-                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                    <div className="h-full w-1/4 bg-gradient-to-r from-red-600 to-rose-500 rounded-full animate-bar" />
+                  <div className="h-2 rounded-full bg-[#f7e9df] overflow-hidden">
+                    <div className="h-full w-1/4 bg-gradient-to-r from-[#59171b] to-[#b54842] rounded-full animate-bar" />
                   </div>
-                  <div className="flex justify-between text-[11px] text-slate-500 font-mono">
+                  <div className="flex justify-between text-[11px] text-[#5c3d40] font-mono">
                     <span>Listening 19.8 jam</span>
                     <span>Reading 14.5 jam</span>
                   </div>
                 </div>
 
                 <div className="card-pro p-4 flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-[#7c5659]">
                     <span>Streak Aktif</span>
-                    <Flame className="w-4 h-4 text-red-600" />
+                    <Flame className="w-4 h-4 text-[#59171b]" />
                   </div>
-                  <div className="text-2xl font-bold font-mono text-slate-900 my-2">
+                  <div className="text-2xl font-extrabold font-mono text-[#241113] my-2">
                     12 Hari
                   </div>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs font-medium text-[#5c3d40]">
                     Rekor terbaik 24 hari • 34.3 jam total
                   </p>
                 </div>
 
                 <div className="card-pro p-4 flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-[#7c5659]">
                     <span>Progres Bulan Ini</span>
-                    <span className="text-[11px] font-semibold text-emerald-600">
+                    <span className="text-[11px] font-bold text-emerald-700">
                       ▲ +42%
                     </span>
                   </div>
-                  <div className="text-2xl font-bold font-mono text-slate-900 my-2">
+                  <div className="text-2xl font-extrabold font-mono text-[#241113] my-2">
                     28.4 Jam
                   </div>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs font-medium text-[#5c3d40]">
                     Listening 15.8j • Reading 11.4j • Rasio 2 : 3
                   </p>
                 </div>
@@ -440,10 +425,10 @@ export const LandingPage: React.FC = () => {
                     stat: '6.2 jam • 9 sesi',
                   },
                   {
-                    title: 'Yotsuba&! Vol. 4',
-                    category: 'manga' as const,
-                    label: 'Manga',
-                    stat: '4.1 jam • 82 kartu',
+                    title: 'Anki — Core 2k/6k',
+                    category: 'study' as const,
+                    label: 'Anki / Study',
+                    stat: '4.1 jam • +140 kartu',
                   },
                 ].map((card) => (
                   <div
@@ -456,13 +441,13 @@ export const LandingPage: React.FC = () => {
                       className="w-11 h-14 rounded-lg"
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-[#7c5659]">
                         {card.label}
                       </div>
-                      <div className="text-sm font-semibold text-slate-900 truncate">
+                      <div className="text-sm font-bold text-[#241113] truncate">
                         {card.title}
                       </div>
-                      <div className="text-[11px] font-mono text-slate-500">
+                      <div className="text-[11px] font-mono text-[#5c3d40]">
                         {card.stat}
                       </div>
                     </div>
@@ -477,14 +462,14 @@ export const LandingPage: React.FC = () => {
         <section id="kalkulator" className="space-y-6 animate-fade-up delay-2">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
             <div className="space-y-1.5">
-              <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-600">
+              <div className="inline-flex items-center gap-1.5 text-xs font-bold text-[#59171b] app-canvas-subtitle">
                 <Calculator className="w-3.5 h-3.5" />
                 SIMULASI RENCANA BELAJAR
               </div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900">
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-[#241113] app-canvas-title">
                 Kalkulator Target & Estimasi JLPT
               </h2>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm font-medium text-[#5c3d40] app-canvas-subtitle">
                 Atur durasi immersion harian untuk menghitung perkiraan waktu
                 mencapai level JLPT tujuanmu.
               </p>
@@ -494,7 +479,7 @@ export const LandingPage: React.FC = () => {
           <div className="card-pro p-6 sm:p-7 grid lg:grid-cols-12 gap-6 items-center">
             <div className="lg:col-span-6 space-y-5">
               <div className="space-y-2">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                <label className="block text-xs font-bold uppercase tracking-wider text-[#5c3d40]">
                   1. Pilih Target Milestone JLPT
                 </label>
                 <div className="grid grid-cols-2 gap-2.5">
@@ -507,23 +492,23 @@ export const LandingPage: React.FC = () => {
                         onClick={() => setSelectedMilestoneCode(item.code)}
                         className={`p-3 rounded-xl text-left border transition cursor-pointer ${
                           active
-                            ? 'bg-red-50/90 border-red-300 shadow-xs'
-                            : 'bg-slate-50/70 border-slate-200 hover:border-slate-300'
+                            ? 'bg-[#fff3e8] border-[#59171b] shadow-xs'
+                            : 'bg-[#fffaf6] border-[#e7d1c3] hover:border-[#b3746d]'
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span
-                            className={`text-sm font-bold ${
-                              active ? 'text-red-700' : 'text-slate-900'
+                            className={`text-sm font-extrabold ${
+                              active ? 'text-[#59171b]' : 'text-[#241113]'
                             }`}
                           >
                             JLPT {item.code}
                           </span>
-                          <span className="text-[11px] font-mono text-slate-500">
+                          <span className="text-[11px] font-mono text-[#5c3d40]">
                             {item.hours.toLocaleString()}j
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                        <div className="text-[11px] font-medium text-[#5c3d40] mt-0.5 truncate">
                           {item.subtitle}
                         </div>
                       </button>
@@ -536,11 +521,11 @@ export const LandingPage: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <label
                     htmlFor="calc-daily-slider"
-                    className="text-xs font-semibold uppercase tracking-wider text-slate-500"
+                    className="text-xs font-bold uppercase tracking-wider text-[#5c3d40]"
                   >
                     2. Komitmen Immersion Harian
                   </label>
-                  <span className="text-sm font-mono font-bold text-red-600">
+                  <span className="text-sm font-mono text-[#59171b]">
                     {calcMinutes} menit / hari ({(calcMinutes / 60).toFixed(1)} jam)
                   </span>
                 </div>
@@ -552,7 +537,7 @@ export const LandingPage: React.FC = () => {
                   step={15}
                   value={calcMinutes}
                   onChange={(e) => setCalcMinutes(Number(e.target.value))}
-                  className="w-full accent-red-600 cursor-pointer"
+                  className="w-full accent-[#59171b] cursor-pointer"
                 />
                 <div className="flex flex-wrap gap-1.5">
                   {[45, 90, 120, 180].map((preset) => (
@@ -560,10 +545,10 @@ export const LandingPage: React.FC = () => {
                       key={preset}
                       type="button"
                       onClick={() => setCalcMinutes(preset)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold border transition cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-lg text-xs font-mono border transition cursor-pointer ${
                         calcMinutes === preset
-                          ? 'bg-red-600 text-white border-red-600'
-                          : 'bg-white text-slate-600 border-slate-200 hover:border-red-300'
+                          ? 'bg-[#59171b] text-[#fff8f2] border-[#59171b]'
+                          : 'bg-white text-[#5c3d40] border-[#e7d1c3] hover:border-[#59171b]'
                       }`}
                     >
                       {preset}m
@@ -573,62 +558,62 @@ export const LandingPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="lg:col-span-6 p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-red-50/70 via-white to-slate-50 border border-red-100 space-y-5">
+            <div className="lg:col-span-6 p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-[#fed7b8]/45 via-white to-[#fff5ed] border border-[#ebc6b0] space-y-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#5c3d40]">
                     Estimasi Tercapai
                   </span>
-                  <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-0.5">
+                  <div className="text-2xl sm:text-3xl font-extrabold text-[#241113] mt-0.5">
                     {calculatorResult.etaLabel}
                   </div>
-                  <p className="text-xs text-slate-600 mt-1">
+                  <p className="text-xs font-medium text-[#5c3d40] mt-1">
                     Sekitar{' '}
-                    <strong className="font-mono text-red-700">
+                    <strong className="font-mono text-[#59171b]">
                       {calculatorResult.daysNeeded.toLocaleString()} hari
                     </strong>{' '}
                     ({calculatorResult.monthsNeeded} bulan) dengan{' '}
                     {calcMinutes} mnt/hari.
                   </p>
                 </div>
-                <div className="px-3 py-1.5 rounded-xl bg-white border border-red-200 text-right shrink-0">
-                  <div className="text-[10px] font-semibold uppercase text-slate-500">
+                <div className="px-3 py-1.5 rounded-xl bg-white border border-[#e7c3ad] text-right shrink-0">
+                  <div className="text-[10px] font-bold uppercase text-[#5c3d40]">
                     Beban Mingguan
                   </div>
-                  <div className="text-sm font-mono font-bold text-red-600">
+                  <div className="text-sm font-mono text-[#59171b]">
                     {calculatorResult.weeklyHours} jam/mgg
                   </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2.5">
-                <div className="p-3 rounded-xl bg-white border border-slate-200/80">
-                  <div className="text-[11px] text-slate-500">Anime</div>
-                  <div className="text-base font-bold font-mono text-slate-900 mt-0.5">
+                <div className="p-3 rounded-xl bg-white border border-[#ead6c9]">
+                  <div className="text-[11px] font-semibold text-[#5c3d40]">Anime</div>
+                  <div className="text-base font-extrabold font-mono text-[#241113] mt-0.5">
                     ~{calculatorResult.animeEpisodes}
                   </div>
-                  <div className="text-[10px] text-slate-400">episode</div>
+                  <div className="text-[10px] font-medium text-[#7c5659]">episode</div>
                 </div>
-                <div className="p-3 rounded-xl bg-white border border-slate-200/80">
-                  <div className="text-[11px] text-slate-500">Manga</div>
-                  <div className="text-base font-bold font-mono text-slate-900 mt-0.5">
+                <div className="p-3 rounded-xl bg-white border border-[#ead6c9]">
+                  <div className="text-[11px] font-semibold text-[#5c3d40]">Manga</div>
+                  <div className="text-base font-extrabold font-mono text-[#241113] mt-0.5">
                     ~{calculatorResult.mangaVolumes}
                   </div>
-                  <div className="text-[10px] text-slate-400">volume</div>
+                  <div className="text-[10px] font-medium text-[#7c5659]">volume</div>
                 </div>
-                <div className="p-3 rounded-xl bg-white border border-slate-200/80">
-                  <div className="text-[11px] text-slate-500">Anki Mining</div>
-                  <div className="text-base font-bold font-mono text-slate-900 mt-0.5">
+                <div className="p-3 rounded-xl bg-white border border-[#ead6c9]">
+                  <div className="text-[11px] font-semibold text-[#5c3d40]">Anki Mining</div>
+                  <div className="text-base font-extrabold font-mono text-[#241113] mt-0.5">
                     ~{calculatorResult.estimatedCards.toLocaleString()}
                   </div>
-                  <div className="text-[10px] text-slate-400">kartu kosa kata</div>
+                  <div className="text-[10px] font-medium text-[#7c5659]">kartu kosakata</div>
                 </div>
               </div>
 
               <button
                 type="button"
                 onClick={handleApplyCalculatorGoal}
-                className="btn-crimson w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer"
+                className="btn-crimson w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 cursor-pointer"
               >
                 Terapkan Target {calcMinutes} mnt/hari ke Dashboard
                 <ArrowRight className="w-4 h-4" />
@@ -637,108 +622,37 @@ export const LandingPage: React.FC = () => {
           </div>
         </section>
 
-        {/* Katalog & Rekomendasi Media Immersion Populer */}
+        {/* Full 660+ Media Catalog from Spreadsheet */}
         <section id="katalog" className="space-y-6 animate-fade-up delay-3">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-            <div className="space-y-1.5">
-              <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-600">
-                <Compass className="w-3.5 h-3.5" />
-                REKOMENDASI KURASI BAHAN BELAJAR
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900">
-                Katalog Media Immersion Populer
-              </h2>
-              <p className="text-sm text-slate-600">
-                Bingung mulai dari mana? Pilih judul sesuai level kemampuanmu
-                dan langsung catat sesinya.
-              </p>
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-1.5 text-xs font-bold text-[#59171b] app-canvas-subtitle">
+              <Compass className="w-3.5 h-3.5" />
+              DATABASE REKOMENDASI MEDIA LENGKAP
             </div>
-
-            <div className="flex flex-wrap gap-1.5">
-              {(
-                [
-                  { id: 'all', label: 'Semua' },
-                  { id: 'Pemula N5–N4', label: 'Pemula N5–N4' },
-                  { id: 'Menengah N3', label: 'Menengah N3' },
-                  { id: 'Mahir N2–N1', label: 'Mahir N2–N1' },
-                ] as const
-              ).map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setCatalogFilter(tab.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
-                    catalogFilter === tab.id
-                      ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white border-red-600 shadow-xs'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-red-300'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-[#241113] app-canvas-title">
+              Katalog 660+ Media Immersion (Novels, Anime, Manga, VN & Lainnya)
+            </h2>
+            <p className="text-sm font-medium text-[#5c3d40] app-canvas-subtitle">
+              Diurutkan berdasarkan tingkat kesulitan mulai dari pemula hingga
+              mahir. Cari judul, baca penjelasan tingkat kesulitan, lalu mulai
+              mencatat sesi dalam 1 klik.
+            </p>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {filteredCatalog.map((item) => {
-              const meta = getCategoryMeta(item.category);
-              return (
-                <div
-                  key={item.title}
-                  className="card-pro-interactive p-4 flex flex-col justify-between gap-4"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-start gap-3">
-                      <MediaCover
-                        title={item.title}
-                        category={item.category}
-                        className="w-16 h-22 rounded-xl"
-                      />
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <span className="inline-block px-2 py-0.5 rounded-md bg-red-50 border border-red-200/80 text-[10px] font-semibold text-red-700">
-                          {item.level}
-                        </span>
-                        <h3 className="font-bold text-sm text-slate-900 leading-snug line-clamp-2">
-                          {item.title}
-                        </h3>
-                        <div className="text-[11px] font-mono text-slate-500">
-                          {meta.shortLabel} • ~{item.suggestedMinutes} mnt/sesi
-                        </div>
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      {item.summary}
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleStartMediaFromCatalog(
-                        item.title,
-                        item.category,
-                        item.suggestedMinutes
-                      )
-                    }
-                    className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-red-600 border border-slate-200 hover:border-red-600 text-slate-800 hover:text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                    Mulai Immersion ({item.suggestedMinutes}m)
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+          <MediaCatalogBrowser
+            defaultSection="Novels"
+            pageSize={9}
+            onStartMedia={handleStartMediaFromCatalog}
+          />
         </section>
 
         {/* Fitur */}
         <section id="fitur" className="space-y-8 animate-fade-up delay-3">
           <div className="text-center space-y-2">
-            <h2 className="text-2xl sm:text-3xl font-bold text-slate-900">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-[#241113] app-canvas-title">
               Dirancang untuk Pelajar Bahasa Jangka Panjang
             </h2>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm font-medium text-[#5c3d40] app-canvas-subtitle">
               Pencatatan cepat tanpa gangguan, analitik akurat, dan sinkronisasi
               langsung ke perangkat Anda.
             </p>
@@ -749,7 +663,7 @@ export const LandingPage: React.FC = () => {
               {
                 icon: Clock,
                 title: 'Riwayat Visual & Timer',
-                desc: 'Stopwatch persisten lintas tab & HP, dilengkapi sampul media pada setiap riwayat sesi.',
+                desc: 'Stopwatch persisten lintas tab & HP, dilengkapi sampul media dan logo Anki otomatis.',
               },
               {
                 icon: MonitorSmartphone,
@@ -768,13 +682,13 @@ export const LandingPage: React.FC = () => {
               },
             ].map((item) => (
               <div key={item.title} className="card-pro p-5 space-y-3">
-                <div className="w-9 h-9 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600">
+                <div className="w-9 h-9 rounded-xl bg-[#fff3e8] border border-[#f2c9ab] flex items-center justify-center text-[#59171b]">
                   <item.icon className="w-4 h-4" />
                 </div>
-                <h3 className="font-semibold text-slate-900 text-sm">
+                <h3 className="font-extrabold text-[#241113] text-sm">
                   {item.title}
                 </h3>
-                <p className="text-xs text-slate-600 leading-relaxed">
+                <p className="text-xs font-medium text-[#5c3d40] leading-relaxed">
                   {item.desc}
                 </p>
               </div>
@@ -785,14 +699,14 @@ export const LandingPage: React.FC = () => {
         {/* Peringkat & Aktivitas Komunitas */}
         <section id="komunitas" className="space-y-6 animate-fade-up delay-4">
           <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-600">
+            <div className="inline-flex items-center gap-1.5 text-xs font-bold text-[#59171b] app-canvas-subtitle">
               <Users className="w-3.5 h-3.5" />
               BELAJAR BERSAMA KOMUNITAS
             </div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-slate-900">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-[#241113] app-canvas-title">
               Peringkat & Aktivitas Pelajar
             </h2>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm font-medium text-[#5c3d40] app-canvas-subtitle">
               Pantau progres konsistensi mingguan dan bergabunglah dengan pelajar
               immersion lainnya.
             </p>
@@ -802,17 +716,17 @@ export const LandingPage: React.FC = () => {
             <div className="lg:col-span-7 card-pro p-5 sm:p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Trophy className="w-4 h-4 text-red-600" />
-                  <h3 className="font-bold text-slate-900 text-sm">
+                  <Trophy className="w-4 h-4 text-[#59171b]" />
+                  <h3 className="font-extrabold text-[#241113] text-sm">
                     Top Pelajar Bulan Ini
                   </h3>
                 </div>
-                <span className="text-[11px] font-mono text-slate-500">
+                <span className="text-[11px] font-mono text-[#5c3d40]">
                   Total Jam & Streak
                 </span>
               </div>
 
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-[#f2e5dc]">
                 {COMMUNITY_LEADERBOARD.map((member, idx) => (
                   <div
                     key={member.id}
@@ -820,31 +734,31 @@ export const LandingPage: React.FC = () => {
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <span
-                        className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-mono font-bold shrink-0 ${
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-mono shrink-0 ${
                           idx === 0
-                            ? 'bg-gradient-to-br from-red-600 to-rose-600 text-white'
+                            ? 'bg-gradient-to-br from-[#59171b] to-[#83262c] text-[#fed7b8]'
                             : idx <= 2
-                              ? 'bg-red-50 text-red-700 border border-red-200'
-                              : 'bg-slate-100 text-slate-600'
+                              ? 'bg-[#fff3e8] text-[#59171b] border border-[#e7c3ad]'
+                              : 'bg-[#f6ece4] text-[#5c3d40]'
                         }`}
                       >
                         #{idx + 1}
                       </span>
                       <div className="min-w-0">
-                        <div className="font-semibold text-sm text-slate-900 truncate">
+                        <div className="font-bold text-sm text-[#241113] truncate">
                           {member.name}
                         </div>
-                        <div className="text-[11px] text-slate-500 truncate">
+                        <div className="text-[11px] font-medium text-[#5c3d40] truncate">
                           {member.rankTitle} • {member.favoriteMedia}
                         </div>
                       </div>
                     </div>
 
                     <div className="text-right shrink-0">
-                      <div className="text-sm font-mono font-bold text-slate-900">
+                      <div className="text-sm font-mono text-[#241113]">
                         {member.totalHours.toLocaleString('id-ID')} j
                       </div>
-                      <div className="text-[11px] font-mono text-red-600 inline-flex items-center gap-1">
+                      <div className="text-[11px] font-mono text-[#59171b] inline-flex items-center gap-1">
                         <Flame className="w-3 h-3" />
                         {member.streak}h
                       </div>
@@ -857,8 +771,8 @@ export const LandingPage: React.FC = () => {
             <div className="lg:col-span-5 flex flex-col gap-4">
               <div className="card-pro p-5 space-y-3.5 flex-1">
                 <div className="flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-red-600" />
-                  <h3 className="font-bold text-slate-900 text-sm">
+                  <BookOpen className="w-4 h-4 text-[#59171b]" />
+                  <h3 className="font-extrabold text-[#241113] text-sm">
                     Aktivitas Immersion Terbaru
                   </h3>
                 </div>
@@ -867,7 +781,7 @@ export const LandingPage: React.FC = () => {
                   {COMMUNITY_ACTIVITY_FEED.map((item) => (
                     <div
                       key={item.id}
-                      className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/70 flex items-center gap-3"
+                      className="p-2.5 rounded-xl bg-[#fffaf6] border border-[#ead6c9] flex items-center gap-3"
                     >
                       <MediaCover
                         title={item.title}
@@ -875,13 +789,13 @@ export const LandingPage: React.FC = () => {
                         className="w-9 h-12 rounded-lg"
                       />
                       <div className="min-w-0 flex-1">
-                        <div className="text-xs text-slate-800 leading-snug">
+                        <div className="text-xs font-medium text-[#241113] leading-snug">
                           <strong>{item.userName}</strong> {item.action}{' '}
-                          <span className="font-semibold text-red-700">
+                          <span className="font-bold text-[#59171b]">
                             {item.title}
                           </span>
                         </div>
-                        <div className="text-[11px] font-mono text-slate-500 mt-0.5">
+                        <div className="text-[11px] font-mono text-[#5c3d40] mt-0.5">
                           +{item.minutes} mnt • {item.timeAgo}
                         </div>
                       </div>
@@ -890,25 +804,25 @@ export const LandingPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="card-pro p-5 bg-gradient-to-br from-red-50/90 via-white to-rose-50/70 border-red-200/80 space-y-3">
-                <h3 className="font-bold text-slate-900 text-sm">
+              <div className="card-pro p-5 bg-gradient-to-br from-[#fed7b8]/55 via-white to-[#fff5ed] border-[#e7c3ad] space-y-3">
+                <h3 className="font-extrabold text-[#241113] text-sm">
                   Siap mencatatkan perjalanan bahasamu sendiri?
                 </h3>
-                <p className="text-xs text-slate-600 leading-relaxed">
+                <p className="text-xs font-medium text-[#5c3d40] leading-relaxed">
                   Buat akun gratis dengan Google atau email untuk menyimpan
                   riwayat belajar, jam immersion, dan target harian di cloud.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Link
                     to="/login?mode=signup"
-                    className="btn-crimson px-4 py-2.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5"
+                    className="btn-crimson px-4 py-2.5 rounded-xl text-xs font-bold inline-flex items-center gap-1.5"
                   >
                     Gabung & Buat Akun Gratis
                     <ArrowRight className="w-3.5 h-3.5" />
                   </Link>
                   <Link
                     to="/login"
-                    className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 hover:border-red-300 text-xs font-semibold text-slate-700"
+                    className="px-4 py-2.5 rounded-xl bg-white border border-[#e7d1c3] hover:border-[#59171b] text-xs font-bold text-[#241113]"
                   >
                     Masuk
                   </Link>
@@ -919,29 +833,29 @@ export const LandingPage: React.FC = () => {
         </section>
       </main>
 
-      <footer className="border-t border-slate-200 bg-white/80 py-8 px-4 sm:px-6 relative z-10">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+      <footer className="border-t border-[#ead6c9] bg-white/90 py-8 px-4 sm:px-6 relative z-10">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-semibold text-[#5c3d40]">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-red-600 to-rose-700 flex items-center justify-center font-bold text-white text-[11px]">
+            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-[#59171b] to-[#83262c] flex items-center justify-center font-extrabold text-[#fed7b8] text-[11px]">
               I
             </div>
-            <span className="font-semibold text-slate-800">ImmersionTrack</span>
+            <span className="font-extrabold text-[#241113]">ImmersionTrack</span>
             <span>• nihongotracker.my.id</span>
           </div>
           <div className="flex flex-wrap items-center gap-5">
-            <a href="#kalkulator" className="hover:text-red-700 transition">
+            <a href="#kalkulator" className="hover:text-[#59171b] transition">
               Kalkulator JLPT
             </a>
-            <a href="#katalog" className="hover:text-red-700 transition">
-              Katalog Media
+            <a href="#katalog" className="hover:text-[#59171b] transition">
+              Katalog 660 Media
             </a>
-            <Link to="/login" className="hover:text-red-700 transition">
+            <Link to="/login" className="hover:text-[#59171b] transition">
               Masuk / Daftar
             </Link>
             <button
               type="button"
               onClick={handleOpenDashboard}
-              className="hover:text-red-700 transition cursor-pointer"
+              className="hover:text-[#59171b] transition cursor-pointer"
             >
               Dashboard
             </button>
@@ -951,7 +865,7 @@ export const LandingPage: React.FC = () => {
 
       {showAuthModal && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fade-in"
+          className="fixed inset-0 z-50 bg-[#241113]/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fade-in"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowAuthModal(false);
           }}
@@ -959,34 +873,34 @@ export const LandingPage: React.FC = () => {
           <div
             role="dialog"
             aria-modal="true"
-            className="w-full max-w-md rounded-2xl bg-white border border-slate-200 p-6 shadow-2xl space-y-5 my-auto animate-scale-in"
+            className="w-full max-w-md rounded-2xl bg-[#fffdfb] border border-[#e7d1c3] p-6 shadow-2xl space-y-5 my-auto animate-scale-in"
           >
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">
+                <h2 className="text-lg font-extrabold text-[#241113]">
                   {isSignUp ? 'Buat Akun ImmersionTrack' : 'Masuk ke Akun'}
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs font-medium text-[#5c3d40] mt-0.5">
                   Sinkronkan progresmu lintas perangkat lewat Supabase.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowAuthModal(false)}
-                className="text-xs text-slate-500 hover:text-slate-900 px-2.5 py-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+                className="text-xs font-bold text-[#5c3d40] hover:text-[#241113] px-2.5 py-1 rounded-lg hover:bg-[#f9ebe0] cursor-pointer"
               >
                 Tutup
               </button>
             </div>
 
             {!sbReady && !isSupabaseConfigured && (
-              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-900 space-y-2">
+              <div className="p-3 rounded-xl bg-[#fff3e8] border border-[#f2c9ab] text-xs font-medium text-[#59171b] space-y-2">
                 <div>
                   Kredensial Supabase belum terhubung. Anda bisa{' '}
                   <button
                     type="button"
                     onClick={() => setShowSupabaseSetup(!showSupabaseSetup)}
-                    className="underline font-semibold text-red-700 cursor-pointer"
+                    className="underline font-bold text-[#59171b] cursor-pointer"
                   >
                     atur URL & Anon Key Supabase sekarang
                   </button>{' '}
@@ -994,7 +908,7 @@ export const LandingPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleOpenDashboard}
-                    className="underline font-semibold text-slate-900 cursor-pointer"
+                    className="underline font-bold text-[#241113] cursor-pointer"
                   >
                     Workspace Lokal
                   </button>
@@ -1006,10 +920,10 @@ export const LandingPage: React.FC = () => {
             {showSupabaseSetup && (
               <form
                 onSubmit={handleSaveSupabase}
-                className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5"
+                className="p-3.5 rounded-xl bg-[#fffaf6] border border-[#e7d1c3] space-y-2.5"
               >
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
-                  <Database className="w-3.5 h-3.5 text-red-600" />
+                <div className="flex items-center gap-1.5 text-xs font-bold text-[#241113]">
+                  <Database className="w-3.5 h-3.5 text-[#59171b]" />
                   Hubungkan Proyek Supabase
                 </div>
                 <input
@@ -1018,7 +932,7 @@ export const LandingPage: React.FC = () => {
                   placeholder="https://xxxx.supabase.co"
                   value={sbUrl}
                   onChange={(e) => setSbUrl(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500"
+                  className="w-full px-3 py-2 rounded-lg bg-white border border-[#e7d1c3] text-xs font-mono text-[#241113] focus:outline-none focus:border-[#59171b]"
                 />
                 <input
                   type="text"
@@ -1026,12 +940,12 @@ export const LandingPage: React.FC = () => {
                   placeholder="Anon Public Key"
                   value={sbKey}
                   onChange={(e) => setSbKey(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500"
+                  className="w-full px-3 py-2 rounded-lg bg-white border border-[#e7d1c3] text-xs font-mono text-[#241113] focus:outline-none focus:border-[#59171b]"
                 />
                 <button
                   type="submit"
                   disabled={testingSb}
-                  className="btn-crimson w-full py-2 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-60"
+                  className="btn-crimson w-full py-2 rounded-lg text-xs font-bold cursor-pointer disabled:opacity-60"
                 >
                   {testingSb ? 'Menguji Koneksi...' : 'Test & Simpan Koneksi'}
                 </button>
@@ -1040,18 +954,18 @@ export const LandingPage: React.FC = () => {
 
             <form onSubmit={handleEmailAuth} className="space-y-3">
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <Mail className="w-4 h-4 text-[#7c5659] absolute left-3 top-3" />
                 <input
                   type="email"
                   required
                   placeholder="Email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[#fffaf6] border border-[#e7d1c3] text-sm font-medium text-[#241113] focus:outline-none focus:border-[#59171b] focus:bg-white"
                 />
               </div>
               <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <Lock className="w-4 h-4 text-[#7c5659] absolute left-3 top-3" />
                 <input
                   type="password"
                   required
@@ -1059,38 +973,38 @@ export const LandingPage: React.FC = () => {
                   placeholder="Password (min. 6 karakter)"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[#fffaf6] border border-[#e7d1c3] text-sm font-medium text-[#241113] focus:outline-none focus:border-[#59171b] focus:bg-white"
                 />
               </div>
               <button
                 type="submit"
                 disabled={authLoading}
-                className="btn-crimson w-full py-2.5 rounded-xl font-semibold text-sm cursor-pointer flex items-center justify-center gap-1.5"
+                className="btn-crimson w-full py-2.5 rounded-xl font-bold text-sm cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <Zap className="w-4 h-4" />
                 {isSignUp ? 'Daftar Akun' : 'Masuk dengan Email'}
               </button>
-              <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+              <div className="flex items-center justify-between text-xs font-medium text-[#5c3d40] pt-1">
                 <button
                   type="button"
                   onClick={() => setIsSignUp(!isSignUp)}
-                  className="text-red-600 font-semibold hover:underline cursor-pointer"
+                  className="text-[#59171b] font-bold hover:underline cursor-pointer"
                 >
                   {isSignUp ? 'Sudah punya akun? Masuk' : 'Belum punya akun? Daftar'}
                 </button>
                 <Link
                   to="/login?mode=forgot"
-                  className="text-slate-500 hover:text-red-600 hover:underline"
+                  className="text-[#5c3d40] hover:text-[#59171b] hover:underline"
                 >
                   Lupa password?
                 </Link>
               </div>
             </form>
 
-            <div className="flex items-center gap-3 text-xs text-slate-400">
-              <div className="h-px flex-1 bg-slate-200" />
+            <div className="flex items-center gap-3 text-xs font-semibold text-[#8c6b6e]">
+              <div className="h-px flex-1 bg-[#ead6c9]" />
               <span>opsi lain</span>
-              <div className="h-px flex-1 bg-slate-200" />
+              <div className="h-px flex-1 bg-[#ead6c9]" />
             </div>
 
             <GoogleSignInButton

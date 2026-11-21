@@ -10,10 +10,10 @@ export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-red-50/50 via-white to-slate-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs font-medium text-slate-500">
+      <div className="min-h-screen app-bg-canvas flex items-center justify-center">
+        <div className="card-pro px-6 py-5 flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-[#59171b] border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs font-semibold text-[#5c3d40]">
             Memeriksa sesi akun...
           </span>
         </div>

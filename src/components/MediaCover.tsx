@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useMediaCover } from '../lib/mediaCovers';
 import type { ImmersionCategory } from '../types';
 
@@ -13,11 +13,32 @@ export const MediaCover: React.FC<MediaCoverProps> = ({
   category,
   className = 'w-12 h-16 rounded-xl',
 }) => {
-  const { coverUrl, fallbackUrl } = useMediaCover(title, category);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [inView, setInView] = useState(
+    () => typeof IntersectionObserver === 'undefined'
+  );
+
+  useEffect(() => {
+    if (inView || !containerRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setInView(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [inView]);
+
+  const { coverUrl, fallbackUrl } = useMediaCover(title, category, inView);
 
   return (
     <div
-      className={`relative overflow-hidden shrink-0 bg-slate-100 border border-slate-200 shadow-xs ${className}`}
+      ref={containerRef}
+      className={`relative overflow-hidden shrink-0 bg-[#f6ebe3] border border-[#e7d1c3] shadow-xs ${className}`}
     >
       <img
         src={coverUrl}

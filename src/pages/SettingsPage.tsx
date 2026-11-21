@@ -8,12 +8,24 @@ import {
   Copy,
   Database,
   Download,
+  Image,
+  Palette,
   RotateCcw,
   Save,
   Trash2,
   Upload,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import {
+  BACKGROUND_PRESETS,
+  compressImageToDataUrl,
+  DEFAULT_APPEARANCE,
+  loadAppearanceSettings,
+  saveAppearanceSettings,
+  type AppearanceSettings,
+  type BackgroundPresetId,
+  type CustomOverlayStrength,
+} from '../lib/appearance';
 import {
   clearRuntimeSupabaseConfig,
   getSupabaseConfig,
@@ -105,7 +117,7 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
   return (
     <form onSubmit={handleSave} className="space-y-5">
       <div>
-        <label className="block text-xs font-medium text-slate-600 mb-1.5">
+        <label className="block text-xs font-semibold text-[#5c3d40] mb-1.5">
           Nama Tampilan
         </label>
         <input
@@ -113,13 +125,13 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           placeholder="Nama kamu"
-          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+          className="w-full px-3.5 py-2.5 rounded-xl bg-[#fffaf6] border border-[#e7d1c3] text-sm font-medium text-[#241113] focus:outline-none focus:border-[#59171b] focus:bg-white"
         />
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs font-medium text-slate-600">
+          <label className="text-xs font-semibold text-[#5c3d40]">
             Bahasa Target
           </label>
           <div className="flex flex-wrap gap-1">
@@ -128,10 +140,10 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
                 key={lang}
                 type="button"
                 onClick={() => setTargetLanguage(lang)}
-                className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition cursor-pointer ${
+                className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${
                   targetLanguage === lang
-                    ? 'bg-red-600 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
+                    ? 'bg-[#59171b] text-[#fff8f2]'
+                    : 'bg-[#faf2ec] text-[#5c3d40] hover:text-[#241113] border border-[#e7d1c3]'
                 }`}
               >
                 {lang}
@@ -145,13 +157,13 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
           placeholder="Contoh: Japanese, Korean, Spanish"
           value={targetLanguage}
           onChange={(e) => setTargetLanguage(e.target.value)}
-          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+          className="w-full px-3.5 py-2.5 rounded-xl bg-[#fffaf6] border border-[#e7d1c3] text-sm font-medium text-[#241113] focus:outline-none focus:border-[#59171b] focus:bg-white"
         />
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs font-medium text-slate-600">
+          <label className="text-xs font-semibold text-[#5c3d40]">
             Target Harian (menit)
           </label>
           <div className="flex flex-wrap gap-1">
@@ -160,10 +172,10 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
                 key={mins}
                 type="button"
                 onClick={() => setDailyGoal(mins)}
-                className={`px-2 py-0.5 rounded-md text-[11px] font-medium font-mono transition cursor-pointer ${
+                className={`px-2 py-0.5 rounded-md text-[11px] font-semibold font-mono transition cursor-pointer ${
                   dailyGoal === mins
-                    ? 'bg-red-600 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
+                    ? 'bg-[#59171b] text-[#fff8f2]'
+                    : 'bg-[#faf2ec] text-[#5c3d40] hover:text-[#241113] border border-[#e7d1c3]'
                 }`}
               >
                 {mins}m
@@ -178,7 +190,7 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
           max={1440}
           value={dailyGoal}
           onChange={(e) => setDailyGoal(Number(e.target.value))}
-          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+          className="w-full px-3.5 py-2.5 rounded-xl bg-[#fffaf6] border border-[#e7d1c3] text-sm font-mono text-[#241113] focus:outline-none focus:border-[#59171b] focus:bg-white"
         />
       </div>
 
@@ -199,6 +211,66 @@ export const SettingsPage: React.FC = () => {
     useAuth();
   const [confirmClear, setConfirmClear] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const bgUploadInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [appearance, setAppearance] = useState<AppearanceSettings>(
+    loadAppearanceSettings
+  );
+  const [customBgUrlInput, setCustomBgUrlInput] = useState(
+    () =>
+      loadAppearanceSettings().customImageUrl.startsWith('data:')
+        ? ''
+        : loadAppearanceSettings().customImageUrl
+  );
+
+  const updateAppearance = (patch: Partial<AppearanceSettings>) => {
+    setAppearance((prev) => {
+      const next = { ...prev, ...patch };
+      saveAppearanceSettings(next);
+      return next;
+    });
+  };
+
+  const handleSelectPreset = (preset: BackgroundPresetId) => {
+    updateAppearance({ preset });
+    toast.success('Background website diperbarui!');
+  };
+
+  const handleUploadCustomWallpaper = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await compressImageToDataUrl(file);
+      updateAppearance({
+        preset: 'custom',
+        customImageUrl: dataUrl,
+      });
+      setCustomBgUrlInput('');
+      toast.success('Wallpaper kustom diterapkan ke seluruh website!');
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : 'Gagal memasang gambar background'
+      );
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleApplyCustomBgUrl = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = customBgUrlInput.trim();
+    if (!clean.startsWith('https://') && !clean.startsWith('http://')) {
+      toast.error('Masukkan URL gambar yang valid (https://...).');
+      return;
+    }
+    updateAppearance({
+      preset: 'custom',
+      customImageUrl: clean,
+    });
+    toast.success('URL background diterapkan!');
+  };
 
   const initialSb = getSupabaseConfig();
   const [sbUrl, setSbUrl] = useState(initialSb.url);
@@ -329,11 +401,11 @@ export const SettingsPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-red-50/50 via-slate-50 to-slate-50 text-slate-900 px-4 py-10">
-      <div className="max-w-xl mx-auto space-y-6 animate-fade-up">
+    <div className="app-bg-canvas text-[#241113] px-4 py-10">
+      <div className="max-w-2xl mx-auto space-y-6 animate-fade-up">
         <Link
           to="/dashboard"
-          className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-red-700 transition"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-[#5c3d40] hover:text-[#59171b] app-canvas-subtitle transition"
         >
           <ArrowLeft className="w-4 h-4" />
           Kembali ke Dashboard
@@ -341,10 +413,10 @@ export const SettingsPage: React.FC = () => {
 
         <div className="card-pro p-6 space-y-5">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">
+            <h1 className="text-xl font-extrabold text-[#241113]">
               Pengaturan Immersion
             </h1>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-sm text-[#5c3d40] mt-1">
               Sesuaikan nama tampilan, bahasa target, dan target durasi harian.
             </p>
           </div>
@@ -361,10 +433,150 @@ export const SettingsPage: React.FC = () => {
           )}
         </div>
 
+        <div className="card-pro p-6 space-y-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-[#fff3e8] border border-[#f2c9ab] text-[#59171b]">
+                <Palette className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-extrabold text-[#241113]">
+                  Tampilan & Background Website
+                </h2>
+                <p className="text-xs text-[#5c3d40] mt-0.5">
+                  Pilih tema gradasi Burgundy–Cream atau unggah wallpaper
+                  sendiri. Tersimpan otomatis di browser Anda.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setCustomBgUrlInput('');
+                setAppearance(DEFAULT_APPEARANCE);
+                saveAppearanceSettings(DEFAULT_APPEARANCE);
+                toast.success('Background dikembalikan ke default.');
+              }}
+              className="text-xs font-bold text-[#59171b] hover:underline shrink-0 cursor-pointer"
+            >
+              Reset Default
+            </button>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {BACKGROUND_PRESETS.map((preset) => {
+              const active = appearance.preset === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => handleSelectPreset(preset.id)}
+                  className={`p-3 rounded-xl border text-left transition cursor-pointer space-y-2 ${
+                    active
+                      ? 'border-[#59171b] bg-[#fff5ed] ring-2 ring-[#59171b]/20'
+                      : 'border-[#ead6c9] bg-white hover:border-[#b3746d]'
+                  }`}
+                >
+                  <div
+                    className="h-12 rounded-lg border border-black/10 shadow-inner"
+                    style={{ background: preset.swatchStyle }}
+                  />
+                  <div>
+                    <div className="text-xs font-extrabold text-[#241113] flex items-center justify-between gap-1">
+                      <span>{preset.name}</span>
+                      {active && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#59171b] shrink-0" />
+                      )}
+                    </div>
+                    <p className="text-[11px] text-[#5c3d40] mt-0.5 leading-snug">
+                      {preset.description}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="p-4 rounded-xl bg-[#fffaf6] border border-[#ead6c9] space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-[#241113]">
+                <Image className="w-4 h-4 text-[#59171b]" />
+                Gunakan Gambar / Wallpaper Kustom
+              </div>
+              <button
+                type="button"
+                onClick={() => bgUploadInputRef.current?.click()}
+                className="btn-crimson px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Unggah Gambar dari Perangkat
+              </button>
+              <input
+                ref={bgUploadInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleUploadCustomWallpaper}
+                className="hidden"
+              />
+            </div>
+
+            <form
+              onSubmit={handleApplyCustomBgUrl}
+              className="flex flex-col sm:flex-row gap-2"
+            >
+              <input
+                type="url"
+                placeholder="Atau tempel URL gambar (https://...)"
+                value={customBgUrlInput}
+                onChange={(e) => setCustomBgUrlInput(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-xl bg-white border border-[#e7d1c3] text-xs font-medium text-[#241113] focus:outline-none focus:border-[#59171b]"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl bg-white border border-[#e7d1c3] hover:border-[#59171b] text-xs font-bold text-[#59171b] cursor-pointer"
+              >
+                Pakai URL
+              </button>
+            </form>
+
+            {appearance.preset === 'custom' && (
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <span className="text-[11px] font-semibold text-[#5c3d40]">
+                  Kepekatan Lapisan Burgundy:
+                </span>
+                <div className="flex gap-1.5">
+                  {(
+                    [
+                      { id: 'light', label: 'Tipis' },
+                      { id: 'medium', label: 'Sedang' },
+                      { id: 'strong', label: 'Pekat' },
+                    ] as Array<{ id: CustomOverlayStrength; label: string }>
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() =>
+                        updateAppearance({ customOverlayStrength: opt.id })
+                      }
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer border ${
+                        appearance.customOverlayStrength === opt.id
+                          ? 'bg-[#59171b] text-[#fff8f2] border-[#59171b]'
+                          : 'bg-white text-[#5c3d40] border-[#e7d1c3]'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="card-pro p-6 space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-red-50 border border-red-100 text-red-600">
+              <div className="p-2.5 rounded-xl bg-[#fff3e8] border border-[#f2c9ab] text-[#59171b]">
                 <Database className="w-5 h-5" />
               </div>
               <div>
@@ -434,9 +646,9 @@ export const SettingsPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleCopySql}
-                className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 inline-flex items-center gap-1.5 cursor-pointer"
+                className="px-3.5 py-2 rounded-xl bg-white border border-[#e7d1c3] hover:bg-[#fffaf6] text-xs font-bold text-[#241113] inline-flex items-center gap-1.5 cursor-pointer"
               >
-                <Copy className="w-3.5 h-3.5 text-red-600" />
+                <Copy className="w-3.5 h-3.5 text-[#59171b]" />
                 Salin Skrip SQL Tabel & RLS
               </button>
 

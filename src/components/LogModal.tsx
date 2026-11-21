@@ -153,10 +153,10 @@ export const LogModal: React.FC<LogModalProps> = ({
                     key={cat}
                     type="button"
                     onClick={() => setCategory(cat)}
-                    className={`px-2.5 py-2 rounded-xl text-xs font-medium border flex items-center gap-2 transition cursor-pointer text-left ${
+                    className={`px-2.5 py-2 rounded-xl text-xs font-semibold border flex items-center gap-2 transition cursor-pointer text-left ${
                       active
-                        ? 'bg-red-50 border-red-500 text-red-700 font-semibold'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                        ? 'bg-[#fff3e8] border-[#59171b] text-[#59171b] font-bold'
+                        : 'bg-[#fffaf6] border-[#e7d1c3] text-[#5c3d40] hover:text-[#241113] hover:border-[#b3746d]'
                     }`}
                   >
                     <span
@@ -181,10 +181,10 @@ export const LogModal: React.FC<LogModalProps> = ({
                     key={preset}
                     type="button"
                     onClick={() => setDuration(preset)}
-                    className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition cursor-pointer ${
+                    className={`px-2 py-0.5 rounded-md text-[11px] font-bold transition cursor-pointer ${
                       duration === preset
-                        ? 'bg-red-600 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
+                        ? 'bg-[#59171b] text-[#fff8f2]'
+                        : 'bg-[#fffaf6] text-[#5c3d40] hover:text-[#241113] border border-[#e7d1c3]'
                     }`}
                   >
                     {preset}m

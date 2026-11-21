@@ -6,6 +6,7 @@ import {
   BookOpen,
   Clock,
   Cloud,
+  Compass,
   Flame,
   History,
   LayoutDashboard,
@@ -62,9 +63,11 @@ import { GoalsSection } from '../components/GoalsSection';
 import { AchievementsSection } from '../components/AchievementsSection';
 import { ActivityLogList } from '../components/ActivityLogList';
 import { DevicesSection } from '../components/DevicesSection';
+import { MediaCatalogBrowser } from '../components/MediaCatalogBrowser';
 
 type DashboardTab =
   | 'overview'
+  | 'catalog'
   | 'stats'
   | 'goals'
   | 'achievements'
@@ -677,6 +680,7 @@ export const DashboardPage: React.FC = () => {
     dot?: boolean;
   }> = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'catalog', label: 'Katalog', icon: Compass },
     { id: 'stats', label: 'Stats', icon: BarChart3 },
     { id: 'goals', label: 'Goals', icon: Target },
     { id: 'achievements', label: 'Achievements', icon: Award },
@@ -690,30 +694,30 @@ export const DashboardPage: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-red-50/40 via-slate-50 to-slate-50 text-slate-900">
-      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200/80">
+    <div className="min-h-screen app-bg-canvas text-[#241113]">
+      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-[#ead6c9]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <Link to="/" className="flex items-center gap-3 shrink-0 group">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-red-600 to-rose-700 flex items-center justify-center font-bold text-white shadow-sm shadow-red-600/25">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#59171b] to-[#83262c] flex items-center justify-center font-extrabold text-[#fed7b8] shadow-sm shadow-[#59171b]/25">
               I
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-bold text-sm sm:text-base leading-tight text-slate-900 group-hover:text-red-700 transition-colors">
+                <h1 className="font-extrabold text-sm sm:text-base leading-tight text-[#241113] group-hover:text-[#59171b] transition-colors">
                   ImmersionTrack
                 </h1>
-                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full bg-red-50 border border-red-200/80 text-[10px] font-mono font-semibold text-red-700">
+                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full bg-[#fff3e8] border border-[#f2c9ab] text-[10px] font-mono text-[#59171b]">
                   {stats.stage.code}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] font-semibold text-[#5c3d40]">
                 {profile?.target_language ?? 'Japanese'} •{' '}
                 {stats.stage.label}
               </p>
             </div>
           </Link>
 
-          <nav className="hidden lg:flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/80">
+          <nav className="hidden lg:flex items-center gap-1 bg-[#f7ece4] p-1 rounded-xl border border-[#e7d1c3]">
             {navTabs.map((tab) => {
               const active = activeTab === tab.id;
               return (
@@ -721,10 +725,10 @@ export const DashboardPage: React.FC = () => {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                     active
-                      ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                      ? 'bg-gradient-to-r from-[#59171b] to-[#83262c] text-[#fff8f2] shadow-xs'
+                      : 'text-[#5c3d40] hover:text-[#241113] hover:bg-white/70'
                   }`}
                 >
                   <tab.icon className="w-3.5 h-3.5" />
@@ -741,7 +745,7 @@ export const DashboardPage: React.FC = () => {
             {isDemoMode ? (
               <Link
                 to="/login"
-                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-xs font-semibold text-red-700 transition"
+                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#fff3e8] hover:bg-[#fed7b8]/60 border border-[#f2c9ab] text-xs font-bold text-[#59171b] transition"
               >
                 <Cloud className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Masuk / Daftar Cloud</span>
@@ -750,7 +754,7 @@ export const DashboardPage: React.FC = () => {
             ) : (
               <span
                 title="Data tersinkron dengan akun cloud Supabase"
-                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700"
+                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-700"
               >
                 <Cloud className="w-3.5 h-3.5" />
                 Cloud Synced
@@ -760,7 +764,7 @@ export const DashboardPage: React.FC = () => {
             <button
               type="button"
               onClick={() => openNewLogModal()}
-              className="btn-crimson px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 cursor-pointer"
+              className="btn-crimson px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span className="hidden sm:inline">Catat Sesi</span>
@@ -769,21 +773,21 @@ export const DashboardPage: React.FC = () => {
 
             <Link
               to="/settings"
-              title="Pengaturan"
-              className="p-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-slate-600 hover:text-slate-900 transition"
+              title="Pengaturan & Background"
+              className="p-2 rounded-xl bg-white border border-[#e7d1c3] hover:border-[#59171b] text-[#5c3d40] hover:text-[#59171b] transition"
             >
               <Settings className="w-4 h-4" />
             </Link>
 
-            <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-slate-200">
+            <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-[#ead6c9]">
               {profile?.avatar_url ? (
                 <img
                   src={profile.avatar_url}
                   alt={profile.full_name ?? 'User'}
-                  className="w-8 h-8 rounded-full object-cover border border-slate-200"
+                  className="w-8 h-8 rounded-full object-cover border border-[#e7d1c3]"
                 />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-xs font-bold text-red-700">
+                <div className="w-8 h-8 rounded-full bg-[#fff3e8] border border-[#f2c9ab] flex items-center justify-center text-xs font-extrabold text-[#59171b]">
                   {avatarInitial}
                 </div>
               )}
@@ -793,14 +797,14 @@ export const DashboardPage: React.FC = () => {
               type="button"
               onClick={signOut}
               title="Keluar"
-              className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-red-50 hover:text-red-700 hover:border-red-200 text-slate-500 transition cursor-pointer"
+              className="p-2 rounded-xl bg-white border border-[#e7d1c3] hover:bg-[#fff3e8] hover:text-[#59171b] hover:border-[#59171b] text-[#5c3d40] transition cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        <div className="lg:hidden border-t border-slate-200/80 overflow-x-auto bg-white">
+        <div className="lg:hidden border-t border-[#ead6c9] overflow-x-auto bg-white">
           <div className="max-w-6xl mx-auto px-4 py-2 flex items-center gap-1.5 min-w-max">
             {navTabs.map((tab) => {
               const active = activeTab === tab.id;
@@ -809,10 +813,10 @@ export const DashboardPage: React.FC = () => {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
                     active
-                      ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+                      ? 'bg-gradient-to-r from-[#59171b] to-[#83262c] text-[#fff8f2]'
+                      : 'bg-[#f7ece4] text-[#5c3d40] hover:text-[#241113]'
                   }`}
                 >
                   <tab.icon className="w-3.5 h-3.5" />
@@ -859,10 +863,10 @@ export const DashboardPage: React.FC = () => {
           <div key="tab-overview" className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 animate-fade-up">
               <div>
-                <p className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">
+                <p className="text-[11px] uppercase tracking-wider font-bold text-[#5c3d40] app-canvas-subtitle">
                   Ringkasan Progres
                 </p>
-                <h2 className="text-2xl font-bold text-slate-900 mt-0.5">
+                <h2 className="text-2xl font-extrabold text-[#241113] app-canvas-title mt-0.5">
                   {profile?.full_name || user?.email || 'Learner'}
                 </h2>
               </div>
@@ -871,30 +875,30 @@ export const DashboardPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => openNewLogModal()}
-                  className="btn-crimson px-3.5 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                  className="btn-crimson px-3.5 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Catat Sesi
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('devices')}
-                  className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 inline-flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                  onClick={() => setActiveTab('catalog')}
+                  className="px-3.5 py-2 rounded-xl bg-white border border-[#e7d1c3] hover:border-[#59171b] text-xs font-bold text-[#241113] inline-flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
                 >
-                  <MonitorSmartphone
-                    className={`w-3.5 h-3.5 ${
-                      companionConnected ? 'text-emerald-600' : 'text-red-600'
-                    }`}
-                  />
-                  {companionConnected ? 'PC Terhubung' : 'Hubungkan Perangkat'}
+                  <Compass className="w-3.5 h-3.5 text-[#59171b]" />
+                  Jelajahi Katalog
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('stats')}
-                  className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 inline-flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                  onClick={() => setActiveTab('devices')}
+                  className="px-3.5 py-2 rounded-xl bg-white border border-[#e7d1c3] hover:border-[#59171b] text-xs font-bold text-[#241113] inline-flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
                 >
-                  <BarChart3 className="w-3.5 h-3.5 text-slate-500" />
-                  Analitik
+                  <MonitorSmartphone
+                    className={`w-3.5 h-3.5 ${
+                      companionConnected ? 'text-emerald-600' : 'text-[#59171b]'
+                    }`}
+                  />
+                  {companionConnected ? 'PC Terhubung' : 'Hubungkan Perangkat'}
                 </button>
               </div>
             </div>
@@ -902,10 +906,10 @@ export const DashboardPage: React.FC = () => {
             <div className="grid lg:grid-cols-3 gap-4 animate-fade-up delay-1">
               <div className="card-pro p-5 space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#7c5659]">
                     Tahap Kemahiran (JLPT)
                   </span>
-                  <span className="inline-flex items-center gap-1 text-xs font-mono font-semibold text-red-600">
+                  <span className="inline-flex items-center gap-1 text-xs font-mono text-[#59171b]">
                     <Award className="w-3.5 h-3.5" />
                     {stats.totalHours.toFixed(1)} jam
                   </span>
@@ -913,48 +917,48 @@ export const DashboardPage: React.FC = () => {
 
                 <div>
                   <div className="flex items-baseline justify-between mb-2">
-                    <span className="text-xl font-bold text-slate-900">
+                    <span className="text-xl font-extrabold text-[#241113]">
                       {stats.stage.label}
                     </span>
-                    <span className="text-xs font-mono text-slate-500">
+                    <span className="text-xs font-mono text-[#5c3d40]">
                       {stats.totalHours.toFixed(1)} / {stats.stage.nextTargetHours}j
                     </span>
                   </div>
-                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div className="h-2 rounded-full bg-[#f7e9df] overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-red-600 to-rose-500 rounded-full animate-bar"
+                      className="h-full bg-gradient-to-r from-[#59171b] to-[#b54842] rounded-full animate-bar"
                       style={{ width: `${stats.stage.progressPct}%` }}
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/70">
-                    <div className="flex items-center justify-between text-[11px] text-slate-600">
+                  <div className="p-2.5 rounded-xl bg-[#fffaf6] border border-[#ead6c9]">
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-[#5c3d40]">
                       <span>Listening</span>
-                      <span className="font-mono text-slate-900 font-semibold">
+                      <span className="font-mono text-[#241113]">
                         {(stats.balance.listeningMin / 60).toFixed(1)}j
                       </span>
                     </div>
-                    <div className="h-1 rounded-full bg-slate-200 overflow-hidden mt-1.5">
+                    <div className="h-1.5 rounded-full bg-[#efe0d5] overflow-hidden mt-1.5">
                       <div
-                        className="h-full bg-red-600 rounded-full animate-bar"
+                        className="h-full bg-[#59171b] rounded-full animate-bar"
                         style={{
                           width: `${stats.balance.listeningPct}%`,
                         }}
                       />
                     </div>
                   </div>
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/70">
-                    <div className="flex items-center justify-between text-[11px] text-slate-600">
+                  <div className="p-2.5 rounded-xl bg-[#fffaf6] border border-[#ead6c9]">
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-[#5c3d40]">
                       <span>Reading</span>
-                      <span className="font-mono text-slate-900 font-semibold">
+                      <span className="font-mono text-[#241113]">
                         {(stats.balance.readingMin / 60).toFixed(1)}j
                       </span>
                     </div>
-                    <div className="h-1 rounded-full bg-slate-200 overflow-hidden mt-1.5">
+                    <div className="h-1.5 rounded-full bg-[#efe0d5] overflow-hidden mt-1.5">
                       <div
-                        className="h-full bg-rose-500 rounded-full animate-bar"
+                        className="h-full bg-[#b54842] rounded-full animate-bar"
                         style={{
                           width: `${stats.balance.readingPct}%`,
                         }}
@@ -966,70 +970,70 @@ export const DashboardPage: React.FC = () => {
 
               <div className="card-pro p-5 flex flex-col justify-between gap-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#7c5659]">
                     Streak & Akumulasi
                   </span>
-                  <Flame className="w-4 h-4 text-red-600" />
+                  <Flame className="w-4 h-4 text-[#59171b]" />
                 </div>
 
                 <div className="flex items-baseline gap-3">
-                  <span className="text-3xl font-bold font-mono text-slate-900 tabular-nums">
+                  <span className="text-3xl font-extrabold font-mono text-[#241113] tabular-nums">
                     {stats.streak} Hari
                   </span>
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs font-semibold text-[#5c3d40]">
                     Terbaik: {stats.longestStreak} hari
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100 text-xs">
-                  <div className="flex items-center gap-1.5 text-slate-700">
-                    <Clock className="w-3.5 h-3.5 text-red-600" />
-                    <span className="font-mono font-semibold">
+                <div className="grid grid-cols-2 gap-2 pt-3 border-t border-[#f2e5dc] text-xs font-medium">
+                  <div className="flex items-center gap-1.5 text-[#241113]">
+                    <Clock className="w-3.5 h-3.5 text-[#59171b]" />
+                    <span className="font-mono">
                       {stats.totalHours.toFixed(1)}j
                     </span>
-                    <span className="text-slate-500">total</span>
+                    <span className="text-[#5c3d40]">total</span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-slate-700">
-                    <BookOpen className="w-3.5 h-3.5 text-slate-500" />
-                    <span className="font-mono font-semibold">
+                  <div className="flex items-center gap-1.5 text-[#241113]">
+                    <BookOpen className="w-3.5 h-3.5 text-[#5c3d40]" />
+                    <span className="font-mono">
                       {stats.totalCards}
                     </span>
-                    <span className="text-slate-500">kartu</span>
+                    <span className="text-[#5c3d40]">kartu</span>
                   </div>
                 </div>
               </div>
 
               <div className="card-pro p-5 flex flex-col justify-between gap-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#7c5659]">
                     Target Hari Ini
                   </span>
-                  <Target className="w-4 h-4 text-red-600" />
+                  <Target className="w-4 h-4 text-[#59171b]" />
                 </div>
 
                 <div>
                   <div className="flex items-baseline justify-between mb-2">
-                    <span className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
+                    <span className="text-2xl font-extrabold font-mono text-[#241113] tabular-nums">
                       {stats.todayMinutes}{' '}
-                      <span className="text-sm font-normal text-slate-500">
+                      <span className="text-sm font-semibold text-[#5c3d40]">
                         / {stats.dailyGoal} mnt
                       </span>
                     </span>
-                    <span className="text-xs font-mono font-semibold text-red-600">
+                    <span className="text-xs font-mono text-[#59171b]">
                       {stats.dailyProgress}%
                     </span>
                   </div>
-                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div className="h-2 rounded-full bg-[#f7e9df] overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-red-600 to-rose-500 rounded-full animate-bar"
+                      className="h-full bg-gradient-to-r from-[#59171b] to-[#b54842] rounded-full animate-bar"
                       style={{ width: `${stats.dailyProgress}%` }}
                     />
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                <div className="pt-3 border-t border-[#f2e5dc] flex items-center justify-between text-xs font-medium text-[#5c3d40]">
                   <span>Milestone {stats.milestone.nextMilestone}j</span>
-                  <span className="font-mono text-slate-800 font-semibold">
+                  <span className="font-mono text-[#241113]">
                     {Math.round(stats.milestone.progress)}%
                   </span>
                 </div>
@@ -1085,8 +1089,8 @@ export const DashboardPage: React.FC = () => {
             </div>
 
             <div className="card-pro p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-up delay-3">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 shrink-0">
-                <Zap className="w-4 h-4 text-red-600" />
+              <div className="flex items-center gap-2 text-xs font-bold text-[#241113] shrink-0">
+                <Zap className="w-4 h-4 text-[#59171b]" />
                 Catat Cepat 1-Klik:
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -1101,7 +1105,7 @@ export const DashboardPage: React.FC = () => {
                         duration: preset.duration,
                       })
                     }
-                    className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-red-50 border border-slate-200 hover:border-red-200 text-xs font-semibold text-slate-700 hover:text-red-700 transition cursor-pointer"
+                    className="px-3 py-1.5 rounded-xl bg-[#fffaf6] hover:bg-[#59171b] border border-[#e7d1c3] hover:border-[#59171b] text-xs font-bold text-[#59171b] hover:text-[#fff8f2] transition cursor-pointer"
                   >
                     {preset.label}
                   </button>
@@ -1124,10 +1128,10 @@ export const DashboardPage: React.FC = () => {
             {stats.recentMedia.length > 0 && (
               <div className="space-y-3 animate-fade-up delay-4">
                 <div>
-                  <h3 className="font-semibold text-slate-900">
+                  <h3 className="font-extrabold text-[#241113] app-canvas-title">
                     Media yang Sedang Diikuti
                   </h3>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs font-medium text-[#5c3d40] app-canvas-subtitle">
                     Pilih media terakhir untuk langsung mencatat sesi lanjutan.
                   </p>
                 </div>
@@ -1160,17 +1164,17 @@ export const DashboardPage: React.FC = () => {
                               className="w-1.5 h-1.5 rounded-full shrink-0"
                               style={{ backgroundColor: meta.color }}
                             />
-                            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-[#5c3d40]">
                               {meta.shortLabel}
                             </span>
-                            <span className="text-[10px] text-slate-400 font-mono">
+                            <span className="text-[10px] text-[#7c5659] font-mono">
                               • {media.sessions} sesi
                             </span>
                           </div>
-                          <div className="font-semibold text-sm text-slate-900 truncate">
+                          <div className="font-bold text-sm text-[#241113] truncate">
                             {media.title}
                           </div>
-                          <div className="text-xs font-mono text-slate-500">
+                          <div className="text-xs font-mono text-[#5c3d40]">
                             {(media.totalMinutes / 60).toFixed(1)} jam •{' '}
                             {media.sessions} sesi
                             {media.totalCards > 0
@@ -1179,7 +1183,7 @@ export const DashboardPage: React.FC = () => {
                           </div>
                         </div>
 
-                        <span className="px-2.5 py-1.5 rounded-lg bg-slate-100 border border-slate-200 group-hover:bg-red-600 group-hover:border-red-600 group-hover:text-white text-xs font-semibold text-slate-700 transition shrink-0">
+                        <span className="px-2.5 py-1.5 rounded-lg bg-[#fff3e8] border border-[#e7c3ad] group-hover:bg-[#59171b] group-hover:border-[#59171b] group-hover:text-[#fff8f2] text-xs font-bold text-[#59171b] transition shrink-0">
                           + Log
                         </span>
                       </button>
@@ -1196,53 +1200,53 @@ export const DashboardPage: React.FC = () => {
             <div className="card-pro p-5 space-y-4 animate-fade-up delay-5">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <Trophy className="w-4 h-4 text-red-600" />
-                  <h3 className="font-semibold text-slate-900">
+                  <Trophy className="w-4 h-4 text-[#59171b]" />
+                  <h3 className="font-extrabold text-[#241113]">
                     Peringkat Komunitas
                   </h3>
                 </div>
-                <span className="text-xs font-mono text-slate-500">
+                <span className="text-xs font-mono text-[#5c3d40]">
                   Posisi Anda: #
                   {rankedLeaderboard.findIndex((item) => item.isSelf) + 1} dari{' '}
                   {rankedLeaderboard.length}
                 </span>
               </div>
 
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-[#f2e5dc]">
                 {rankedLeaderboard.map((member, idx) => (
                   <div
                     key={member.id}
                     className={`py-2.5 px-3 rounded-xl flex items-center justify-between gap-3 ${
                       member.isSelf
-                        ? 'bg-red-50/80 border border-red-200 my-1'
+                        ? 'bg-[#fff3e8] border border-[#e7c3ad] my-1'
                         : ''
                     }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <span
-                        className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-mono font-bold shrink-0 ${
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-mono shrink-0 ${
                           member.isSelf || idx === 0
-                            ? 'bg-gradient-to-br from-red-600 to-rose-600 text-white'
-                            : 'bg-slate-100 text-slate-600'
+                            ? 'bg-gradient-to-br from-[#59171b] to-[#83262c] text-[#fed7b8]'
+                            : 'bg-[#f6ece4] text-[#5c3d40]'
                         }`}
                       >
                         #{idx + 1}
                       </span>
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold text-slate-900 truncate">
+                        <div className="text-sm font-bold text-[#241113] truncate">
                           {member.name}
                         </div>
-                        <div className="text-[11px] text-slate-500 truncate">
+                        <div className="text-[11px] font-medium text-[#5c3d40] truncate">
                           {member.rankTitle} • {member.favoriteMedia}
                         </div>
                       </div>
                     </div>
 
                     <div className="text-right shrink-0">
-                      <div className="text-sm font-mono font-bold text-slate-900">
+                      <div className="text-sm font-mono text-[#241113]">
                         {member.totalHours.toLocaleString('id-ID')} j
                       </div>
-                      <div className="text-[11px] font-mono text-red-600 inline-flex items-center gap-1">
+                      <div className="text-[11px] font-mono text-[#59171b] inline-flex items-center gap-1">
                         <Flame className="w-3 h-3" />
                         {member.streak}h
                       </div>
@@ -1258,6 +1262,29 @@ export const DashboardPage: React.FC = () => {
               onEdit={openEditLogModal}
               onDelete={handleDeleteLog}
               onViewAll={() => setActiveTab('activity')}
+            />
+          </div>
+        ) : activeTab === 'catalog' ? (
+          <div key="tab-catalog" className="space-y-4 animate-fade-up">
+            <div>
+              <h2 className="text-xl font-extrabold text-[#241113] app-canvas-title">
+                Katalog 660+ Media Immersion
+              </h2>
+              <p className="text-xs font-medium text-[#5c3d40] app-canvas-subtitle mt-0.5">
+                Pilih novel, anime, manga, visual novel, game, YouTube, atau
+                podcast lalu langsung catat sesinya.
+              </p>
+            </div>
+            <MediaCatalogBrowser
+              defaultSection="Semua"
+              pageSize={12}
+              onStartMedia={(title, category, suggestedMinutes) =>
+                openNewLogModal({
+                  title,
+                  category,
+                  duration: suggestedMinutes,
+                })
+              }
             />
           </div>
         ) : activeTab === 'stats' ? (

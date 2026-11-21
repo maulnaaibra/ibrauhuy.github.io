@@ -115,10 +115,10 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
             <button
               type="button"
               onClick={() => setCategoryFilter('all')}
-              className={`px-3 py-1.5 rounded-xl font-medium transition cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
                 categoryFilter === 'all'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
+                  ? 'bg-[#59171b] text-[#fff8f2]'
+                  : 'bg-[#fffaf6] text-[#5c3d40] hover:text-[#241113] border border-[#e7d1c3]'
               }`}
             >
               Semua
@@ -128,10 +128,10 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
                 key={catKey}
                 type="button"
                 onClick={() => setCategoryFilter(catKey)}
-                className={`px-3 py-1.5 rounded-xl font-medium transition cursor-pointer ${
+                className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
                   categoryFilter === catKey
-                    ? 'bg-red-600 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
+                    ? 'bg-[#59171b] text-[#fff8f2]'
+                    : 'bg-[#fffaf6] text-[#5c3d40] hover:text-[#241113] border border-[#e7d1c3]'
                 }`}
               >
                 {shortLabel}
@@ -175,7 +175,7 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
                         />
                         {meta.label}
                       </span>
-                      <span className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-[#fff3e8] text-[#59171b] border border-[#f2c9ab]">
                         <Clock className="w-2.5 h-2.5" />
                         {log.duration_minutes} mnt
                       </span>

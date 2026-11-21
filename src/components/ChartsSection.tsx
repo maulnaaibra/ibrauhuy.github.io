@@ -211,10 +211,10 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
               key={item.id}
               type="button"
               onClick={() => setRange(item.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                 range === item.id
-                  ? 'bg-red-600 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+                  ? 'bg-[#59171b] text-[#fff8f2]'
+                  : 'bg-[#f7ece4] text-[#5c3d40] hover:text-[#241113]'
               }`}
             >
               {item.label}
@@ -254,8 +254,8 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
-              <div className="text-xs text-slate-500">Total Jam</div>
-              <div className="text-xl font-bold font-mono text-red-600 mt-1 tabular-nums">
+              <div className="text-xs font-semibold text-[#5c3d40]">Total Jam</div>
+              <div className="text-xl font-extrabold font-mono text-[#59171b] mt-1 tabular-nums">
                 {kpis.totalHours.toFixed(1)}j
               </div>
             </div>
@@ -333,10 +333,10 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                   key={m.id}
                   type="button"
                   onClick={() => setChartMetric(m.id)}
-                  className={`px-3 py-1 rounded-lg font-medium transition cursor-pointer ${
+                  className={`px-3 py-1 rounded-lg font-bold transition cursor-pointer ${
                     chartMetric === m.id
-                      ? 'bg-red-600 text-white'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-[#59171b] text-[#fff8f2]'
+                      : 'text-[#5c3d40] hover:text-[#241113]'
                   }`}
                 >
                   {m.label}
@@ -400,7 +400,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                 />
                 <Bar
                   dataKey={chartMetric}
-                  fill={chartMetric === 'hours' ? '#dc2626' : '#be123c'}
+                  fill={chartMetric === 'hours' ? '#59171b' : '#b8624d'}
                   radius={[6, 6, 0, 0]}
                 />
               </BarChart>
@@ -410,12 +410,12 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                   <linearGradient id="timelineFill" x1="0" y1="0" x2="0" y2="1">
                     <stop
                       offset="5%"
-                      stopColor={chartMetric === 'hours' ? '#dc2626' : '#be123c'}
-                      stopOpacity={0.28}
+                      stopColor={chartMetric === 'hours' ? '#59171b' : '#b8624d'}
+                      stopOpacity={0.34}
                     />
                     <stop
                       offset="95%"
-                      stopColor={chartMetric === 'hours' ? '#dc2626' : '#be123c'}
+                      stopColor={chartMetric === 'hours' ? '#59171b' : '#b8624d'}
                       stopOpacity={0}
                     />
                   </linearGradient>
@@ -450,7 +450,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                 <Area
                   type="monotone"
                   dataKey={chartMetric}
-                  stroke={chartMetric === 'hours' ? '#dc2626' : '#be123c'}
+                  stroke={chartMetric === 'hours' ? '#59171b' : '#b8624d'}
                   strokeWidth={2}
                   fill="url(#timelineFill)"
                 />
@@ -476,10 +476,10 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                   key={m.id}
                   type="button"
                   onClick={() => setPieMetric(m.id)}
-                  className={`px-2.5 py-1 rounded-lg font-medium transition cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
                     pieMetric === m.id
-                      ? 'bg-red-600 text-white'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-[#59171b] text-[#fff8f2]'
+                      : 'text-[#5c3d40] hover:text-[#241113]'
                   }`}
                 >
                   {m.label}

@@ -176,14 +176,14 @@ export const LiveStopwatch: React.FC<LiveStopwatchProps> = ({
           <div className="flex items-center gap-2 flex-wrap">
             <span
               className={`w-2 h-2 rounded-full ${
-                timer.running ? 'bg-red-600 animate-pulse' : 'bg-slate-300'
+                timer.running ? 'bg-[#59171b] animate-pulse' : 'bg-[#d6b29f]'
               }`}
             />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#5c3d40]">
               Live Immersion Timer
             </span>
             {timer.running && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#fff3e8] text-[#59171b] border border-[#f2c9ab]">
                 Berjalan di latar belakang
               </span>
             )}

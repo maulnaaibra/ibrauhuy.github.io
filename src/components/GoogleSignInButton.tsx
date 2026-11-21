@@ -289,28 +289,28 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
                           acc.sub
                         )
                       }
-                      className="w-full p-2.5 rounded-xl bg-slate-50 hover:bg-red-50/70 border border-slate-200 hover:border-red-200 flex items-center gap-3 text-left transition cursor-pointer disabled:opacity-60"
+                      className="w-full p-2.5 rounded-xl bg-[#fffaf6] hover:bg-[#fff3e8] border border-[#e7d1c3] hover:border-[#59171b] flex items-center gap-3 text-left transition cursor-pointer disabled:opacity-60"
                     >
                       {acc.picture ? (
                         <img
                           src={acc.picture}
                           alt={acc.name}
-                          className="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0"
+                          className="w-8 h-8 rounded-full object-cover border border-[#e7d1c3] shrink-0"
                         />
                       ) : (
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-600 to-rose-700 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#59171b] to-[#83262c] text-[#fed7b8] font-extrabold text-xs flex items-center justify-center shrink-0">
                           {acc.name[0]?.toUpperCase() || 'G'}
                         </div>
                       )}
                       <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold text-slate-900 truncate">
+                        <div className="text-sm font-bold text-[#241113] truncate">
                           {acc.name}
                         </div>
-                        <div className="text-xs text-slate-500 truncate">
+                        <div className="text-xs font-medium text-[#5c3d40] truncate">
                           {acc.email}
                         </div>
                       </div>
-                      <Check className="w-4 h-4 text-red-600 shrink-0" />
+                      <Check className="w-4 h-4 text-[#59171b] shrink-0" />
                     </button>
                   ))}
                 </div>
