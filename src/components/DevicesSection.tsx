@@ -32,9 +32,11 @@ import {
 } from '../types';
 import {
   ackCompanionSessions,
+  bulkToggleCompanionRules,
   flushCompanionSession,
   pinCompanionWindow,
   saveCompanionConfig,
+  toggleCompanionApp,
   toggleCompanionTracking,
   unpinCompanionWindow,
   type CompanionConfig,
@@ -234,6 +236,50 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
     }
   };
 
+  const handleToggleWindowApp = async (win: OpenWindowItem) => {
+    const key = `${win.process}::${win.hwnd}`;
+    const chosenCat =
+      windowCategoryOverrides[key] ?? win.matchedCategory ?? 'study';
+    const currentlyEnabled = Boolean(win.appEnabled);
+    const nextEnabled = !currentlyEnabled;
+    setBusyAction(true);
+    try {
+      await toggleCompanionApp(companionUrl, {
+        process: win.process,
+        title: win.title,
+        category: chosenCat,
+        enabled: nextEnabled,
+      });
+      await onRefreshCompanion();
+      toast.success(
+        nextEnabled
+          ? `Tracking diaktifkan untuk: ${win.process}`
+          : `Tracking dimatikan untuk: ${win.process}`
+      );
+    } catch {
+      toast.error('Gagal mengubah status aplikasi');
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const handleBulkToggleRules = async (enabled: boolean) => {
+    setBusyAction(true);
+    try {
+      await bulkToggleCompanionRules(companionUrl, enabled);
+      await onRefreshCompanion();
+      toast.success(
+        enabled
+          ? 'Semua aturan deteksi diaktifkan!'
+          : 'Semua aturan dimatikan — silakan nyalakan hanya aplikasi yang Anda inginkan.'
+      );
+    } catch {
+      toast.error('Gagal mengubah aturan secara massal');
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
   const handlePinWindow = async (win: OpenWindowItem) => {
     const key = `${win.process}::${win.hwnd}`;
     const chosenCat =
@@ -266,41 +312,6 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
     } finally {
       setBusyAction(false);
     }
-  };
-
-  const handleQuickCreateRuleFromWindow = async (win: OpenWindowItem) => {
-    if (!companionStatus) return;
-    const key = `${win.process}::${win.hwnd}`;
-    const chosenCat =
-      windowCategoryOverrides[key] ?? win.matchedCategory ?? 'study';
-    const isBrowser = /^(chrome|msedge|brave|firefox|opera|vivaldi)$/i.test(
-      win.process
-    );
-    const cleanTitle = win.title
-      .replace(
-        /\s+[-—|]\s+(Google Chrome|Microsoft Edge|Mozilla Firefox|Brave|Opera)$/i,
-        ''
-      )
-      .trim();
-    const escapedPattern = isBrowser
-      ? cleanTitle
-          .slice(0, 28)
-          .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      : `^${win.process.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
-
-    const added: TrackerRule = {
-      id: `rule-${Date.now()}`,
-      name: isBrowser ? `Web: ${cleanTitle.slice(0, 30)}` : `App: ${win.process}`,
-      enabled: true,
-      matchType: isBrowser ? 'title' : 'process',
-      pattern: escapedPattern,
-      category: chosenCat,
-    };
-
-    await updateRemoteConfig({
-      ...companionStatus.config,
-      rules: [added, ...companionStatus.config.rules],
-    });
   };
 
   const updateRemoteConfig = async (nextConfig: CompanionConfig) => {
@@ -796,42 +807,54 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
               </div>
             </div>
 
-            {/* Live Open Windows Picker */}
+            {/* Live Open Windows Picker with ON / OFF Toggles */}
             {openWindows.length > 0 && (
               <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-red-600" />
-                    Jendela Windows yang Sedang Terbuka ({openWindows.length})
-                  </h4>
-                  <span className="text-[11px] text-slate-400">
-                    Klik &ldquo;Track Jendela Ini&rdquo; untuk langsung merekam
-                    aplikasi mana pun
-                  </span>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-red-600" />
+                      Pilih Aplikasi / Jendela Windows yang Di-Track (
+                      {openWindows.filter((w) => w.appEnabled).length}/
+                      {openWindows.length} Aktif)
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Nyalakan tombol <strong>ON / OFF</strong> hanya pada
+                      aplikasi yang ingin Anda track (misalnya hanya Fushi atau
+                      Anki saja).
+                    </p>
+                  </div>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
+                <div className="grid md:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto pr-1">
                   {openWindows.map((win) => {
                     const key = `${win.process}::${win.hwnd}`;
                     const selectedCat =
                       windowCategoryOverrides[key] ??
                       win.matchedCategory ??
                       'study';
+                    const isAppOn = Boolean(win.appEnabled);
                     return (
                       <div
                         key={key}
-                        className={`p-3 rounded-xl border flex flex-col justify-between gap-2 transition ${
+                        className={`p-3 rounded-xl border flex flex-col justify-between gap-2.5 transition ${
                           win.isTracked
-                            ? 'bg-emerald-50/70 border-emerald-300'
-                            : win.matchedRule
-                              ? 'bg-white border-slate-200'
-                              : 'bg-slate-50/70 border-slate-200/70'
+                            ? 'bg-emerald-50/80 border-emerald-300 shadow-2xs'
+                            : isAppOn
+                              ? 'bg-white border-emerald-200'
+                              : 'bg-slate-50/80 border-slate-200/70 opacity-80'
                         }`}
                       >
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <span className="px-2 py-0.5 rounded bg-slate-900 text-white font-mono text-[10px] font-semibold shrink-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 space-y-1 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span
+                                className={`px-2 py-0.5 rounded font-mono text-[10px] font-semibold shrink-0 ${
+                                  isAppOn
+                                    ? 'bg-emerald-700 text-white'
+                                    : 'bg-slate-200 text-slate-700'
+                                }`}
+                              >
                                 {win.process}
                               </span>
                               {win.isForeground && (
@@ -842,25 +865,44 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                               {win.isTracked && (
                                 <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-semibold shrink-0 inline-flex items-center gap-1">
                                   <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                                  Direkam
+                                  Sedang Direkam
                                 </span>
                               )}
                             </div>
-                            {win.matchedRule && (
-                              <span className="text-[10px] font-semibold text-emerald-700 truncate">
-                                ✓ {win.matchedRule}
-                              </span>
-                            )}
+                            <div
+                              className="text-xs font-semibold text-slate-800 truncate"
+                              title={win.title}
+                            >
+                              {win.title}
+                            </div>
                           </div>
-                          <div
-                            className="text-xs font-medium text-slate-800 truncate"
-                            title={win.title}
+
+                          {/* ON / OFF Switch per Application */}
+                          <button
+                            type="button"
+                            disabled={busyAction}
+                            onClick={() => void handleToggleWindowApp(win)}
+                            title={
+                              isAppOn
+                                ? `Matikan tracking untuk ${win.process}`
+                                : `Aktifkan tracking untuk ${win.process}`
+                            }
+                            className={`px-2.5 py-1 rounded-full border text-[11px] font-extrabold inline-flex items-center gap-1.5 shrink-0 transition cursor-pointer ${
+                              isAppOn
+                                ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xs'
+                                : 'bg-slate-200 border-slate-300 text-slate-600 hover:bg-slate-300'
+                            }`}
                           >
-                            {win.title}
-                          </div>
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                isAppOn ? 'bg-white' : 'bg-slate-400'
+                              }`}
+                            />
+                            <span>{isAppOn ? 'ON' : 'OFF'}</span>
+                          </button>
                         </div>
 
-                        <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-slate-200/60">
+                        <div className="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-200/60">
                           <select
                             value={selectedCat}
                             onChange={(e) =>
@@ -879,44 +921,28 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                             ))}
                           </select>
 
-                          <div className="flex items-center gap-1">
-                            {!win.matchedRule && (
-                              <button
-                                type="button"
-                                disabled={busyAction}
-                                onClick={() =>
-                                  void handleQuickCreateRuleFromWindow(win)
-                                }
-                                className="px-2 py-1 rounded-md bg-white border border-slate-200 hover:border-slate-300 text-[11px] font-semibold text-slate-700 inline-flex items-center gap-1 cursor-pointer"
-                                title="Simpan sebagai aturan otomatis"
-                              >
-                                <Plus className="w-3 h-3" />
-                                Aturan
-                              </button>
+                          <button
+                            type="button"
+                            disabled={busyAction}
+                            onClick={() => void handlePinWindow(win)}
+                            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer ${
+                              win.isTracked
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-white border border-slate-200 hover:border-red-300 text-slate-700 hover:text-red-700'
+                            }`}
+                          >
+                            {win.isTracked ? (
+                              <>
+                                <Crosshair className="w-3 h-3" />
+                                Fokus Aktif
+                              </>
+                            ) : (
+                              <>
+                                <Pin className="w-3 h-3" />
+                                Fokus Ini Saja
+                              </>
                             )}
-                            <button
-                              type="button"
-                              disabled={busyAction}
-                              onClick={() => void handlePinWindow(win)}
-                              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer ${
-                                win.isTracked
-                                  ? 'bg-emerald-600 text-white'
-                                  : 'btn-crimson'
-                              }`}
-                            >
-                              {win.isTracked ? (
-                                <>
-                                  <Crosshair className="w-3 h-3" />
-                                  Sedang Direkam
-                                </>
-                              ) : (
-                                <>
-                                  <Pin className="w-3 h-3" />
-                                  Track Jendela Ini
-                                </>
-                              )}
-                            </button>
-                          </div>
+                          </button>
                         </div>
                       </div>
                     );
@@ -926,10 +952,42 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
             )}
 
             <div className="space-y-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Aturan Deteksi Aplikasi & Judul (
-                {companionStatus.config.rules.length})
-              </h4>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-700">
+                    Pilih Aturan Deteksi Aplikasi & Website (
+                    {
+                      companionStatus.config.rules.filter((r) => r.enabled)
+                        .length
+                    }
+                    /{companionStatus.config.rules.length} Aktif)
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Klik tombol <strong>ON / OFF</strong> pada setiap aturan,
+                    atau klik &ldquo;Matikan Semua&rdquo; lalu aktifkan hanya
+                    yang Anda butuhkan.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={busyAction}
+                    onClick={() => void handleBulkToggleRules(false)}
+                    className="px-3 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold transition cursor-pointer"
+                  >
+                    Matikan Semua
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyAction}
+                    onClick={() => void handleBulkToggleRules(true)}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition cursor-pointer"
+                  >
+                    Aktifkan Semua
+                  </button>
+                </div>
+              </div>
 
               <form
                 onSubmit={handleAddRule}
@@ -990,15 +1048,29 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                   return (
                     <div
                       key={rule.id}
-                      className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-2"
+                      className={`p-3 rounded-xl border flex items-center justify-between gap-2 transition ${
+                        rule.enabled
+                          ? 'bg-emerald-50/40 border-emerald-200'
+                          : 'bg-slate-50 border-slate-200/70 opacity-75'
+                      }`}
                     >
                       <div className="min-w-0 space-y-0.5">
                         <div className="flex items-center gap-2">
                           <span
-                            className="w-2 h-2 rounded-full shrink-0"
-                            style={{ backgroundColor: meta.color }}
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{
+                              backgroundColor: rule.enabled
+                                ? meta.color
+                                : '#94a3b8',
+                            }}
                           />
-                          <span className="text-xs font-semibold text-slate-900 truncate">
+                          <span
+                            className={`text-xs font-bold truncate ${
+                              rule.enabled
+                                ? 'text-slate-900'
+                                : 'text-slate-500 line-through'
+                            }`}
+                          >
                             {rule.name}
                           </span>
                         </div>
@@ -1012,13 +1084,18 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                         <button
                           type="button"
                           onClick={() => handleToggleRule(rule.id)}
-                          className={`px-2 py-1 rounded-md text-[11px] font-semibold cursor-pointer ${
+                          className={`px-3 py-1 rounded-full text-[11px] font-extrabold inline-flex items-center gap-1.5 transition cursor-pointer ${
                             rule.enabled
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-slate-200 text-slate-500'
+                              ? 'bg-emerald-600 text-white shadow-2xs'
+                              : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
                           }`}
                         >
-                          {rule.enabled ? 'Aktif' : 'Nonaktif'}
+                          <span
+                            className={`w-2 h-2 rounded-full ${
+                              rule.enabled ? 'bg-white' : 'bg-slate-400'
+                            }`}
+                          />
+                          {rule.enabled ? 'ON' : 'OFF'}
                         </button>
                         <button
                           type="button"

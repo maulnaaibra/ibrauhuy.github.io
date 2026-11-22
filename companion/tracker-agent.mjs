@@ -132,7 +132,7 @@ const DEFAULT_RULES = [
   {
     id: 'rule-jp-script',
     name: 'Jendela Berjudul Bahasa Jepang (Kanji / Hiragana / Katakana)',
-    enabled: true,
+    enabled: false,
     matchType: 'title',
     pattern: '[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FAF]{2,}',
     category: 'study',
@@ -144,6 +144,7 @@ const DEFAULT_CONFIG = {
   minSessionMinutes: 1,
   inactivityCommitSeconds: 60,
   trackBackgroundWindows: true,
+  disabledProcesses: [],
   rules: DEFAULT_RULES,
 };
 
@@ -207,6 +208,9 @@ function upgradeAndMergeConfig(loaded) {
       typeof loaded.trackBackgroundWindows === 'boolean'
         ? loaded.trackBackgroundWindows
         : true,
+    disabledProcesses: Array.isArray(loaded.disabledProcesses)
+      ? loaded.disabledProcesses.map((p) => String(p).toLowerCase())
+      : [],
     rules: mergedRules,
   };
 }
@@ -301,9 +305,18 @@ function isGenericTitle(title) {
   return false;
 }
 
+function isProcessDisabled(processName) {
+  if (!processName) return false;
+  const list = Array.isArray(config.disabledProcesses)
+    ? config.disabledProcesses
+    : [];
+  return list.includes(String(processName).toLowerCase());
+}
+
 function matchWindowRule(processName, windowTitle) {
   if (!processName && !windowTitle) return null;
   if (isTrackerDashboardWindow(windowTitle)) return null;
+  if (isProcessDisabled(processName)) return null;
 
   for (const rule of config.rules) {
     if (!rule.enabled || !rule.pattern) continue;
@@ -399,6 +412,7 @@ function selectTargetWindow(fgProc, fgTitle, rawOpenWindows) {
   for (const w of rawOpenWindows) {
     const proc = String(w.process || '');
     const title = String(w.title || '');
+    const procDisabled = isProcessDisabled(proc);
     const rule = matchWindowRule(proc, title);
     annotated.push({
       hwnd: Number(w.hwnd || 0),
@@ -406,6 +420,8 @@ function selectTargetWindow(fgProc, fgTitle, rawOpenWindows) {
       process: proc,
       title,
       isForeground: Boolean(w.isForeground),
+      processDisabled: procDisabled,
+      appEnabled: !procDisabled && Boolean(rule),
       matchedRule: rule ? rule.name : null,
       matchedCategory: rule ? rule.category : null,
       _rule: rule,
@@ -1195,6 +1211,117 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'POST' && reqPath === '/toggle-app') {
+    const raw = await readRequestBody(req);
+    try {
+      const parsed = JSON.parse(raw || '{}');
+      const proc = String(parsed.process || '').trim();
+      const procLower = proc.toLowerCase();
+      const title = String(parsed.title || '').trim();
+      const category = String(parsed.category || 'study').trim();
+      const enabled = Boolean(parsed.enabled);
+
+      if (!proc) {
+        sendJson(req, res, 400, { ok: false, error: 'Process diperlukan' });
+        return;
+      }
+
+      const disabledSet = new Set(
+        (config.disabledProcesses || []).map((p) => String(p).toLowerCase())
+      );
+
+      if (!enabled) {
+        disabledSet.add(procLower);
+        config.disabledProcesses = Array.from(disabledSet);
+
+        // If pinnedTarget or activeSession was tracking this process, stop it
+        if (
+          pinnedTarget &&
+          pinnedTarget.process &&
+          pinnedTarget.process.toLowerCase() === procLower
+        ) {
+          pinnedTarget = null;
+        }
+        if (
+          activeSession &&
+          activeSession.process &&
+          activeSession.process.toLowerCase() === procLower
+        ) {
+          commitActiveSession(false);
+        }
+      } else {
+        disabledSet.delete(procLower);
+        config.disabledProcesses = Array.from(disabledSet);
+
+        // Ensure at least one rule matches this window/process
+        const existingMatch = matchWindowRule(proc, title);
+        if (!existingMatch) {
+          // Check if there is a disabled rule that would match it
+          let reEnabledAny = false;
+          for (const rule of config.rules) {
+            if (!rule.pattern) continue;
+            try {
+              const regex = new RegExp(rule.pattern, 'i');
+              const target = rule.matchType === 'process' ? proc : title;
+              if (regex.test(target || '')) {
+                rule.enabled = true;
+                reEnabledAny = true;
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          if (!reEnabledAny) {
+            const isBrowser =
+              /^(chrome|msedge|brave|firefox|opera|vivaldi)$/i.test(proc);
+            const cleanT = cleanDisplayTitle(title, proc, proc);
+            const pattern = isBrowser
+              ? cleanT.slice(0, 28).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+              : `^${proc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
+            config.rules.unshift({
+              id: `rule-app-${procLower}-${Date.now()}`,
+              name: isBrowser ? `Web: ${cleanT.slice(0, 30)}` : `Aplikasi: ${proc}`,
+              enabled: true,
+              matchType: isBrowser ? 'title' : 'process',
+              pattern,
+              category,
+            });
+          }
+        }
+      }
+
+      writeJsonSafe(RULES_FILE, config);
+      sendJson(req, res, 200, { ok: true, config });
+    } catch {
+      sendJson(req, res, 400, { ok: false, error: 'Payload tidak valid' });
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && reqPath === '/bulk-rules') {
+    const raw = await readRequestBody(req);
+    try {
+      const parsed = JSON.parse(raw || '{}');
+      const enabled = Boolean(parsed.enabled);
+      config.rules = config.rules.map((r) => ({ ...r, enabled }));
+      if (!enabled) {
+        pinnedTarget = null;
+        catalogHint = null;
+        if (activeSession) {
+          commitActiveSession(false);
+        }
+      } else {
+        config.disabledProcesses = [];
+      }
+      writeJsonSafe(RULES_FILE, config);
+      sendJson(req, res, 200, { ok: true, config });
+    } catch {
+      sendJson(req, res, 400, { ok: false, error: 'Payload tidak valid' });
+    }
+    return;
+  }
+
   if (req.method === 'POST' && reqPath === '/rules') {
     const raw = await readRequestBody(req);
     try {
@@ -1218,6 +1345,9 @@ const server = http.createServer(async (req, res) => {
           typeof incoming.trackBackgroundWindows === 'boolean'
             ? incoming.trackBackgroundWindows
             : (config.trackBackgroundWindows ?? true),
+        disabledProcesses: Array.isArray(incoming.disabledProcesses)
+          ? incoming.disabledProcesses.map((p) => String(p).toLowerCase())
+          : (config.disabledProcesses ?? []),
         rules: Array.isArray(incoming.rules) ? incoming.rules : config.rules,
       };
       writeJsonSafe(RULES_FILE, config);

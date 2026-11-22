@@ -24,6 +24,7 @@ export interface CompanionConfig {
   minSessionMinutes: number;
   inactivityCommitSeconds: number;
   trackBackgroundWindows?: boolean;
+  disabledProcesses?: string[];
   rules: TrackerRule[];
 }
 
@@ -33,6 +34,8 @@ export interface OpenWindowItem {
   process: string;
   title: string;
   isForeground: boolean;
+  processDisabled?: boolean;
+  appEnabled?: boolean;
   matchedRule: string | null;
   matchedCategory: PrimaryMediaCategory | null;
   isTracked: boolean;
@@ -267,6 +270,33 @@ export async function ackCompanionSessions(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids }),
+  });
+}
+
+export async function toggleCompanionApp(
+  baseUrl: string,
+  payload: {
+    process: string;
+    title: string;
+    category: PrimaryMediaCategory;
+    enabled: boolean;
+  }
+): Promise<{ ok: boolean; config: CompanionConfig }> {
+  return fetchJsonWithTimeout(`${normalizeBaseUrl(baseUrl)}/toggle-app`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function bulkToggleCompanionRules(
+  baseUrl: string,
+  enabled: boolean
+): Promise<{ ok: boolean; config: CompanionConfig }> {
+  return fetchJsonWithTimeout(`${normalizeBaseUrl(baseUrl)}/bulk-rules`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
   });
 }
 
