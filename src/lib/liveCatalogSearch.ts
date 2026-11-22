@@ -14,11 +14,41 @@ export interface UniversalSearchPortal {
 }
 
 const NSFW_BLOCK_REGEX =
-  /\b(hentai|eroge|nukige|18\+|nsfw|porn|pornographic|erotica|ecchi|r-18|r18|sex|sexual|smut|fetish|brothel|incest|jav|uncensored)\b|エロ|18禁|官能/i;
+  /\b(hentai|eroge|nukige|18\+|nsfw|porn|pornographic|erotica|ecchi|r-18|r18|sex|sexual|sexuality|smut|fetish|brothel|incest|jav|uncensored|lewd|nude|nudity|naked|stripper|prostitut|whore|virginity|lingerie|panties|boobs|breasts|cleavage|orgasm|masturbat|rape|molest|adultery|affair|seduc|lust|pervert|lolicon|shotacon|succubus|concubine|courtesan|dominatrix|sadomasoch|bondage|bdsm|voyeur|exhibitionis|futanari|ahegao|oppai|pantsu|gravure)\b|エロ|18禁|官能|巨乳|下着|不倫|情事|快楽|誘惑|淫|裸|痴漢|風俗|処女|童貞|変態/i;
+
+const BLOCKED_ADULT_TAGS = new Set([
+  'nudity',
+  'sex',
+  'erotica',
+  'defloration',
+  'incest',
+  'netorare',
+  'prostitution',
+  'rape',
+  'bdsm',
+  'ahegao',
+  'large breasts',
+  'flat chest',
+  'futanari',
+  'voyeur',
+  'exhibitionism',
+  'succubus',
+  'oiran',
+  'sadism',
+  'masochism',
+  'bondage',
+  'virginity',
+  'inseki',
+  'lactation',
+  'public sex',
+  'sweat',
+  'teens love',
+]);
 
 export function isContentNsfwOrHentai(params: {
   text?: string;
   genres?: string[];
+  tags?: Array<{ name?: string; isAdult?: boolean }>;
   isAdult?: boolean;
 }): boolean {
   if (params.isAdult) return true;
@@ -32,6 +62,15 @@ export function isContentNsfwOrHentai(params: {
         lower === 'smut'
       );
     })
+  ) {
+    return true;
+  }
+  if (
+    params.tags?.some(
+      (t) =>
+        t.isAdult ||
+        (t.name && BLOCKED_ADULT_TAGS.has(t.name.trim().toLowerCase()))
+    )
   ) {
     return true;
   }
@@ -160,6 +199,7 @@ interface AniListLiveMedia {
   episodes?: number;
   duration?: number;
   genres?: string[];
+  tags?: Array<{ name?: string; isAdult?: boolean }>;
 }
 
 function estimateLiveBmStats(media: AniListLiveMedia): {
@@ -270,6 +310,10 @@ async function searchAniListLive(
           episodes
           duration
           genres
+          tags {
+            name
+            isAdult
+          }
         }
       }
       mangaPage: Page(page: 1, perPage: 12) @include(if: $includeManga) {
@@ -289,6 +333,10 @@ async function searchAniListLive(
           }
           description(asHtml: false)
           genres
+          tags {
+            name
+            isAdult
+          }
         }
       }
     }
@@ -330,6 +378,7 @@ async function searchAniListLive(
         isContentNsfwOrHentai({
           text: `${nativeTitle} ${romajiOrEn} ${desc}`,
           genres: m.genres,
+          tags: m.tags,
           isAdult: m.isAdult,
         })
       ) {
@@ -381,6 +430,7 @@ async function searchAniListLive(
         isContentNsfwOrHentai({
           text: `${nativeTitle} ${romajiOrEn} ${desc}`,
           genres: m.genres,
+          tags: m.tags,
           isAdult: m.isAdult,
         })
       ) {
