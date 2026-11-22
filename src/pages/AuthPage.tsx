@@ -133,6 +133,31 @@ export const AuthPage: React.FC = () => {
     };
   }, [fromPath, navigate, searchParams, setSearchParams]);
 
+  useEffect(() => {
+    const hash = window.location.hash.replace(/^#/, '');
+    const hashParams = new URLSearchParams(hash);
+    const errorCode =
+      searchParams.get('error') || hashParams.get('error') || '';
+    const errorDescription =
+      searchParams.get('error_description') ||
+      hashParams.get('error_description') ||
+      '';
+
+    if (!errorCode && !errorDescription) return;
+
+    toast.error(
+      `Login Google gagal: ${errorDescription || errorCode}`.slice(0, 220)
+    );
+
+    if (searchParams.has('error') || searchParams.has('error_description')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('error');
+      next.delete('error_description');
+      next.delete('error_code');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
   if (!loading && user && activeMode !== 'reset') {
     return <Navigate to={fromPath} replace />;
   }

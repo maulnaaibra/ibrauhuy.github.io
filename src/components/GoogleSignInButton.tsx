@@ -7,6 +7,7 @@ import {
   Mail,
   Plus,
   Server,
+  ShieldAlert,
   User as UserIcon,
   X,
 } from 'lucide-react';
@@ -25,7 +26,7 @@ import {
   type RememberedGoogleAccount,
 } from '../lib/googleAuth';
 import {
-  isGoogleProviderEnabled,
+  getSupabaseConfig,
   isSupabaseConfigured,
   supabase,
 } from '../lib/supabase';
@@ -81,6 +82,15 @@ const GoogleLogoSvg: React.FC<{ className?: string }> = ({
   </svg>
 );
 
+function isGoogleProviderDisabledError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('provider is not enabled') ||
+    lower.includes('unsupported provider') ||
+    lower.includes('not enabled')
+  );
+}
+
 export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
   onSuccess,
   onRequireSupabaseSetup,
@@ -88,6 +98,7 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
 }) => {
   const [busy, setBusy] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
+  const [providerMissing, setProviderMissing] = useState(false);
   const [remembered, setRemembered] = useState<RememberedGoogleAccount[]>(() =>
     getRememberedGoogleAccounts()
   );
@@ -163,22 +174,40 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
     }
 
     setBusy(true);
-    const oauthEnabled = await isGoogleProviderEnabled();
-    if (oauthEnabled) {
+    setProviderMissing(false);
+    try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}auth/callback`,
+          queryParams: {
+            prompt: 'select_account',
+            access_type: 'online',
+          },
         },
       });
-      if (error) {
-        toast.error(error.message);
-        setBusy(false);
-      }
-      return;
-    }
+      if (error) throw error;
+    } catch (err: unknown) {
+      setBusy(false);
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Gagal membuka halaman login Google.';
 
-    setBusy(false);
+      if (isGoogleProviderDisabledError(message)) {
+        setProviderMissing(true);
+        toast.error(
+          'Login Google belum diaktifkan di project Supabase ini. Ikuti panduan singkat di bawah.',
+          { duration: 7000 }
+        );
+        return;
+      }
+
+      toast.error(message);
+    }
+  };
+
+  const openManualFallback = () => {
     setRemembered(getRememberedGoogleAccounts());
     setShowAddForm(getRememberedGoogleAccounts().length === 0);
     setChooserOpen(true);
@@ -250,6 +279,51 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
       >
         <GoogleLogoSvg className="w-4 h-4 shrink-0" />
         {busy ? 'Menghubungkan Google...' : 'Lanjutkan dengan Google'}
+      </button>
+
+      {providerMissing && (
+        <div className="mt-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] leading-relaxed text-amber-900 space-y-1.5">
+          <div className="font-bold flex items-center gap-1.5">
+            <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+            Login Google belum aktif di Supabase
+          </div>
+          <p className="font-medium">
+            Aktifkan sekali saja di dashboard, setelah itu tombol ini langsung
+            membuka pemilih akun Google:
+          </p>
+          <ol className="list-decimal pl-4 space-y-0.5 font-medium">
+            <li>
+              Google Cloud Console → Credentials → buat{' '}
+              <strong>OAuth client ID</strong> (Web application).
+            </li>
+            <li>
+              Authorized redirect URI:{' '}
+              <code className="font-mono break-all">
+                {getSupabaseConfig().url || 'https://<project>.supabase.co'}
+                /auth/v1/callback
+              </code>
+            </li>
+            <li>
+              Supabase Dashboard → Authentication → Providers → Google →
+              aktifkan dan tempel Client ID + Client Secret.
+            </li>
+            <li>
+              Supabase → Authentication → URL Configuration → tambahkan{' '}
+              <code className="font-mono break-all">
+                {window.location.origin}
+                {import.meta.env.BASE_URL}auth/callback
+              </code>
+            </li>
+          </ol>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={openManualFallback}
+        className="mt-2 w-full text-[11px] font-semibold text-slate-400 hover:text-slate-600 cursor-pointer"
+      >
+        Masuk manual tanpa Google
       </button>
 
       {chooserOpen && (

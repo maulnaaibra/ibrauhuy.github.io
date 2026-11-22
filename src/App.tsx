@@ -6,6 +6,7 @@ import { LandingPage } from './pages/LandingPage';
 import { AuthPage } from './pages/AuthPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { LegalPage } from './pages/LegalPage';
 
 export function App() {
   return (
@@ -34,6 +35,8 @@ export function App() {
             }
           />
           <Route path="/login" element={<AuthPage />} />
+          <Route path="/privacy" element={<LegalPage />} />
+          <Route path="/terms" element={<LegalPage />} />
           <Route path="/auth/callback" element={<AuthPage />} />
           <Route
             path="/dashboard"
