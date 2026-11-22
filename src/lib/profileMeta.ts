@@ -576,28 +576,10 @@ export function buildPublicProfileSnapshot(
       rarity: a.rarity,
     }));
 
-  const shareableAvatar =
-    extProfile.avatar_url &&
-    extProfile.avatar_url.startsWith('data:image/') &&
-    !extProfile.avatar_url.startsWith('data:image/svg+xml') &&
-    extProfile.avatar_url.length > 1800
-      ? null
-      : extProfile.avatar_url;
-
-  const shareableBanner =
-    extProfile.banner_url &&
-    extProfile.banner_url.startsWith('data:image/') &&
-    !extProfile.banner_url.startsWith('data:image/svg+xml') &&
-    extProfile.banner_url.length > 1800
-      ? null
-      : extProfile.banner_url;
-
   return {
     v: 1,
     profile: {
       ...extProfile,
-      avatar_url: shareableAvatar,
-      banner_url: shareableBanner,
     },
     stats: {
       totalHours,
@@ -633,7 +615,32 @@ export function encodeProfileSnapshotToToken(
   snapshot: PublicProfileSnapshot
 ): string {
   try {
-    const jsonStr = JSON.stringify(snapshot);
+    const shareableAvatar =
+      snapshot.profile.avatar_url &&
+      snapshot.profile.avatar_url.startsWith('data:image/') &&
+      !snapshot.profile.avatar_url.startsWith('data:image/svg+xml') &&
+      snapshot.profile.avatar_url.length > 1800
+        ? null
+        : snapshot.profile.avatar_url;
+
+    const shareableBanner =
+      snapshot.profile.banner_url &&
+      snapshot.profile.banner_url.startsWith('data:image/') &&
+      !snapshot.profile.banner_url.startsWith('data:image/svg+xml') &&
+      snapshot.profile.banner_url.length > 1800
+        ? null
+        : snapshot.profile.banner_url;
+
+    const compactSnapshot: PublicProfileSnapshot = {
+      ...snapshot,
+      profile: {
+        ...snapshot.profile,
+        avatar_url: shareableAvatar,
+        banner_url: shareableBanner,
+      },
+    };
+
+    const jsonStr = JSON.stringify(compactSnapshot);
     const utf8Bytes = encodeURIComponent(jsonStr).replace(
       /%([0-9A-F]{2})/g,
       (_, p1: string) => String.fromCharCode(parseInt(p1, 16))

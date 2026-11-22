@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Award,
@@ -90,6 +90,10 @@ export const ProfileDashboardSection: React.FC<
   const [showQuickBgGallery, setShowQuickBgGallery] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<ExtendedUserProfile>(() => profile);
+
+  useEffect(() => {
+    setForm(profile);
+  }, [profile]);
   const [bannerUrlInput, setBannerUrlInput] = useState('');
   const [catalogSearch, setCatalogSearch] = useState('');
   const [appearance, setAppearance] = useState<AppearanceSettings>(
@@ -136,10 +140,13 @@ export const ProfileDashboardSection: React.FC<
     if (!file) return;
     try {
       const dataUrl = await compressAvatarFile(file);
-      setForm((prev) => ({ ...prev, avatar_url: dataUrl }));
-      if (!isEditing && onSaveProfile) {
-        const next = { ...profile, avatar_url: dataUrl };
-        const res = await onSaveProfile(next);
+      const updatedProfile: ExtendedUserProfile = {
+        ...(isEditing ? form : profile),
+        avatar_url: dataUrl,
+      };
+      setForm(updatedProfile);
+      if (onSaveProfile) {
+        const res = await onSaveProfile(updatedProfile);
         if (res.ok) {
           toast.success('Foto profil berhasil diperbarui!');
         }
@@ -162,10 +169,13 @@ export const ProfileDashboardSection: React.FC<
     if (!file) return;
     try {
       const dataUrl = await compressBannerFile(file);
-      setForm((prev) => ({ ...prev, banner_url: dataUrl }));
-      if (!isEditing && onSaveProfile) {
-        const next = { ...profile, banner_url: dataUrl };
-        const res = await onSaveProfile(next);
+      const updatedProfile: ExtendedUserProfile = {
+        ...(isEditing ? form : profile),
+        banner_url: dataUrl,
+      };
+      setForm(updatedProfile);
+      if (onSaveProfile) {
+        const res = await onSaveProfile(updatedProfile);
         if (res.ok) {
           toast.success('Gambar sampul / banner dashboard berhasil dipasang!');
         }
@@ -211,10 +221,13 @@ export const ProfileDashboardSection: React.FC<
 
   const handleQuickSelectBanner = async (newBannerUrl: string | null) => {
     const storedVal = newBannerUrl === null ? 'none' : newBannerUrl;
-    setForm((prev) => ({ ...prev, banner_url: storedVal }));
+    const updatedProfile: ExtendedUserProfile = {
+      ...(isEditing ? form : profile),
+      banner_url: storedVal,
+    };
+    setForm(updatedProfile);
     if (onSaveProfile) {
-      const next = { ...profile, banner_url: storedVal };
-      const res = await onSaveProfile(next);
+      const res = await onSaveProfile(updatedProfile);
       if (res.ok) {
         toast.success('Background profil berhasil diperbarui!');
       }
@@ -477,10 +490,10 @@ export const ProfileDashboardSection: React.FC<
           </div>
         )}
 
-        <div className="px-5 sm:px-7 pb-6">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-12 sm:-mt-14 relative z-10">
-            <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-              <div className="relative group w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white p-1.5 shadow-lg border border-slate-200 shrink-0">
+        <div className="px-5 sm:px-7 pb-6 pt-3">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 relative z-10">
+            <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+              <div className="relative group w-24 h-24 sm:w-28 sm:h-28 -mt-14 sm:-mt-16 rounded-2xl bg-white p-1.5 shadow-xl border border-slate-200 shrink-0">
                 {activeProfile.avatar_url ? (
                   <img
                     src={activeProfile.avatar_url}
@@ -505,7 +518,7 @@ export const ProfileDashboardSection: React.FC<
                 )}
               </div>
 
-              <div className="space-y-1 pt-1">
+              <div className="space-y-1 pt-0.5">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900">
                     {activeProfile.full_name}

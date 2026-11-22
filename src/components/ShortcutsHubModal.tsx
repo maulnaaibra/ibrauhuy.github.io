@@ -2,10 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Award,
   BarChart3,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   Command,
   Compass,
   ExternalLink,
@@ -18,16 +16,10 @@ import {
   Search,
   Sparkles,
   Target,
-  Trash2,
   User,
   X,
 } from 'lucide-react';
-import toast from 'react-hot-toast';
 import rawCatalog from '../data/immersionCatalog.json';
-import {
-  loadCompanionSettings,
-  notifyCompanionMediaLaunch,
-} from '../lib/companionClient';
 import type { PrimaryMediaCategory } from '../types';
 
 export type SidebarDashboardTab =
@@ -292,401 +284,92 @@ export const LeftSidebarNavigation: React.FC<LeftSidebarNavigationProps> = ({
   activeTab,
   onSelectTab,
   companionConnected,
-  onOpenCommandPalette,
-  onQuickLog,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
-  const [openMediaSection, setOpenMediaSection] = useState(true);
-  const [openToolsSection, setOpenToolsSection] = useState(true);
-  const [customShortcuts, setCustomShortcuts] =
-    useState<WebShortcutItem[]>(loadCustomShortcuts);
-  const [addingCustom, setAddingCustom] = useState(false);
-  const [customLabel, setCustomLabel] = useState('');
-  const [customUrl, setCustomUrl] = useState('');
-
-  const mediaShortcuts = useMemo(
-    () => BUILTIN_WEB_SHORTCUTS.filter((s) => s.group === 'media'),
-    []
-  );
-  const toolShortcuts = useMemo(
-    () => BUILTIN_WEB_SHORTCUTS.filter((s) => s.group === 'tools'),
-    []
-  );
 
   const navItems: Array<{
     id: SidebarDashboardTab;
-    keyNum: string;
     label: string;
     icon: React.ComponentType<{ className?: string }>;
     dot?: boolean;
   }> = [
     {
       id: 'overview',
-      keyNum: '1',
-      label: 'Beranda (Overview)',
+      label: 'Overview',
       icon: LayoutDashboard,
     },
-    { id: 'profile', keyNum: '2', label: 'Profil Publik', icon: User },
-    { id: 'catalog', keyNum: '3', label: 'Katalog Media', icon: Compass },
-    { id: 'stats', keyNum: '4', label: 'Stats & Grafik', icon: BarChart3 },
-    { id: 'goals', keyNum: '5', label: 'Goals & Target', icon: Target },
-    { id: 'achievements', keyNum: '6', label: 'Achievements', icon: Award },
-    { id: 'activity', keyNum: '7', label: 'Riwayat Sesi', icon: History },
+    { id: 'profile', label: 'Profil', icon: User },
+    { id: 'catalog', label: 'Katalog', icon: Compass },
+    { id: 'stats', label: 'Stats', icon: BarChart3 },
+    { id: 'goals', label: 'Goals', icon: Target },
+    { id: 'achievements', label: 'Achievements', icon: Award },
+    { id: 'activity', label: 'Activity', icon: History },
     {
       id: 'devices',
-      keyNum: '8',
-      label: 'Devices & PC Agent',
+      label: 'Devices',
       icon: MonitorSmartphone,
       dot: companionConnected,
     },
   ];
 
-  const handleLaunchShortcut = (sc: WebShortcutItem) => {
-    if (sc.category) {
-      const companion = loadCompanionSettings();
-      void notifyCompanionMediaLaunch(companion.url, {
-        title: sc.label,
-        category: sc.category,
-        url: sc.url,
-      });
-    }
-  };
-
-  const handleAddCustom = (e: React.FormEvent) => {
-    e.preventDefault();
-    const label = customLabel.trim();
-    let url = customUrl.trim();
-    if (!label || !url) return;
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = `https://${url}`;
-    }
-    const added: WebShortcutItem = {
-      id: `custom-${Date.now()}`,
-      label,
-      url,
-      badge: 'Custom',
-      group: 'custom',
-      category: 'study',
-      description: url,
-    };
-    const next = [added, ...customShortcuts];
-    setCustomShortcuts(next);
-    saveCustomShortcuts(next);
-    setCustomLabel('');
-    setCustomUrl('');
-    setAddingCustom(false);
-    toast.success(`Shortcut "${label}" ditambahkan ke sidebar kiri!`);
-  };
-
-  const handleDeleteCustom = (id: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const next = customShortcuts.filter((s) => s.id !== id);
-    setCustomShortcuts(next);
-    saveCustomShortcuts(next);
-    toast.success('Shortcut kustom dihapus');
-  };
-
   return (
     <aside
       className={`hidden lg:flex flex-col shrink-0 sticky top-16 h-[calc(100vh-4rem)] bg-white/95 backdrop-blur-md border-r border-slate-200/85 transition-all duration-300 select-none ${
-        collapsed ? 'w-18' : 'w-64'
+        collapsed ? 'w-16' : 'w-56'
       }`}
     >
-      {/* Top Quick Actions & Collapse Button */}
-      <div className="p-3 border-b border-slate-100 space-y-2">
-        <div className="flex items-center justify-between gap-1.5">
-          {!collapsed && (
-            <button
-              type="button"
-              onClick={onQuickLog}
-              className="btn-crimson flex-1 py-2 px-3 rounded-xl text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Catat Sesi</span>
-              <kbd className="px-1.5 py-0.2 rounded bg-white/20 text-[10px] font-mono">
-                N
-              </kbd>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setCollapsed((prev) => !prev)}
-            title={collapsed ? 'Perluas Sidebar Kiri' : 'Kecilkan Sidebar Kiri'}
-            className={`p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition cursor-pointer ${
-              collapsed ? 'w-full flex justify-center' : ''
-            }`}
-          >
-            {collapsed ? (
-              <ChevronRight className="w-4 h-4" />
-            ) : (
-              <ChevronLeft className="w-4 h-4" />
-            )}
-          </button>
-        </div>
-
+      <div className="p-3 flex items-center justify-between border-b border-slate-100">
+        {!collapsed && (
+          <span className="px-2 text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
+            Navigasi
+          </span>
+        )}
         <button
           type="button"
-          onClick={onOpenCommandPalette}
-          title="Cari Cepat & Command Palette (Ctrl + K)"
-          className={`w-full py-2 px-2.5 rounded-xl bg-slate-100/90 hover:bg-rose-50 border border-slate-200/80 hover:border-rose-300 text-slate-700 hover:text-rose-700 text-xs font-bold flex items-center justify-between gap-2 transition cursor-pointer ${
-            collapsed ? 'justify-center' : ''
+          onClick={() => setCollapsed((prev) => !prev)}
+          title={collapsed ? 'Perluas Sidebar' : 'Kecilkan Sidebar'}
+          className={`p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition cursor-pointer ${
+            collapsed ? 'w-full flex justify-center' : ''
           }`}
         >
-          <span className="inline-flex items-center gap-2 truncate">
-            <Search className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-            {!collapsed && <span className="truncate">Cari & Pintasan...</span>}
-          </span>
-          {!collapsed && (
-            <kbd className="px-1.5 py-0.5 rounded bg-white border border-slate-200 text-[10px] font-mono text-slate-500 shrink-0">
-              Ctrl+K
-            </kbd>
+          {collapsed ? (
+            <ChevronRight className="w-4 h-4" />
+          ) : (
+            <ChevronLeft className="w-4 h-4" />
           )}
         </button>
       </div>
 
-      {/* Scrollable Navigation & Shortcuts List */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-5">
-        {/* 1. MAIN DASHBOARD NAVIGATION */}
-        <div className="space-y-1">
-          {!collapsed && (
-            <div className="px-2.5 pb-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-              Menu Utama
-            </div>
-          )}
-          {navItems.map((item) => {
-            const active = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onSelectTab(item.id)}
-                title={`${item.label} (Tombol ${item.keyNum})`}
-                className={`w-full py-2 px-2.5 rounded-xl text-xs font-bold flex items-center justify-between gap-2 transition-all cursor-pointer ${
-                  active
-                    ? 'bg-gradient-to-r from-rose-600 to-rose-500 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/90'
-                } ${collapsed ? 'justify-center' : ''}`}
-              >
-                <span className="inline-flex items-center gap-2.5 min-w-0">
-                  <item.icon className="w-4 h-4 shrink-0" />
-                  {!collapsed && <span className="truncate">{item.label}</span>}
-                </span>
-                {!collapsed && (
-                  <span className="inline-flex items-center gap-1.5 shrink-0">
-                    {item.dot && (
-                      <span
-                        className={`w-2 h-2 rounded-full animate-pulse ${
-                          active ? 'bg-white' : 'bg-emerald-500'
-                        }`}
-                      />
-                    )}
-                    <kbd
-                      className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${
-                        active
-                          ? 'bg-white/20 text-white'
-                          : 'bg-slate-100 text-slate-400'
-                      }`}
-                    >
-                      {item.keyNum}
-                    </kbd>
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* 2. PINTASAN NONTON & BACA (STREAMING / NOVEL / MANGA) */}
-        {!collapsed ? (
-          <div className="space-y-1 pt-2 border-t border-slate-100">
+      <nav className="p-2.5 space-y-1">
+        {navItems.map((item) => {
+          const active = activeTab === item.id;
+          return (
             <button
+              key={item.id}
               type="button"
-              onClick={() => setOpenMediaSection((prev) => !prev)}
-              className="w-full px-2.5 py-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-slate-400 hover:text-slate-700 cursor-pointer"
+              onClick={() => onSelectTab(item.id)}
+              title={item.label}
+              className={`w-full py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 transition-all cursor-pointer ${
+                active
+                  ? 'bg-gradient-to-r from-rose-600 to-rose-500 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/90'
+              } ${collapsed ? 'justify-center px-0' : ''}`}
             >
-              <span>Pintasan Nonton & Baca</span>
-              {openMediaSection ? (
-                <ChevronUp className="w-3.5 h-3.5" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5" />
-              )}
-            </button>
-
-            {openMediaSection && (
-              <div className="space-y-0.5 pt-0.5">
-                {mediaShortcuts.map((sc) => (
-                  <a
-                    key={sc.id}
-                    href={sc.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => handleLaunchShortcut(sc)}
-                    title={sc.description}
-                    className="group py-1.5 px-2.5 rounded-xl hover:bg-rose-50/80 text-slate-700 hover:text-rose-700 flex items-center justify-between gap-2 transition text-xs font-semibold"
-                  >
-                    <span className="truncate">{sc.label}</span>
-                    <span className="inline-flex items-center gap-1 shrink-0">
-                      <span className="text-[10px] font-bold text-rose-600/80 bg-rose-50 px-1.5 py-0.2 rounded">
-                        {sc.badge}
-                      </span>
-                      <ExternalLink className="w-3 h-3 text-slate-300 group-hover:text-rose-600" />
-                    </span>
-                  </a>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="pt-2 border-t border-slate-100 flex flex-col items-center gap-1.5">
-            {mediaShortcuts.slice(0, 4).map((sc) => (
-              <a
-                key={sc.id}
-                href={sc.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => handleLaunchShortcut(sc)}
-                title={`${sc.label} (${sc.badge})`}
-                className="w-9 h-9 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white font-extrabold text-xs flex items-center justify-center transition"
-              >
-                {sc.label[0]}
-              </a>
-            ))}
-          </div>
-        )}
-
-        {/* 3. PINTASAN KAMUS, SUBTITLE & MINING TOOLS */}
-        {!collapsed && (
-          <div className="space-y-1 pt-2 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={() => setOpenToolsSection((prev) => !prev)}
-              className="w-full px-2.5 py-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-slate-400 hover:text-slate-700 cursor-pointer"
-            >
-              <span>Kamus & Mining Tools</span>
-              {openToolsSection ? (
-                <ChevronUp className="w-3.5 h-3.5" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5" />
-              )}
-            </button>
-
-            {openToolsSection && (
-              <div className="space-y-0.5 pt-0.5">
-                {toolShortcuts.map((sc) => (
-                  <a
-                    key={sc.id}
-                    href={sc.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => handleLaunchShortcut(sc)}
-                    title={sc.description}
-                    className="group py-1.5 px-2.5 rounded-xl hover:bg-indigo-50/80 text-slate-700 hover:text-indigo-700 flex items-center justify-between gap-2 transition text-xs font-semibold"
-                  >
-                    <span className="truncate">{sc.label}</span>
-                    <span className="inline-flex items-center gap-1 shrink-0">
-                      <span className="text-[10px] font-bold text-indigo-600/80 bg-indigo-50 px-1.5 py-0.2 rounded">
-                        {sc.badge}
-                      </span>
-                      <ExternalLink className="w-3 h-3 text-slate-300 group-hover:text-indigo-600" />
-                    </span>
-                  </a>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 4. CUSTOM SHORTCUTS IN LEFT SIDEBAR */}
-        {!collapsed && (
-          <div className="space-y-1.5 pt-2 border-t border-slate-100">
-            <div className="px-2.5 flex items-center justify-between">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-                Shortcut Kustom
+              <span className="inline-flex items-center gap-2.5 min-w-0">
+                <item.icon className="w-4 h-4 shrink-0" />
+                {!collapsed && <span className="truncate">{item.label}</span>}
               </span>
-              <button
-                type="button"
-                onClick={() => setAddingCustom((prev) => !prev)}
-                className="text-[11px] font-bold text-rose-600 hover:underline inline-flex items-center gap-0.5 cursor-pointer"
-              >
-                <Plus className="w-3 h-3" />
-                Tambah
-              </button>
-            </div>
-
-            {addingCustom && (
-              <form
-                onSubmit={handleAddCustom}
-                className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5"
-              >
-                <input
-                  type="text"
-                  required
-                  value={customLabel}
-                  onChange={(e) => setCustomLabel(e.target.value)}
-                  placeholder="Nama Web (mis. Nyaa)"
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:border-rose-500"
+              {!collapsed && item.dot && (
+                <span
+                  className={`w-2 h-2 rounded-full animate-pulse shrink-0 ${
+                    active ? 'bg-white' : 'bg-emerald-500'
+                  }`}
                 />
-                <input
-                  type="text"
-                  required
-                  value={customUrl}
-                  onChange={(e) => setCustomUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-rose-500"
-                />
-                <button
-                  type="submit"
-                  className="btn-crimson w-full py-1.5 rounded-lg text-xs font-bold cursor-pointer"
-                >
-                  Simpan ke Sidebar
-                </button>
-              </form>
-            )}
-
-            {customShortcuts.map((sc) => (
-              <a
-                key={sc.id}
-                href={sc.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group py-1.5 px-2.5 rounded-xl hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 flex items-center justify-between gap-2 transition text-xs font-semibold"
-              >
-                <span className="truncate">{sc.label}</span>
-                <button
-                  type="button"
-                  onClick={(e) => handleDeleteCustom(sc.id, e)}
-                  className="text-slate-400 hover:text-rose-600 p-0.5 cursor-pointer"
-                  title="Hapus"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </a>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Bottom Hotkey Helper Button */}
-      <div className="p-3 border-t border-slate-100">
-        <button
-          type="button"
-          onClick={onOpenCommandPalette}
-          className={`w-full py-2 px-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-slate-600 hover:text-slate-900 text-[11px] font-bold flex items-center justify-between gap-2 transition cursor-pointer ${
-            collapsed ? 'justify-center' : ''
-          }`}
-        >
-          <span className="inline-flex items-center gap-2">
-            <Keyboard className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-            {!collapsed && <span>Panduan Hotkey</span>}
-          </span>
-          {!collapsed && (
-            <kbd className="px-1.5 py-0.2 rounded bg-white border border-slate-200 font-mono text-[10px]">
-              ?
-            </kbd>
-          )}
-        </button>
-      </div>
+              )}
+            </button>
+          );
+        })}
+      </nav>
     </aside>
   );
 };
