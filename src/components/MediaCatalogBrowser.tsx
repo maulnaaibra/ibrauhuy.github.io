@@ -157,6 +157,10 @@ interface MediaCatalogBrowserProps {
   onClearInitialSelected?: () => void;
 }
 
+const CATALOG_SECTION_STORAGE_KEY = 'immersiontrack_catalog_section_v1';
+const CATALOG_TIER_STORAGE_KEY = 'immersiontrack_catalog_tier_v1';
+const CATALOG_SELECTED_STORAGE_KEY = 'immersiontrack_catalog_selected_v1';
+
 export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
   onStartMedia,
   defaultSection = 'Semua',
@@ -165,8 +169,31 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
   initialSelectedTitle = null,
   onClearInitialSelected,
 }) => {
-  const [section, setSection] = useState<CatalogSection>(defaultSection);
-  const [tierFilter, setTierFilter] = useState<DifficultyTier>('all');
+  const [section, setSection] = useState<CatalogSection>(() => {
+    try {
+      const saved = sessionStorage.getItem(CATALOG_SECTION_STORAGE_KEY);
+      if (saved && SECTION_ORDER.includes(saved as CatalogSection)) {
+        return saved as CatalogSection;
+      }
+    } catch {
+      // ignore
+    }
+    return defaultSection;
+  });
+  const [tierFilter, setTierFilter] = useState<DifficultyTier>(() => {
+    try {
+      const saved = sessionStorage.getItem(CATALOG_TIER_STORAGE_KEY);
+      if (
+        saved &&
+        DIFFICULTY_FILTERS.some((f) => f.id === (saved as DifficultyTier))
+      ) {
+        return saved as DifficultyTier;
+      }
+    } catch {
+      // ignore
+    }
+    return 'all';
+  });
   const [onlyWatchlist, setOnlyWatchlist] = useState(false);
   const [watchlistIds, setWatchlistIds] = useState<string[]>(loadUserWatchlist);
   const [watchedEpisodesMap, setWatchedEpisodesMap] = useState<
@@ -175,8 +202,46 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDetail, setSelectedDetail] = useState<SheetCatalogItem | null>(
-    null
+    () => {
+      try {
+        const savedId = sessionStorage.getItem(CATALOG_SELECTED_STORAGE_KEY);
+        if (savedId) {
+          return ALL_ITEMS.find((i) => i.id === savedId) ?? null;
+        }
+      } catch {
+        // ignore
+      }
+      return null;
+    }
   );
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(CATALOG_SECTION_STORAGE_KEY, section);
+    } catch {
+      // ignore
+    }
+  }, [section]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(CATALOG_TIER_STORAGE_KEY, tierFilter);
+    } catch {
+      // ignore
+    }
+  }, [tierFilter]);
+
+  useEffect(() => {
+    try {
+      if (selectedDetail) {
+        sessionStorage.setItem(CATALOG_SELECTED_STORAGE_KEY, selectedDetail.id);
+      } else {
+        sessionStorage.removeItem(CATALOG_SELECTED_STORAGE_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, [selectedDetail]);
   const [enrichedMedia, setEnrichedMedia] =
     useState<EnrichedCinematicMedia | null>(null);
   const [loadingEnriched, setLoadingEnriched] = useState(false);

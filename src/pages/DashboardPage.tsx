@@ -124,10 +124,49 @@ const QUICK_LOG_PRESETS: Array<{
   },
 ];
 
+const VALID_DASHBOARD_TABS: DashboardTab[] = [
+  'overview',
+  'profile',
+  'catalog',
+  'stats',
+  'goals',
+  'achievements',
+  'activity',
+  'devices',
+];
+const ACTIVE_TAB_STORAGE_KEY = 'immersiontrack_active_tab_v1';
+
+function isValidDashboardTab(val: string | null): val is DashboardTab {
+  return Boolean(val && VALID_DASHBOARD_TABS.includes(val as DashboardTab));
+}
+
 export const DashboardPage: React.FC = () => {
   const { user, profile, refreshProfile, signOut } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+  const [activeTab, setActiveTab] = useState<DashboardTab>(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get('tab');
+    if (isValidDashboardTab(fromUrl)) return fromUrl;
+    try {
+      const fromStorage = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+      if (isValidDashboardTab(fromStorage)) return fromStorage;
+    } catch {
+      // ignore storage errors
+    }
+    return 'overview';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, activeTab);
+    } catch {
+      // ignore storage errors
+    }
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('tab') !== activeTab) {
+      url.searchParams.set('tab', activeTab);
+      window.history.replaceState(null, '', url.toString());
+    }
+  }, [activeTab]);
   const [initialCatalogTitle, setInitialCatalogTitle] = useState<string | null>(
     null
   );
@@ -412,11 +451,11 @@ export const DashboardPage: React.FC = () => {
         setModalOpen(true);
       }
 
-      setSearchParams({}, { replace: true });
+      setSearchParams({ tab: activeTab }, { replace: true });
     }, 0);
 
     return () => clearTimeout(timer);
-  }, [user, searchParams, setSearchParams, refreshProfile]);
+  }, [user, searchParams, setSearchParams, refreshProfile, activeTab]);
 
   const handleManualRefreshCompanion = async () => {
     setCompanionChecking(true);
