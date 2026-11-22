@@ -318,7 +318,7 @@ export const ProfileDashboardSection: React.FC<
       {/* Profile Hero Banner & Identity Card — Proportional Widescreen Banner (Never stretched/gepeng) */}
       <div className="card-pro overflow-hidden shadow-xl border border-slate-200/90">
         <div
-          className="relative w-full h-44 sm:h-56 lg:h-64 overflow-hidden flex flex-col justify-between p-4 sm:p-6"
+          className="relative w-full h-40 sm:h-56 lg:h-64 overflow-hidden flex flex-col justify-between p-3.5 sm:p-6"
           style={
             !hasCustomBanner
               ? {

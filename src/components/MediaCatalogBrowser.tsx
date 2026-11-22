@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Bookmark,
@@ -155,11 +156,12 @@ interface MediaCatalogBrowserProps {
   compact?: boolean;
   initialSelectedTitle?: string | null;
   onClearInitialSelected?: () => void;
+  onBackToOverview?: () => void;
 }
 
 const CATALOG_SECTION_STORAGE_KEY = 'immersiontrack_catalog_section_v1';
 const CATALOG_TIER_STORAGE_KEY = 'immersiontrack_catalog_tier_v1';
-const CATALOG_SELECTED_STORAGE_KEY = 'immersiontrack_catalog_selected_v1';
+const CATALOG_DETAIL_ITEM_CACHE_KEY = 'immersiontrack_catalog_detail_item_v1';
 
 export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
   onStartMedia,
@@ -168,7 +170,9 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
   compact = false,
   initialSelectedTitle = null,
   onClearInitialSelected,
+  onBackToOverview,
 }) => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [section, setSection] = useState<CatalogSection>(() => {
     try {
       const saved = sessionStorage.getItem(CATALOG_SECTION_STORAGE_KEY);
@@ -201,18 +205,61 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
   >(loadWatchedEpisodesMap);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDetail, setSelectedDetail] = useState<SheetCatalogItem | null>(
-    () => {
+  const [cachedLiveDetail, setCachedLiveDetail] =
+    useState<SheetCatalogItem | null>(() => {
       try {
-        const savedId = sessionStorage.getItem(CATALOG_SELECTED_STORAGE_KEY);
-        if (savedId) {
-          return ALL_ITEMS.find((i) => i.id === savedId) ?? null;
-        }
+        const raw = sessionStorage.getItem(CATALOG_DETAIL_ITEM_CACHE_KEY);
+        return raw ? (JSON.parse(raw) as SheetCatalogItem) : null;
       } catch {
-        // ignore
+        return null;
       }
-      return null;
+    });
+
+  const [liveResults, setLiveResults] = useState<SheetCatalogItem[]>([]);
+  const [searchingLive, setSearchingLive] = useState(false);
+
+  const mediaIdFromUrl = searchParams.get('media');
+
+  const selectedDetail = useMemo<SheetCatalogItem | null>(() => {
+    if (!mediaIdFromUrl) return null;
+    const fromStatic = ALL_ITEMS.find((i) => i.id === mediaIdFromUrl);
+    if (fromStatic) return fromStatic;
+    const fromLive = liveResults.find((i) => i.id === mediaIdFromUrl);
+    if (fromLive) return fromLive;
+    if (cachedLiveDetail && cachedLiveDetail.id === mediaIdFromUrl) {
+      return cachedLiveDetail;
     }
+    return null;
+  }, [mediaIdFromUrl, liveResults, cachedLiveDetail]);
+
+  const setSelectedDetail = useCallback(
+    (item: SheetCatalogItem | null) => {
+      if (item) {
+        setCachedLiveDetail(item);
+        try {
+          sessionStorage.setItem(
+            CATALOG_DETAIL_ITEM_CACHE_KEY,
+            JSON.stringify(item)
+          );
+        } catch {
+          // ignore
+        }
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('media', item.id);
+          return next;
+        });
+      } else {
+        setSearchParams((prev) => {
+          if (!prev.has('media')) return prev;
+          const next = new URLSearchParams(prev);
+          next.delete('media');
+          return next;
+        });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    },
+    [setSearchParams]
   );
 
   useEffect(() => {
@@ -231,26 +278,12 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
     }
   }, [tierFilter]);
 
-  useEffect(() => {
-    try {
-      if (selectedDetail) {
-        sessionStorage.setItem(CATALOG_SELECTED_STORAGE_KEY, selectedDetail.id);
-      } else {
-        sessionStorage.removeItem(CATALOG_SELECTED_STORAGE_KEY);
-      }
-    } catch {
-      // ignore
-    }
-  }, [selectedDetail]);
   const [enrichedMedia, setEnrichedMedia] =
     useState<EnrichedCinematicMedia | null>(null);
   const [loadingEnriched, setLoadingEnriched] = useState(false);
 
   const pageSize = customPageSize ?? (compact ? 12 : 24);
   const [visibleLimit, setVisibleLimit] = useState(pageSize);
-
-  const [liveResults, setLiveResults] = useState<SheetCatalogItem[]>([]);
-  const [searchingLive, setSearchingLive] = useState(false);
 
   // Open initial selected title if passed from Overview
   useEffect(() => {
@@ -265,7 +298,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
       setSelectedDetail(match);
     }
     onClearInitialSelected?.();
-  }, [initialSelectedTitle, onClearInitialSelected]);
+  }, [initialSelectedTitle, onClearInitialSelected, setSelectedDetail]);
 
   // Fetch rich cinematic details (backdrop banner, score, episodes, cast & seiyuu) when an item is selected
   useEffect(() => {
@@ -327,7 +360,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedDetail]);
+  }, [selectedDetail, setSelectedDetail]);
 
   // Live API Search (AniList Anime/Manga/Novel + VNDB)
   useEffect(() => {
@@ -574,11 +607,51 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
         : [];
 
     return (
-      <div className="rounded-3xl bg-[#09090d] text-white overflow-hidden shadow-2xl border border-white/10 animate-fade-in">
+      <div className="rounded-2xl sm:rounded-3xl bg-[#09090d] text-white overflow-hidden shadow-2xl border border-white/10 animate-fade-in">
+        {/* DEDICATED TOP BACK NAVIGATION BAR (Always clear & easy to tap on iOS / Mobile) */}
+        <div className="px-3.5 sm:px-6 py-2.5 sm:py-3 bg-[#12121a] border-b border-white/10 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => setSelectedDetail(null)}
+              className="min-h-[40px] px-3.5 py-2 rounded-xl bg-white/12 hover:bg-white/20 active:bg-white/25 border border-white/15 text-white text-xs font-extrabold inline-flex items-center gap-1.5 transition cursor-pointer shrink-0"
+            >
+              <ArrowLeft className="w-4 h-4 shrink-0" />
+              <span>Kembali ke Katalog</span>
+            </button>
+
+            {onBackToOverview && (
+              <button
+                type="button"
+                onClick={onBackToOverview}
+                className="min-h-[40px] px-3 py-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-white/85 hover:text-white text-xs font-bold inline-flex items-center gap-1.5 transition cursor-pointer shrink-0"
+              >
+                <Home className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline">Overview</span>
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {loadingEnriched && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] text-white/75">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
+                <span className="hidden sm:inline">Memuat info...</span>
+              </span>
+            )}
+            <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] font-mono text-white/70">
+              Esc: Kembali • P: Play • L: List
+            </span>
+            <span className="px-2.5 py-1 rounded-full bg-rose-600/20 border border-rose-500/35 text-[11px] font-bold text-rose-300">
+              {selectedDetail.section}
+            </span>
+          </div>
+        </div>
+
         {/* HERO STAGE — Proportional Widescreen Banner + Overlap Info Stage */}
         <div className="relative overflow-hidden">
-          {/* Top Proportional Widescreen Backdrop Stage (4.5:1 / 16:9 friendly, never over-zoomed or stretched) */}
-          <div className="relative h-52 sm:h-68 lg:h-80 w-full overflow-hidden bg-[#101018]">
+          {/* Top Proportional Widescreen Backdrop Stage */}
+          <div className="relative h-40 sm:h-64 lg:h-76 w-full overflow-hidden bg-[#101018]">
             {wideBannerUrl ? (
               <img
                 src={wideBannerUrl}
@@ -592,7 +665,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                   alt=""
                   className="w-full h-full object-cover object-center scale-110 blur-2xl opacity-45"
                 />
-                <div className="absolute inset-0 flex items-center justify-end pr-12 opacity-65">
+                <div className="absolute inset-0 flex items-center justify-end pr-6 sm:pr-12 opacity-65">
                   <img
                     src={coverUrl}
                     alt={selectedDetail.title}
@@ -603,64 +676,23 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
             ) : null}
 
             {/* Smooth Cinema Vignette Overlays */}
-            <div className="absolute inset-0 bg-gradient-to-r from-[#09090d]/90 via-[#09090d]/45 to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#09090d] via-[#09090d]/55 to-black/15" />
-
-            {/* Top Floating Navigation Bar (< and Home buttons + Keyboard Shortcut Hints) */}
-            <div className="relative z-10 p-5 sm:p-7 flex items-center justify-between gap-4">
-              <div className="inline-flex items-center gap-1 p-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/15 shadow-lg">
-                <button
-                  type="button"
-                  onClick={() => setSelectedDetail(null)}
-                  title="Kembali ke Katalog (Esc / Backspace)"
-                  className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center text-white/90 hover:text-white transition cursor-pointer"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedDetail(null);
-                    setSection('Semua');
-                    setTierFilter('all');
-                  }}
-                  title="Beranda Katalog"
-                  className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center text-white/90 hover:text-white transition cursor-pointer"
-                >
-                  <Home className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {loadingEnriched && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/55 backdrop-blur-md border border-white/10 text-[11px] text-white/75">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
-                    Memuat info...
-                  </span>
-                )}
-                <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/55 backdrop-blur-md border border-white/10 text-[11px] font-mono text-white/70">
-                  Esc: Kembali • P: Play • L: List
-                </span>
-                <span className="px-3 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/15 text-xs font-bold text-white/90">
-                  {selectedDetail.section}
-                </span>
-              </div>
-            </div>
+            <div className="absolute inset-0 bg-gradient-to-r from-[#09090d]/85 via-[#09090d]/35 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#09090d] via-[#09090d]/45 to-transparent" />
           </div>
 
-          {/* Hero Info & Action Controls (Overlapping the smooth bottom fade of the banner) */}
-          <div className="relative z-10 -mt-20 sm:-mt-28 px-6 sm:px-10 pb-8 flex flex-col lg:flex-row lg:items-end justify-between gap-8">
-            <div className="space-y-4 max-w-2xl">
+          {/* Hero Info & Action Controls */}
+          <div className="relative z-10 -mt-8 sm:-mt-24 px-4 sm:px-10 pb-6 sm:pb-8 flex flex-col lg:flex-row lg:items-end justify-between gap-6 sm:gap-8">
+            <div className="space-y-3 sm:space-y-4 max-w-2xl">
               {/* Romaji / Section Eyebrow */}
               {selectedDetail.romajiTitle &&
                 selectedDetail.romajiTitle !== selectedDetail.title && (
-                  <div className="text-xs sm:text-sm font-bold uppercase tracking-widest text-rose-400/95 drop-shadow">
+                  <div className="text-[11px] sm:text-sm font-bold uppercase tracking-widest text-rose-400/95 drop-shadow">
                     {selectedDetail.romajiTitle}
                   </div>
                 )}
 
               {/* Big Display Title */}
-              <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white leading-[1.08] drop-shadow-lg">
+              <h1 className="text-2xl sm:text-5xl font-black tracking-tight text-white leading-[1.1] drop-shadow-lg">
                 {selectedDetail.title}
               </h1>
 
@@ -733,7 +765,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
               </p>
 
               {/* Primary Action Buttons Row (Exact Match to Screenshot: Play | + Add to List | Download | + Log) */}
-              <div className="flex items-center gap-3 flex-wrap pt-2">
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap pt-2">
                 <a
                   href={playUrl}
                   target="_blank"
@@ -746,7 +778,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                       playUrl
                     )
                   }
-                  className="px-7 py-3 rounded-xl bg-white hover:bg-slate-200 text-slate-950 font-extrabold text-sm inline-flex items-center gap-2.5 shadow-xl transition cursor-pointer"
+                  className="px-5 sm:px-7 py-2.5 sm:py-3 rounded-xl bg-white hover:bg-slate-200 text-slate-950 font-extrabold text-xs sm:text-sm inline-flex items-center gap-2 shadow-xl transition cursor-pointer"
                 >
                   <Play className="w-4 h-4 fill-slate-950 text-slate-950" />
                   <span>
@@ -1194,6 +1226,28 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
               )}
             </div>
           )}
+
+          {/* Bottom Back Bar for convenient mobile scrolling */}
+          <div className="pt-4 border-t border-white/10 flex items-center justify-between gap-3 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setSelectedDetail(null)}
+              className="min-h-[42px] px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white text-xs font-extrabold inline-flex items-center gap-2 transition cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Kembali ke Daftar Katalog
+            </button>
+            {onBackToOverview && (
+              <button
+                type="button"
+                onClick={onBackToOverview}
+                className="min-h-[42px] px-4 py-2 rounded-xl bg-rose-600/85 hover:bg-rose-600 text-white text-xs font-extrabold inline-flex items-center gap-2 transition cursor-pointer"
+              >
+                <Home className="w-4 h-4" />
+                Kembali ke Overview
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );

@@ -150,17 +150,19 @@ function isValidDashboardTab(val: string | null): val is DashboardTab {
 export const DashboardPage: React.FC = () => {
   const { user, profile, refreshProfile, signOut } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<DashboardTab>(() => {
-    const fromUrl = new URLSearchParams(window.location.search).get('tab');
-    if (isValidDashboardTab(fromUrl)) return fromUrl;
-    try {
-      const fromStorage = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
-      if (isValidDashboardTab(fromStorage)) return fromStorage;
-    } catch {
-      // ignore storage errors
-    }
-    return 'overview';
-  });
+  const urlTabParam = searchParams.get('tab');
+
+  const activeTab: DashboardTab = isValidDashboardTab(urlTabParam)
+    ? urlTabParam
+    : (() => {
+        try {
+          const fromStorage = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+          if (isValidDashboardTab(fromStorage)) return fromStorage;
+        } catch {
+          // ignore storage errors
+        }
+        return 'overview';
+      })();
 
   useEffect(() => {
     try {
@@ -168,12 +170,33 @@ export const DashboardPage: React.FC = () => {
     } catch {
       // ignore storage errors
     }
-    const url = new URL(window.location.href);
-    if (url.searchParams.get('tab') !== activeTab) {
-      url.searchParams.set('tab', activeTab);
-      window.history.replaceState(null, '', url.toString());
-    }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (!urlTabParam || !isValidDashboardTab(urlTabParam)) {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('tab', activeTab);
+          return next;
+        },
+        { replace: true }
+      );
+    }
+  }, [urlTabParam, activeTab, setSearchParams]);
+
+  const setActiveTab = useCallback(
+    (nextTab: DashboardTab) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', nextTab);
+        next.delete('media');
+        return next;
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [setSearchParams]
+  );
   const [initialCatalogTitle, setInitialCatalogTitle] = useState<string | null>(
     null
   );
@@ -438,7 +461,7 @@ export const DashboardPage: React.FC = () => {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [setActiveTab]);
 
   useEffect(() => {
     if (!user) return;
@@ -798,29 +821,29 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="min-h-screen app-bg-canvas text-slate-900">
-      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-2xs">
-        <div className="px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          <Link to="/showcase" className="flex items-center gap-3 shrink-0 group">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-rose-500 to-rose-700 flex items-center justify-center font-extrabold text-white shadow-sm shadow-rose-500/25">
+      <header className="sticky top-0 z-30 pt-[env(safe-area-inset-top)] bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-2xs">
+        <div className="px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4">
+          <Link to="/showcase" className="flex items-center gap-2.5 sm:gap-3 min-w-0 group">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-rose-500 to-rose-700 flex items-center justify-center font-extrabold text-white shadow-sm shadow-rose-500/25 shrink-0">
               I
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="font-extrabold text-sm sm:text-base leading-tight text-slate-900 group-hover:text-rose-600 transition-colors">
+                <h1 className="font-extrabold text-sm sm:text-base leading-tight text-slate-900 group-hover:text-rose-600 transition-colors truncate">
                   ImmersionTrack
                 </h1>
-                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-[10px] font-mono text-rose-700">
+                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-[10px] font-mono text-rose-700 shrink-0">
                   {stats.stage.code}
                 </span>
               </div>
-              <p className="text-[11px] font-semibold text-slate-500">
+              <p className="text-[10px] sm:text-[11px] font-semibold text-slate-500 truncate">
                 {profile?.target_language ?? 'Japanese'} •{' '}
                 {stats.stage.label}
               </p>
             </div>
           </Link>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               type="button"
               onClick={handleToggleDarkGlassTheme}
@@ -916,8 +939,8 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="lg:hidden border-t border-slate-200/80 overflow-x-auto bg-white">
-          <div className="max-w-6xl mx-auto px-4 py-2 flex items-center gap-1.5 min-w-max">
+        <div className="lg:hidden border-t border-slate-200/80 overflow-x-auto">
+          <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2 flex items-center gap-1.5 min-w-max">
             {navTabs.map((tab) => {
               const active = activeTab === tab.id;
               return (
@@ -952,7 +975,7 @@ export const DashboardPage: React.FC = () => {
           onQuickLog={() => openNewLogModal()}
         />
 
-        <main className="flex-1 min-w-0 max-w-6xl mx-auto px-4 sm:px-6 py-7 space-y-6">
+        <main className="flex-1 min-w-0 max-w-6xl mx-auto px-3 sm:px-6 py-4 sm:py-7 pb-[max(2.5rem,env(safe-area-inset-bottom))] space-y-5 sm:space-y-6">
         {activeTab !== 'overview' && companionConnected && companionStatus && (
           <div className="w-full px-4 py-3 rounded-xl bg-emerald-50/90 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-fade-in">
             <div className="flex items-center gap-2.5 text-emerald-950 min-w-0 flex-wrap">
@@ -1516,21 +1539,33 @@ export const DashboardPage: React.FC = () => {
           </div>
         ) : activeTab === 'catalog' ? (
           <div key="tab-catalog" className="space-y-4 animate-tab-in">
-            <div>
-              <h2 className="text-xl font-extrabold text-slate-900 app-canvas-title">
-                Katalog 1.540+ Media & Live Search Semua Judul
-              </h2>
-              <p className="text-xs font-medium text-slate-500 app-canvas-subtitle mt-0.5">
-                976+ Anime Bettermelon lengkap dengan level bahasa JLPT, Novel
-                Epub.moe, Manga, Visual Novel, Game, Drama Cinejoy, YouTube, &
-                Podcast — atau ketik judul apa saja untuk langsung buka 1-klik.
-              </p>
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 app-canvas-title">
+                  Katalog 1.130+ Media & Live Search Semua Judul
+                </h2>
+                <p className="text-xs font-medium text-slate-500 app-canvas-subtitle mt-0.5">
+                  Anime Bettermelon lengkap dengan level bahasa JLPT, Novel
+                  Epub.moe, Manga, Visual Novel, Game, Drama Cinejoy, YouTube, &
+                  Podcast — ketik judul apa saja untuk langsung buka.
+                </p>
+              </div>
+              {!searchParams.get('media') && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('overview')}
+                  className="lg:hidden px-3 py-1.5 rounded-xl bg-white/80 border border-slate-200 text-xs font-bold text-slate-800 inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
+                >
+                  ← Overview
+                </button>
+              )}
             </div>
             <MediaCatalogBrowser
               defaultSection="Semua"
               pageSize={12}
               initialSelectedTitle={initialCatalogTitle}
               onClearInitialSelected={() => setInitialCatalogTitle(null)}
+              onBackToOverview={() => setActiveTab('overview')}
               onStartMedia={(title, category, suggestedMinutes) =>
                 openNewLogModal({
                   title,

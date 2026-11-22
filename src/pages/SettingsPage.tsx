@@ -218,7 +218,7 @@ export const SettingsPage: React.FC = () => {
     const isDarkPreset = preset === 'midnight-slate';
     updateAppearance({
       preset,
-      darkMode: isDarkPreset ? true : appearance.darkMode,
+      darkMode: isDarkPreset,
     });
     toast.success('Background & tema website diperbarui!');
   };
