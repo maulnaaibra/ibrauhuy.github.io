@@ -234,11 +234,25 @@ export const SUPABASE_SCHEMA_SQL = `grant usage on schema public to anon, authen
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   full_name text,
+  username text,
   avatar_url text,
+  bio text,
+  jlpt_target text default 'N2',
+  favorite_media text,
+  banner_theme text default 'sakura-crimson',
+  is_public boolean not null default true,
   target_language text not null default 'Japanese',
   daily_goal_minutes integer not null default 90 check (daily_goal_minutes >= 5 and daily_goal_minutes <= 1440),
   created_at timestamptz not null default now()
 );
+
+alter table public.profiles
+  add column if not exists username text,
+  add column if not exists bio text,
+  add column if not exists jlpt_target text default 'N2',
+  add column if not exists favorite_media text,
+  add column if not exists banner_theme text default 'sakura-crimson',
+  add column if not exists is_public boolean not null default true;
 
 create table if not exists public.immersion_logs (
   id uuid primary key default gen_random_uuid(),
@@ -255,15 +269,17 @@ create table if not exists public.immersion_logs (
 create index if not exists immersion_logs_user_date_idx
   on public.immersion_logs (user_id, logged_date desc, created_at desc);
 
+grant select on table public.profiles, public.immersion_logs to anon;
 grant select, insert, update, delete on table public.profiles, public.immersion_logs to authenticated;
 
 alter table public.profiles enable row level security;
 alter table public.immersion_logs enable row level security;
 
 drop policy if exists "Users can view own profile" on public.profiles;
-create policy "Users can view own profile"
-  on public.profiles for select to authenticated
-  using ((select auth.uid()) = id);
+drop policy if exists "Public profiles are viewable by everyone" on public.profiles;
+create policy "Public profiles are viewable by everyone"
+  on public.profiles for select to anon, authenticated
+  using (is_public = true or (select auth.uid()) = id);
 
 drop policy if exists "Users can insert own profile" on public.profiles;
 create policy "Users can insert own profile"

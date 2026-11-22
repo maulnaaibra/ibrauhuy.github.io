@@ -7,6 +7,7 @@ import { AuthPage } from './pages/AuthPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { LegalPage } from './pages/LegalPage';
+import { PublicProfilePage } from './pages/PublicProfilePage';
 
 export function App() {
   return (
@@ -38,6 +39,16 @@ export function App() {
           <Route path="/privacy" element={<LegalPage />} />
           <Route path="/terms" element={<LegalPage />} />
           <Route path="/auth/callback" element={<AuthPage />} />
+          <Route path="/u/:handle" element={<PublicProfilePage />} />
+          <Route path="/profile/:handle" element={<PublicProfilePage />} />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <PublicProfilePage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/dashboard"
             element={

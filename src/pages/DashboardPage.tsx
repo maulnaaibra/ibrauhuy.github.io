@@ -17,11 +17,20 @@ import {
   Settings,
   Target,
   Trophy,
+  User,
   Zap,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import { getCatalogMediaDestinations } from '../lib/mediaLinks';
+import {
+  buildCommunityMemberSnapshot,
+  buildPublicProfileSnapshot,
+  loadExtendedProfileMeta,
+  saveExtendedProfileMeta,
+  type ExtendedUserProfile,
+} from '../lib/profileMeta';
+import { ProfileDashboardSection } from '../components/ProfileDashboardSection';
 import { COMMUNITY_LEADERBOARD } from '../lib/publicShowcase';
 import { loadUserGoals, saveUserGoals } from '../lib/demoData';
 import {
@@ -63,6 +72,7 @@ import { MediaCatalogBrowser } from '../components/MediaCatalogBrowser';
 
 type DashboardTab =
   | 'overview'
+  | 'profile'
   | 'catalog'
   | 'stats'
   | 'goals'
@@ -112,6 +122,11 @@ export const DashboardPage: React.FC = () => {
   const { user, profile, refreshProfile, signOut } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+  const [inspectedMemberId, setInspectedMemberId] = useState<string | null>(
+    null
+  );
+  const [extProfileOverride, setExtProfileOverride] =
+    useState<ExtendedUserProfile | null>(null);
   const [logs, setLogs] = useState<ImmersionLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
   const [goals, setGoals] = useState<CustomGoal[]>(() =>
@@ -558,6 +573,34 @@ export const DashboardPage: React.FC = () => {
     );
   };
 
+  const ownExtProfile = useMemo(() => {
+    const base = loadExtendedProfileMeta(
+      user?.id ?? 'default',
+      profile,
+      user?.email,
+      user?.user_metadata
+    );
+    return extProfileOverride ?? base;
+  }, [user, profile, extProfileOverride]);
+
+  const activeProfileSnapshot = useMemo(() => {
+    if (inspectedMemberId) {
+      const comm = buildCommunityMemberSnapshot(inspectedMemberId);
+      if (comm) return comm;
+    }
+    return buildPublicProfileSnapshot(ownExtProfile, logs);
+  }, [inspectedMemberId, ownExtProfile, logs]);
+
+  const handleSaveProfileMeta = async (updated: ExtendedUserProfile) => {
+    if (!user) return { ok: false, error: 'Sesi tidak ditemukan' };
+    const res = await saveExtendedProfileMeta(user.id, updated);
+    if (res.ok) {
+      setExtProfileOverride(updated);
+      await refreshProfile();
+    }
+    return res;
+  };
+
   const navTabs: Array<{
     id: DashboardTab;
     label: string;
@@ -565,6 +608,7 @@ export const DashboardPage: React.FC = () => {
     dot?: boolean;
   }> = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'profile', label: 'Profil', icon: User },
     { id: 'catalog', label: 'Katalog', icon: Compass },
     { id: 'stats', label: 'Stats', icon: BarChart3 },
     { id: 'goals', label: 'Goals', icon: Target },
@@ -653,19 +697,27 @@ export const DashboardPage: React.FC = () => {
               <Settings className="w-4 h-4" />
             </Link>
 
-            <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-slate-200">
-              {profile?.avatar_url ? (
+            <button
+              type="button"
+              onClick={() => {
+                setInspectedMemberId(null);
+                setActiveTab('profile');
+              }}
+              title="Buka & Edit Profil Publik Saya"
+              className="hidden sm:flex items-center gap-2 pl-2 border-l border-slate-200 cursor-pointer group"
+            >
+              {ownExtProfile.avatar_url ? (
                 <img
-                  src={profile.avatar_url}
-                  alt={profile.full_name ?? 'User'}
-                  className="w-8 h-8 rounded-full object-cover border border-slate-200"
+                  src={ownExtProfile.avatar_url}
+                  alt={ownExtProfile.full_name}
+                  className="w-8 h-8 rounded-full object-cover border border-slate-200 group-hover:border-rose-500 transition"
                 />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-xs font-extrabold text-rose-700">
+                <div className="w-8 h-8 rounded-full bg-rose-50 border border-rose-200 group-hover:bg-rose-600 group-hover:text-white flex items-center justify-center text-xs font-extrabold text-rose-700 transition">
                   {avatarInitial}
                 </div>
               )}
-            </div>
+            </button>
 
             <button
               type="button"
@@ -1151,14 +1203,29 @@ export const DashboardPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="text-right shrink-0">
-                      <div className="text-sm font-mono text-slate-900">
-                        {member.totalHours.toLocaleString('id-ID')} j
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="text-right">
+                        <div className="text-sm font-mono text-slate-900">
+                          {member.totalHours.toLocaleString('id-ID')} j
+                        </div>
+                        <div className="text-[11px] font-mono text-rose-600 inline-flex items-center gap-1">
+                          <Flame className="w-3 h-3" />
+                          {member.streak}h
+                        </div>
                       </div>
-                      <div className="text-[11px] font-mono text-rose-600 inline-flex items-center gap-1">
-                        <Flame className="w-3 h-3" />
-                        {member.streak}h
-                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInspectedMemberId(
+                            member.isSelf ? null : member.id
+                          );
+                          setActiveTab('profile');
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-rose-600 hover:text-white border border-slate-200 text-xs font-bold text-rose-600 transition cursor-pointer"
+                      >
+                        {member.isSelf ? 'Profil Saya' : 'Cek Profil'}
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -1173,11 +1240,38 @@ export const DashboardPage: React.FC = () => {
               onViewAll={() => setActiveTab('activity')}
             />
           </div>
+        ) : activeTab === 'profile' ? (
+          <div key="tab-profile" className="space-y-4 animate-tab-in">
+            {inspectedMemberId && (
+              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-bold text-rose-900">
+                  Menampilkan Dashboard Profil Publik:{' '}
+                  <strong>{activeProfileSnapshot.profile.full_name}</strong> (@
+                  {activeProfileSnapshot.profile.username})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setInspectedMemberId(null)}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer"
+                >
+                  Kembali ke Profil Saya
+                </button>
+              </div>
+            )}
+
+            <ProfileDashboardSection
+              snapshot={activeProfileSnapshot}
+              logs={inspectedMemberId ? undefined : logs}
+              isOwnProfile={!inspectedMemberId}
+              onSaveProfile={handleSaveProfileMeta}
+              onInspectMember={(memberId) => setInspectedMemberId(memberId)}
+            />
+          </div>
         ) : activeTab === 'catalog' ? (
           <div key="tab-catalog" className="space-y-4 animate-tab-in">
             <div>
               <h2 className="text-xl font-extrabold text-slate-900 app-canvas-title">
-                Katalog 660+ Media Immersion
+                Katalog 745 Media Immersion
               </h2>
               <p className="text-xs font-medium text-slate-500 app-canvas-subtitle mt-0.5">
                 Pilih novel, anime, manga, visual novel, game, YouTube, atau
