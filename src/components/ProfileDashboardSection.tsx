@@ -87,6 +87,7 @@ export const ProfileDashboardSection: React.FC<
   const { profile, stats, topMedia, recentLogs, unlockedBadges } = snapshot;
 
   const [isEditing, setIsEditing] = useState(false);
+  const [showQuickBgGallery, setShowQuickBgGallery] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<ExtendedUserProfile>(() => profile);
   const [bannerUrlInput, setBannerUrlInput] = useState('');
@@ -208,14 +209,25 @@ export const ProfileDashboardSection: React.FC<
     }
   };
 
-  const handleApplyBannerUrl = () => {
+  const handleQuickSelectBanner = async (newBannerUrl: string | null) => {
+    const storedVal = newBannerUrl === null ? 'none' : newBannerUrl;
+    setForm((prev) => ({ ...prev, banner_url: storedVal }));
+    if (onSaveProfile) {
+      const next = { ...profile, banner_url: storedVal };
+      const res = await onSaveProfile(next);
+      if (res.ok) {
+        toast.success('Background profil berhasil diperbarui!');
+      }
+    }
+  };
+
+  const handleApplyBannerUrl = async () => {
     const clean = bannerUrlInput.trim();
     if (!clean.startsWith('https://') && !clean.startsWith('http://')) {
       toast.error('Masukkan URL gambar yang valid (https://...)');
       return;
     }
-    setForm((prev) => ({ ...prev, banner_url: clean }));
-    toast.success('URL gambar banner diterapkan!');
+    await handleQuickSelectBanner(clean);
   };
 
   const handleSubmitEdit = async (e: React.FormEvent) => {
@@ -256,11 +268,28 @@ export const ProfileDashboardSection: React.FC<
     : null;
 
   const hasCustomBanner = Boolean(
-    activeProfile.banner_url && activeProfile.banner_url.trim()
+    activeProfile.banner_url &&
+      activeProfile.banner_url.trim() &&
+      activeProfile.banner_url !== 'none'
   );
 
   return (
-    <div className="space-y-6">
+    <div
+      className="relative rounded-3xl p-3 sm:p-6 space-y-6 overflow-hidden border border-slate-200/80 shadow-lg transition-all"
+      style={
+        hasCustomBanner
+          ? {
+              backgroundImage: `linear-gradient(180deg, rgba(248, 250, 252, 0.78) 0%, rgba(255, 255, 255, 0.9) 45%, rgba(248, 250, 252, 0.92) 100%), url("${activeProfile.banner_url}")`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundAttachment: 'fixed',
+            }
+          : {
+              background:
+                'linear-gradient(180deg, rgba(255,241,242,0.65) 0%, rgba(255,255,255,0.95) 100%)',
+            }
+      }
+    >
       {/* Hidden file inputs for quick avatar, banner, and full-page wallpaper upload */}
       {isOwnProfile && (
         <>
@@ -289,13 +318,13 @@ export const ProfileDashboardSection: React.FC<
       )}
 
       {/* Profile Hero Banner & Identity Card */}
-      <div className="card-pro overflow-hidden">
+      <div className="card-pro overflow-hidden shadow-xl border border-white/60 bg-white/90 backdrop-blur-md">
         <div
-          className="h-44 sm:h-56 relative p-4 sm:p-6 flex flex-col justify-between bg-cover bg-center transition-all"
+          className="h-52 sm:h-68 relative p-4 sm:p-6 flex flex-col justify-between bg-cover bg-center transition-all duration-500"
           style={
             hasCustomBanner
               ? {
-                  backgroundImage: `linear-gradient(to bottom, rgba(15, 23, 42, 0.35), rgba(15, 23, 42, 0.72)), url("${activeProfile.banner_url}")`,
+                  backgroundImage: `linear-gradient(to bottom, rgba(9, 9, 13, 0.25) 0%, rgba(9, 9, 13, 0.15) 45%, rgba(9, 9, 13, 0.78) 100%), url("${activeProfile.banner_url}")`,
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
                 }
@@ -305,7 +334,7 @@ export const ProfileDashboardSection: React.FC<
           }
         >
           <div className="flex items-center justify-between gap-2 flex-wrap relative z-10">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/25 text-white text-xs font-bold shadow-xs">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/45 backdrop-blur-md border border-white/25 text-white text-xs font-bold shadow-xs">
               <Globe className="w-3.5 h-3.5" />
               {activeProfile.is_public
                 ? 'Dashboard Profil Publik'
@@ -314,14 +343,25 @@ export const ProfileDashboardSection: React.FC<
 
             <div className="flex items-center gap-2 flex-wrap">
               {isOwnProfile && (
-                <button
-                  type="button"
-                  onClick={() => bannerInputRef.current?.click()}
-                  className="px-3 py-1.5 rounded-xl bg-black/55 hover:bg-black/75 backdrop-blur-md text-white border border-white/25 text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition cursor-pointer"
-                >
-                  <Camera className="w-3.5 h-3.5 text-rose-400" />
-                  Ganti Gambar Dashboard
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickBgGallery((prev) => !prev)}
+                    className="px-3 py-1.5 rounded-xl bg-rose-600/90 hover:bg-rose-600 backdrop-blur-md text-white border border-rose-400/40 text-xs font-bold inline-flex items-center gap-1.5 shadow-md transition cursor-pointer"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    Pilih Background Profil
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => bannerInputRef.current?.click()}
+                    className="px-3 py-1.5 rounded-xl bg-black/55 hover:bg-black/75 backdrop-blur-md text-white border border-white/25 text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                  >
+                    <Camera className="w-3.5 h-3.5 text-rose-400" />
+                    Upload Gambar
+                  </button>
+                </>
               )}
 
               <button
@@ -348,15 +388,103 @@ export const ProfileDashboardSection: React.FC<
 
           <div className="flex items-center justify-between gap-2 flex-wrap relative z-10">
             <div className="flex items-center gap-2 text-white text-xs font-mono">
-              <span className="px-2.5 py-0.5 rounded-md bg-black/40 backdrop-blur-xs border border-white/20 font-bold">
+              <span className="px-2.5 py-0.5 rounded-md bg-black/45 backdrop-blur-xs border border-white/20 font-bold">
                 Target JLPT {activeProfile.jlpt_target}
               </span>
-              <span className="px-2.5 py-0.5 rounded-md bg-black/40 backdrop-blur-xs border border-white/20 font-bold">
+              <span className="px-2.5 py-0.5 rounded-md bg-black/45 backdrop-blur-xs border border-white/20 font-bold">
                 {stats.stageLabel} ({stats.stageCode})
               </span>
             </div>
           </div>
         </div>
+
+        {/* 1-Click Quick Background Gallery Drawer */}
+        {isOwnProfile && showQuickBgGallery && (
+          <div className="p-5 bg-slate-900 text-white border-b border-slate-800 space-y-4 animate-fade-in">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 className="text-sm font-extrabold text-white flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-rose-400" />
+                  Galeri Background Profil & Anime HD (Klik untuk Langsung Pasang)
+                </h4>
+                <p className="text-xs text-slate-400">
+                  Pilih salah satu artwork anime HD di bawah atau unggah gambar
+                  sendiri dari perangkat Anda.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => bannerInputRef.current?.click()}
+                  className="btn-crimson px-3.5 py-1.5 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Upload File Gambar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowQuickBgGallery(false)}
+                  className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 max-h-72 overflow-y-auto pr-1">
+              {BANNER_IMAGE_PRESETS.map((preset) => {
+                const selected = activeProfile.banner_url === preset.url;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => void handleQuickSelectBanner(preset.url)}
+                    className={`group rounded-xl overflow-hidden border text-left transition cursor-pointer ${
+                      selected
+                        ? 'border-rose-500 ring-2 ring-rose-500/40 bg-white/10'
+                        : 'border-white/10 bg-white/5 hover:border-white/30'
+                    }`}
+                  >
+                    <div
+                      className="h-20 w-full bg-cover bg-center group-hover:scale-105 transition duration-500"
+                      style={{ backgroundImage: `url("${preset.url}")` }}
+                    />
+                    <div className="p-2">
+                      <div className="text-xs font-bold text-white truncate flex items-center justify-between gap-1">
+                        <span className="truncate">{preset.label}</span>
+                        {selected && (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                        )}
+                      </div>
+                      {preset.subtitle && (
+                        <div className="text-[10px] text-slate-400 truncate">
+                          {preset.subtitle}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2 pt-1">
+              <input
+                type="url"
+                value={bannerUrlInput}
+                onChange={(e) => setBannerUrlInput(e.target.value)}
+                placeholder="Atau tempel URL gambar background apa saja (https://...)"
+                className="flex-1 px-3 py-2 rounded-xl bg-white/10 border border-white/15 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-rose-400"
+              />
+              <button
+                type="button"
+                onClick={() => void handleApplyBannerUrl()}
+                className="px-4 py-2 rounded-xl bg-white text-slate-950 hover:bg-slate-200 text-xs font-extrabold cursor-pointer"
+              >
+                Pasang URL
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="px-5 sm:px-7 pb-6">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-12 sm:-mt-14 relative z-10">

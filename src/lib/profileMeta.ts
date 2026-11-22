@@ -112,28 +112,108 @@ function makeSceneryBannerDataUrl(
 export interface BannerImagePreset {
   id: string;
   label: string;
+  subtitle?: string;
   url: string;
 }
 
+export const DEFAULT_PROFILE_BANNER_URL =
+  'https://s4.anilist.co/file/anilistcdn/media/anime/banner/21519-1ayMXgNlmByb.jpg';
+
 export const BANNER_IMAGE_PRESETS: BannerImagePreset[] = [
   {
+    id: 'kimi-no-na-wa',
+    label: 'Kimi no Na wa. (君の名は。)',
+    subtitle: 'Langit Komet & Senja Tokyo',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/21519-1ayMXgNlmByb.jpg',
+  },
+  {
+    id: 'frieren',
+    label: 'Sousou no Frieren (葬送のフリーレン)',
+    subtitle: 'Petualangan Fantasi & Padang Bunga',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/154587-ivXNJ23SM1xB.jpg',
+  },
+  {
+    id: 'tenki-no-ko',
+    label: 'Tenki no Ko (天気の子)',
+    subtitle: 'Awan Cerah di Atas Langit Jepang',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/106286-3oKwiwjd7Wkm.jpg',
+  },
+  {
+    id: 'byousoku-5cm',
+    label: '5 Centimeters per Second',
+    subtitle: 'Kereta & Kelopak Bunga Sakura',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/1689.jpg',
+  },
+  {
+    id: 'violet-evergarden',
+    label: 'Violet Evergarden',
+    subtitle: 'Estetika Klasik & Danau Zamrud',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/21827-ROucgYiiiSpR.jpg',
+  },
+  {
+    id: 'spirited-away',
+    label: 'Spirited Away (千と千尋の神隠し)',
+    subtitle: 'Studio Ghibli & Lentera Malam',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/199-Sm2RU5PSqw7T.jpg',
+  },
+  {
+    id: 'koe-no-katachi',
+    label: 'Koe no Katachi (聲の形)',
+    subtitle: 'Musim Semi & Jembatan Sungai',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/20954-f30bHMXa5Qoe.jpg',
+  },
+  {
+    id: 'kusuriya',
+    label: 'Kusuriya no Hitorigoto (薬屋のひとりごと)',
+    subtitle: 'Taman Istana Klasik',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/161645-oqzTZYIvviWI.jpg',
+  },
+  {
+    id: 'kimetsu',
+    label: 'Kimetsu no Yaiba (鬼滅の刃)',
+    subtitle: 'Malam Bunga Wisteria',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/101922-33MtJGsUSxga.jpg',
+  },
+  {
+    id: 'jujutsu-kaisen',
+    label: 'Jujutsu Kaisen (呪術廻戦)',
+    subtitle: 'Tokyo Modern & Energi Kutukan',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/113415-jQBSkxWAAk83.jpg',
+  },
+  {
+    id: 'bocchi',
+    label: 'Bocchi the Rock! (ぼっち・ざ・ろっく！)',
+    subtitle: 'Shimokitazawa Starry Livehouse',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/130003-5F90a7BtsPQN.jpg',
+  },
+  {
+    id: 'steins-gate',
+    label: 'Steins;Gate (シュタインズ・ゲート)',
+    subtitle: 'Akihabara Future Gadget Lab',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/n9253-JIhmKgBKsWUN.jpg',
+  },
+  {
     id: 'fuji-crimson',
-    label: 'Mt. Fuji Dusk',
+    label: 'Mt. Fuji Dusk (富士山)',
+    subtitle: 'Ilustrasi Senja Gunung Fuji',
     url: makeSceneryBannerDataUrl('#1e1b4b', '#be123c', '#f97316', '#fde047', '富士'),
   },
   {
     id: 'tokyo-cyber',
-    label: 'Tokyo Night',
+    label: 'Tokyo Night (東京夜景)',
+    subtitle: 'Ilustrasi Malam Neon Tokyo',
     url: makeSceneryBannerDataUrl('#090d16', '#312e81', '#e11d48', '#38bdf8', '東京'),
   },
   {
     id: 'kyoto-forest',
-    label: 'Kyoto Arashiyama',
+    label: 'Kyoto Arashiyama (京都)',
+    subtitle: 'Ilustrasi Hutan Bambu Kyoto',
     url: makeSceneryBannerDataUrl('#022c22', '#0f766e', '#10b981', '#fef08a', '京都'),
   },
   {
     id: 'sakura-dream',
-    label: 'Sakura Horizon',
+    label: 'Sakura Horizon (桜花)',
+    subtitle: 'Ilustrasi Langit Musim Semi',
     url: makeSceneryBannerDataUrl('#881337', '#e11d48', '#fda4af', '#fff1f2', '桜花'),
   },
 ];
@@ -321,9 +401,12 @@ export function loadExtendedProfileMeta(
       (typeof meta.avatar_url === 'string' ? meta.avatar_url : null) ??
       null,
     banner_url:
-      cached.banner_url ??
-      (typeof meta.banner_url === 'string' ? meta.banner_url : null) ??
-      null,
+      cached.banner_url === 'none'
+        ? null
+        : cached.banner_url ||
+          (typeof meta.banner_url === 'string' && meta.banner_url
+            ? meta.banner_url
+            : DEFAULT_PROFILE_BANNER_URL),
     banner_theme:
       cached.banner_theme ||
       (meta.banner_theme as ProfileBannerThemeId | undefined) ||
