@@ -36,7 +36,9 @@ import { loadUserGoals, saveUserGoals } from '../lib/demoData';
 import {
   ackCompanionSessions,
   fetchCompanionStatus,
+  flushCompanionSession,
   loadCompanionSettings,
+  pinCompanionWindow,
   saveCompanionSettings,
   type CompanionSettings,
   type CompanionStatus,
@@ -183,8 +185,13 @@ export const DashboardPage: React.FC = () => {
     };
   }, [user]);
 
+  const logsRef = useRef<ImmersionLog[]>([]);
+  useEffect(() => {
+    logsRef.current = logs;
+  }, [logs]);
+
   const importPendingSessions = useCallback(
-    async (sessions: PendingTrackedSession[], notify = true) => {
+    async (sessions: PendingTrackedSession[], notify = false) => {
       if (!user || sessions.length === 0) return;
 
       const freshSessions = sessions.filter(
@@ -194,30 +201,70 @@ export const DashboardPage: React.FC = () => {
 
       freshSessions.forEach((s) => importedPendingIdsRef.current.add(s.id));
 
-      const rows = freshSessions.map((s) => ({
-        user_id: user.id,
-        title: s.title,
-        category: s.category,
-        duration_minutes: s.duration_minutes,
-        cards_mined: s.cards_mined,
-        notes: s.notes,
-        logged_date: s.logged_date,
-      }));
-      const { data, error } = await supabase
-        .from('immersion_logs')
-        .insert(rows)
-        .select();
+      let anyInsertedOrUpdated = false;
 
-      if (error) {
-        freshSessions.forEach((s) =>
-          importedPendingIdsRef.current.delete(s.id)
+      for (const s of freshSessions) {
+        const existingAutoLog = logsRef.current.find(
+          (l) =>
+            l.logged_date === s.logged_date &&
+            l.category === s.category &&
+            l.title === s.title &&
+            (l.notes ?? '').startsWith('Auto-tracked')
         );
-        toast.error('Gagal menyimpan sesi otomatis dari PC');
-        return;
+
+        if (existingAutoLog) {
+          const nextDuration =
+            existingAutoLog.duration_minutes + s.duration_minutes;
+          const { data, error } = await supabase
+            .from('immersion_logs')
+            .update({ duration_minutes: nextDuration })
+            .eq('id', existingAutoLog.id)
+            .select()
+            .single();
+
+          if (error) {
+            importedPendingIdsRef.current.delete(s.id);
+            continue;
+          }
+          if (data) {
+            const updatedRow = data as ImmersionLog;
+            logsRef.current = logsRef.current.map((l) =>
+              l.id === updatedRow.id ? updatedRow : l
+            );
+            setLogs((prev) =>
+              prev.map((l) => (l.id === updatedRow.id ? updatedRow : l))
+            );
+            anyInsertedOrUpdated = true;
+          }
+        } else {
+          const { data, error } = await supabase
+            .from('immersion_logs')
+            .insert({
+              user_id: user.id,
+              title: s.title,
+              category: s.category,
+              duration_minutes: s.duration_minutes,
+              cards_mined: s.cards_mined,
+              notes: s.notes,
+              logged_date: s.logged_date,
+            })
+            .select()
+            .single();
+
+          if (error) {
+            importedPendingIdsRef.current.delete(s.id);
+            continue;
+          }
+          if (data) {
+            const insertedRow = data as ImmersionLog;
+            logsRef.current = [insertedRow, ...logsRef.current];
+            setLogs((prev) => [insertedRow, ...prev]);
+            anyInsertedOrUpdated = true;
+          }
+        }
       }
-      if (data) {
-        setLogs((prev) => [...(data as ImmersionLog[]), ...prev]);
-      }
+
+      if (!anyInsertedOrUpdated) return;
 
       try {
         await ackCompanionSessions(
@@ -231,7 +278,7 @@ export const DashboardPage: React.FC = () => {
       if (notify) {
         if (freshSessions.length === 1) {
           toast.success(
-            `Auto-logged dari PC: ${freshSessions[0].title} (${freshSessions[0].duration_minutes}m)`
+            `Auto-logged dari PC: ${freshSessions[0].title} (+${freshSessions[0].duration_minutes}m)`
           );
         } else {
           toast.success(
@@ -251,7 +298,7 @@ export const DashboardPage: React.FC = () => {
       companionSettings.autoSync &&
       status.pending.length > 0
     ) {
-      await importPendingSessions(status.pending, true);
+      await importPendingSessions(status.pending, false);
       const updated = await fetchCompanionStatus(companionSettings.url);
       if (updated) setCompanionStatus(updated);
     }
@@ -758,25 +805,87 @@ export const DashboardPage: React.FC = () => {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-7 space-y-6">
-        {companionConnected && companionStatus?.activeSession && (
-          <button
-            type="button"
-            onClick={() => setActiveTab('devices')}
-            className="w-full px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-3 text-xs text-left hover:bg-emerald-100/70 transition cursor-pointer animate-fade-in"
-          >
-            <span className="flex items-center gap-2 text-emerald-900 truncate">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-              <span>
-                <strong>PC Tracker aktif merekam:</strong>{' '}
-                {companionStatus.activeSession.title} (
-                {Math.floor(companionStatus.activeSession.activeSeconds / 60)}m{' '}
-                {companionStatus.activeSession.activeSeconds % 60}d)
-              </span>
-            </span>
-            <span className="text-emerald-700 font-semibold shrink-0">
-              Kelola →
-            </span>
-          </button>
+        {companionConnected && companionStatus && (
+          <div className="w-full px-4 py-3 rounded-xl bg-emerald-50/90 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-fade-in">
+            <div className="flex items-center gap-2.5 text-emerald-950 min-w-0 flex-wrap">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              {companionStatus.activeSession ? (
+                <span className="truncate">
+                  <strong>Windows Companion Aktif Merekam:</strong>{' '}
+                  <span className="font-bold text-emerald-800">
+                    {companionStatus.activeSession.title}
+                  </span>{' '}
+                  <span className="font-mono font-bold text-emerald-700">
+                    ({Math.floor(companionStatus.activeSession.activeSeconds / 60)}m{' '}
+                    {companionStatus.activeSession.activeSeconds % 60}d)
+                  </span>{' '}
+                  <span className="text-[11px] text-emerald-700/80">
+                    • Auto-sync ke log setiap 1 menit
+                  </span>
+                </span>
+              ) : (
+                <span>
+                  <strong>Windows Companion Terhubung ({companionStatus.deviceName}):</strong>{' '}
+                  Siap mendeteksi aplikasi immersion otomatis
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+              {(companionStatus.openWindows ?? [])
+                .filter((w) => w.matchedCategory !== null)
+                .slice(0, 3)
+                .map((w) => (
+                  <button
+                    key={`${w.process}-${w.hwnd}`}
+                    type="button"
+                    onClick={async () => {
+                      await pinCompanionWindow(companionSettings.url, {
+                        hwnd: w.hwnd,
+                        process: w.process,
+                        title: w.title,
+                        category: w.matchedCategory ?? 'study',
+                      });
+                      await pollCompanion();
+                      toast.success(`Beralih merekam: ${w.process}`);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                      w.isTracked
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                    }`}
+                  >
+                    {w.isTracked ? `● ${w.process}` : `Track ${w.process}`}
+                  </button>
+                ))}
+
+              {companionStatus.activeSession && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await flushCompanionSession(
+                      companionSettings.url
+                    );
+                    if (res.pending.length > 0) {
+                      await importPendingSessions(res.pending, true);
+                    }
+                    await pollCompanion();
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold transition cursor-pointer"
+                >
+                  Simpan Sekarang
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('devices')}
+                className="px-2.5 py-1 rounded-lg bg-white hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-[11px] font-bold transition cursor-pointer"
+              >
+                Kelola ({companionStatus.openWindows?.length ?? 0} Jendela) →
+              </button>
+            </div>
+          </div>
         )}
 
         {loadingLogs ? (

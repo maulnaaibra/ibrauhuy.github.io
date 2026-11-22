@@ -320,54 +320,72 @@ function matchWindowRule(processName, windowTitle) {
   return null;
 }
 
+function enqueuePendingMinutes(sessionObj, durationMinutes) {
+  if (!sessionObj || durationMinutes <= 0) return null;
+  const now = new Date();
+  const todayStr = getLocalDateString(now);
+
+  const existingIdx = pendingSessions.findIndex(
+    (p) =>
+      p.logged_date === todayStr &&
+      p.category === sessionObj.category &&
+      p.title === sessionObj.title
+  );
+
+  let committed = null;
+  if (existingIdx >= 0) {
+    pendingSessions[existingIdx].id = `pc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    pendingSessions[existingIdx].duration_minutes += durationMinutes;
+    pendingSessions[existingIdx].created_at = now.toISOString();
+    committed = pendingSessions[existingIdx];
+  } else {
+    committed = {
+      id: `pc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      title: sessionObj.title,
+      category: sessionObj.category,
+      duration_minutes: durationMinutes,
+      cards_mined: 0,
+      notes: `Auto-tracked dari ${DEVICE_NAME} (${sessionObj.process || 'Windows'})`,
+      logged_date: todayStr,
+      created_at: now.toISOString(),
+      source_device: DEVICE_NAME,
+    };
+    pendingSessions.push(committed);
+  }
+
+  writeJsonSafe(PENDING_FILE, pendingSessions);
+  console.log(
+    `[Checkpoint] +${durationMinutes}m | ${committed.category} | ${committed.title}`
+  );
+  return committed;
+}
+
 function commitActiveSession(force = false) {
   if (!activeSession) return null;
 
-  const minSeconds = force
-    ? 1
-    : Math.max(15, (Number(config.minSessionMinutes || 1) - 0.75) * 60);
+  const uncommitted = Number(
+    activeSession.uncommittedSeconds ?? activeSession.activeSeconds ?? 0
+  );
+  const alreadyCheckpointed = Number(activeSession.checkpointedMinutes ?? 0);
+
+  let extraMinutes = 0;
+  if (force) {
+    if (alreadyCheckpointed === 0 && uncommitted >= 1) {
+      extraMinutes = Math.max(1, Math.round(uncommitted / 60));
+    } else if (uncommitted >= 15) {
+      extraMinutes = Math.max(1, Math.round(uncommitted / 60));
+    }
+  } else {
+    if (alreadyCheckpointed === 0 && uncommitted >= 15) {
+      extraMinutes = Math.max(1, Math.round(uncommitted / 60));
+    } else if (uncommitted >= 30) {
+      extraMinutes = Math.max(1, Math.round(uncommitted / 60));
+    }
+  }
 
   let committed = null;
-
-  if (activeSession.activeSeconds >= minSeconds) {
-    const durationMinutes = Math.max(
-      1,
-      Math.round(activeSession.activeSeconds / 60)
-    );
-    const now = new Date();
-    const todayStr = getLocalDateString(now);
-
-    // Check if there's an existing pending session for the same title & category today
-    const existingIdx = pendingSessions.findIndex(
-      (p) =>
-        p.logged_date === todayStr &&
-        p.category === activeSession.category &&
-        p.title === activeSession.title
-    );
-
-    if (existingIdx >= 0) {
-      pendingSessions[existingIdx].duration_minutes += durationMinutes;
-      pendingSessions[existingIdx].created_at = now.toISOString();
-      committed = pendingSessions[existingIdx];
-    } else {
-      committed = {
-        id: `pc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        title: activeSession.title,
-        category: activeSession.category,
-        duration_minutes: durationMinutes,
-        cards_mined: 0,
-        notes: `Auto-tracked dari ${DEVICE_NAME} (${activeSession.process || 'Windows'})`,
-        logged_date: todayStr,
-        created_at: now.toISOString(),
-        source_device: DEVICE_NAME,
-      };
-      pendingSessions.push(committed);
-    }
-
-    writeJsonSafe(PENDING_FILE, pendingSessions);
-    console.log(
-      `[Commit] +${durationMinutes}m | ${committed.category} | ${committed.title}`
-    );
+  if (extraMinutes > 0) {
+    committed = enqueuePendingMinutes(activeSession, extraMinutes);
   }
 
   activeSession = null;
@@ -589,6 +607,8 @@ function handleWindowSample(sample) {
       activeSession.ruleId === rule.id)
   ) {
     activeSession.activeSeconds += deltaSec;
+    activeSession.uncommittedSeconds =
+      (activeSession.uncommittedSeconds ?? 0) + deltaSec;
     activeSession.lastSeenAt = new Date(now).toISOString();
     activeSession.trackingSource = source;
     if (!isGenericTitle(displayTitle) && isGenericTitle(activeSession.title)) {
@@ -598,6 +618,18 @@ function handleWindowSample(sample) {
       activeSession.process.toLowerCase() !== 'anki'
     ) {
       activeSession.title = displayTitle;
+    }
+
+    // Auto-checkpoint every 60 seconds so dashboard logs update live without waiting for app close!
+    if (activeSession.uncommittedSeconds >= 60) {
+      const minsToCheckpoint = Math.floor(
+        activeSession.uncommittedSeconds / 60
+      );
+      activeSession.uncommittedSeconds =
+        activeSession.uncommittedSeconds % 60;
+      activeSession.checkpointedMinutes =
+        (activeSession.checkpointedMinutes ?? 0) + minsToCheckpoint;
+      enqueuePendingMinutes(activeSession, minsToCheckpoint);
     }
     return;
   }
@@ -616,6 +648,8 @@ function handleWindowSample(sample) {
     startedAt: new Date(now).toISOString(),
     lastSeenAt: new Date(now).toISOString(),
     activeSeconds: deltaSec,
+    uncommittedSeconds: deltaSec,
+    checkpointedMinutes: 0,
   };
 }
 
