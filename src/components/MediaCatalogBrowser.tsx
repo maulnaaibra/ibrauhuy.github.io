@@ -37,6 +37,17 @@ export type DifficultyTier =
   | 'Hard'
   | 'Very Hard';
 
+export interface BettermelonLanguageStats {
+  jlptLevel?: string;
+  bmDifficulty?: string;
+  bmScore?: string;
+  wordCount?: number;
+  uniqueWords?: number;
+  uniqueKanji?: number;
+  speechSpeed?: number;
+  speechDuration?: string;
+}
+
 export interface SheetCatalogItem {
   id: string;
   section: Exclude<CatalogSection, 'Semua'>;
@@ -59,6 +70,7 @@ export interface SheetCatalogItem {
   directUrl?: string;
   watchUrl?: string;
   downloadUrl?: string;
+  bmStats?: BettermelonLanguageStats;
 }
 
 const ALL_ITEMS = rawCatalog as SheetCatalogItem[];
@@ -78,11 +90,11 @@ const SECTION_ORDER: CatalogSection[] = [
 
 const DIFFICULTY_FILTERS: Array<{ id: DifficultyTier; label: string }> = [
   { id: 'all', label: 'Semua Level' },
-  { id: 'Very Easy', label: 'Very Easy' },
-  { id: 'Easy', label: 'Easy' },
-  { id: 'Medium', label: 'Medium' },
-  { id: 'Hard', label: 'Hard' },
-  { id: 'Very Hard', label: 'Very Hard / Hell' },
+  { id: 'Very Easy', label: 'Beginner • N5' },
+  { id: 'Easy', label: 'Easy • N4' },
+  { id: 'Medium', label: 'Average • N3' },
+  { id: 'Hard', label: 'Hard • N2' },
+  { id: 'Very Hard', label: 'Expert / Insane • N1' },
 ];
 
 function getRankingBadgeStyle(tier: string): string {
@@ -141,7 +153,10 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
       if (!q) return true;
       return (
         item.title.toLowerCase().includes(q) ||
+        (item.romajiTitle?.toLowerCase().includes(q) ?? false) ||
         item.ranking.toLowerCase().includes(q) ||
+        (item.bmStats?.jlptLevel?.toLowerCase().includes(q) ?? false) ||
+        (item.bmStats?.bmDifficulty?.toLowerCase().includes(q) ?? false) ||
         item.difficultyExplanation.toLowerCase().includes(q) ||
         item.description.toLowerCase().includes(q)
       );
@@ -365,6 +380,35 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                   <p className="text-xs text-slate-600 leading-relaxed line-clamp-3">
                     {blurb}
                   </p>
+
+                  {item.bmStats &&
+                    (item.bmStats.uniqueKanji ||
+                      item.bmStats.speechSpeed ||
+                      item.bmStats.wordCount) && (
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        {item.bmStats.jlptLevel && (
+                          <span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-200 text-[10px] font-mono font-bold text-rose-700">
+                            JLPT {item.bmStats.jlptLevel}
+                          </span>
+                        )}
+                        {item.bmStats.uniqueKanji && (
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-[10px] font-mono text-slate-700">
+                            {item.bmStats.uniqueKanji.toLocaleString('id-ID')}{' '}
+                            kanji
+                          </span>
+                        )}
+                        {item.bmStats.speechSpeed && (
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-[10px] font-mono text-slate-700">
+                            {item.bmStats.speechSpeed} mora/m
+                          </span>
+                        )}
+                        {item.bmStats.wordCount && (
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-[10px] font-mono text-slate-700">
+                            {(item.bmStats.wordCount / 1000).toFixed(1)}k kata
+                          </span>
+                        )}
+                      </div>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-1.5 pt-1">
@@ -493,6 +537,93 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {selectedDetail.bmStats && (
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-rose-700">
+                    Metrik Bahasa Bettermelon
+                  </span>
+                  {selectedDetail.bmStats.jlptLevel && (
+                    <span className="px-2 py-0.5 rounded-md bg-rose-600 text-white text-[10px] font-mono font-bold">
+                      JLPT {selectedDetail.bmStats.jlptLevel}
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                  {selectedDetail.bmStats.bmDifficulty && (
+                    <div className="p-2 rounded-lg bg-white border border-slate-200/80">
+                      <div className="text-[10px] text-slate-500">
+                        Difficulty Level
+                      </div>
+                      <div className="font-bold text-slate-900">
+                        {selectedDetail.bmStats.bmDifficulty}
+                        {selectedDetail.bmStats.bmScore
+                          ? ` (${selectedDetail.bmStats.bmScore})`
+                          : ''}
+                      </div>
+                    </div>
+                  )}
+                  {selectedDetail.bmStats.uniqueKanji && (
+                    <div className="p-2 rounded-lg bg-white border border-slate-200/80">
+                      <div className="text-[10px] text-slate-500">
+                        Kanji Unik
+                      </div>
+                      <div className="font-mono font-bold text-slate-900">
+                        {selectedDetail.bmStats.uniqueKanji.toLocaleString(
+                          'id-ID'
+                        )}{' '}
+                        kanji
+                      </div>
+                    </div>
+                  )}
+                  {selectedDetail.bmStats.speechSpeed && (
+                    <div className="p-2 rounded-lg bg-white border border-slate-200/80">
+                      <div className="text-[10px] text-slate-500">
+                        Kecepatan Bicara
+                      </div>
+                      <div className="font-mono font-bold text-slate-900">
+                        {selectedDetail.bmStats.speechSpeed} mora/mnt
+                      </div>
+                    </div>
+                  )}
+                  {selectedDetail.bmStats.wordCount && (
+                    <div className="p-2 rounded-lg bg-white border border-slate-200/80">
+                      <div className="text-[10px] text-slate-500">
+                        Total Kata
+                      </div>
+                      <div className="font-mono font-bold text-slate-900">
+                        {selectedDetail.bmStats.wordCount.toLocaleString(
+                          'id-ID'
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {selectedDetail.bmStats.uniqueWords && (
+                    <div className="p-2 rounded-lg bg-white border border-slate-200/80">
+                      <div className="text-[10px] text-slate-500">
+                        Kosakata Unik
+                      </div>
+                      <div className="font-mono font-bold text-slate-900">
+                        {selectedDetail.bmStats.uniqueWords.toLocaleString(
+                          'id-ID'
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {selectedDetail.bmStats.speechDuration && (
+                    <div className="p-2 rounded-lg bg-white border border-slate-200/80">
+                      <div className="text-[10px] text-slate-500">
+                        Durasi Dialog
+                      </div>
+                      <div className="font-mono font-bold text-slate-900">
+                        {selectedDetail.bmStats.speechDuration}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {selectedDetail.difficultyExplanation && (
               <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 space-y-1">
