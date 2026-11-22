@@ -1,15 +1,22 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
   Copy,
   ExternalLink,
+  Globe,
   Info,
+  Loader2,
   Plus,
   Search,
+  Sparkles,
   X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import rawCatalog from '../data/immersionCatalog.json';
+import {
+  getUniversalDirectSearchPortals,
+  searchLiveCatalogMedia,
+} from '../lib/liveCatalogSearch';
 import {
   getCatalogMediaDestinations,
   type EpubMoeVolume,
@@ -136,6 +143,38 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
   const [selectedDetail, setSelectedDetail] = useState<SheetCatalogItem | null>(
     null
   );
+  const [liveResults, setLiveResults] = useState<SheetCatalogItem[]>([]);
+  const [searchingLive, setSearchingLive] = useState(false);
+
+  useEffect(() => {
+    const clean = searchQuery.trim();
+    if (clean.length < 2) {
+      setLiveResults([]);
+      setSearchingLive(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSearchingLive(true);
+    const timer = setTimeout(() => {
+      void searchLiveCatalogMedia(clean, section)
+        .then((items) => {
+          if (!cancelled) {
+            setLiveResults(items);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setSearchingLive(false);
+          }
+        });
+    }, 260);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchQuery, section]);
 
   const sectionCounts = useMemo(() => {
     const counts: Record<string, number> = { Semua: ALL_ITEMS.length };
@@ -147,7 +186,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
 
   const filteredItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return ALL_ITEMS.filter((item) => {
+    const localMatched = ALL_ITEMS.filter((item) => {
       if (section !== 'Semua' && item.section !== section) return false;
       if (tierFilter !== 'all' && item.difficultyTier !== tierFilter) return false;
       if (!q) return true;
@@ -161,7 +200,36 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
         item.description.toLowerCase().includes(q)
       );
     });
-  }, [section, tierFilter, searchQuery]);
+
+    if (!q || liveResults.length === 0) return localMatched;
+
+    const seenAnilist = new Set<number>();
+    const seenTitles = new Set<string>();
+    for (const item of localMatched) {
+      if (item.anilistId) seenAnilist.add(item.anilistId);
+      seenTitles.add(item.title.trim().toLowerCase());
+    }
+
+    const extraLive = liveResults.filter((item) => {
+      if (section !== 'Semua' && item.section !== section) return false;
+      if (tierFilter !== 'all' && item.difficultyTier !== tierFilter) return false;
+      if (item.anilistId && seenAnilist.has(item.anilistId)) return false;
+      const norm = item.title.trim().toLowerCase();
+      if (seenTitles.has(norm)) return false;
+      if (item.anilistId) seenAnilist.add(item.anilistId);
+      seenTitles.add(norm);
+      return true;
+    });
+
+    return [...localMatched, ...extraLive];
+  }, [section, tierFilter, searchQuery, liveResults]);
+
+  const universalPortals = useMemo(() => {
+    const portals = getUniversalDirectSearchPortals(searchQuery);
+    if (section === 'Semua') return portals;
+    const filtered = portals.filter((p) => p.section === section);
+    return filtered.length > 0 ? filtered : portals;
+  }, [searchQuery, section]);
 
   const visibleItems = filteredItems.slice(0, visibleLimit);
   const hasMore = visibleLimit < filteredItems.length;
@@ -210,9 +278,20 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                 setSearchQuery(e.target.value);
                 setVisibleLimit(pageSize);
               }}
-              placeholder="Cari judul novel, anime, manga, VN, atau kata kunci..."
-              className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-rose-500 focus:bg-white transition"
+              placeholder="Ketik judul anime, novel, manga, VN, game, atau drama apa saja..."
+              className="w-full pl-10 pr-9 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-rose-500 focus:bg-white transition"
             />
+            {searchingLive ? (
+              <Loader2 className="w-4 h-4 text-rose-600 animate-spin absolute right-3 top-3" />
+            ) : searchQuery ? (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="text-slate-400 hover:text-slate-700 absolute right-3 top-3 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
@@ -265,15 +344,87 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
         </div>
       </div>
 
+      {/* Universal 1-Click Direct Launch Bar whenever user types ANY search query */}
+      {searchQuery.trim().length > 0 && (
+        <div className="card-pro p-4 border-rose-200 bg-rose-50/40 space-y-2.5 animate-fade-in">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-extrabold text-slate-900">
+              <Globe className="w-4 h-4 text-rose-600" />
+              <span>
+                Buka & Cari Langsung 「{searchQuery.trim()}」 (1-Klik Tinggal
+                Pencet):
+              </span>
+              {searchingLive && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Mencari di database Bettermelon / AniList / VNDB...
+                </span>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                onStartMedia(
+                  searchQuery.trim(),
+                  section === 'Novels'
+                    ? 'light_novel'
+                    : section === 'Manga'
+                      ? 'manga'
+                      : section === 'Visual Novels' || section === 'Video Games'
+                        ? 'visual_novel'
+                        : section === 'Drama & TV'
+                          ? 'movie'
+                          : section === 'Podcasts'
+                            ? 'audio'
+                            : section === 'YouTube' || section === 'VTubers'
+                              ? 'video'
+                              : 'anime',
+                  30
+                )
+              }
+              className="px-3 py-1 rounded-lg bg-white hover:bg-rose-600 hover:text-white border border-rose-200 text-rose-700 text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Catat Sesi "{searchQuery.trim()}"
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {universalPortals.map((portal) => (
+              <a
+                key={portal.id}
+                href={portal.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() =>
+                  handleExternalLaunch(searchQuery.trim(), portal.siteName)
+                }
+                className={`px-3 py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 shadow-2xs hover:opacity-95 transition ${portal.badgeColor}`}
+              >
+                <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                <span>{portal.label}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Results Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-semibold text-slate-500 app-canvas-subtitle px-1">
         <span>
           Menampilkan {visibleItems.length} dari {filteredItems.length} judul
           {section !== 'Semua' ? ` di ${section}` : ''}
+          {liveResults.length > 0
+            ? ` (termasuk +${liveResults.length} hasil pencarian live Bettermelon/AniList/VNDB)`
+            : ''}
         </span>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] px-2.5 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-700 font-bold">
-            Klik tombol utama untuk langsung membuka media berdasarkan judul (Anime → Bettermelon.ru • Novel → Epub.moe • Drama → Cinejoy.pk • Manga → Rawkuma • VN → VNDB • Game → Steam)
+          <span className="text-[11px] px-2.5 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-700 font-bold inline-flex items-center gap-1">
+            <Sparkles className="w-3 h-3" />
+            {ALL_ITEMS.length.toLocaleString('id-ID')}+ Katalog Bawaan + Live
+            Search Semua Judul (Bettermelon • Epub.moe • Cinejoy • MangaDex •
+            VNDB • Steam)
           </span>
         </div>
       </div>

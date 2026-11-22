@@ -20,11 +20,22 @@ for (const entry of rawCatalog as Array<{
   }
 }
 
+function resolveCoverUrl(rawPath: string): string {
+  if (
+    rawPath.startsWith('https://') ||
+    rawPath.startsWith('http://') ||
+    rawPath.startsWith('data:')
+  ) {
+    return rawPath;
+  }
+  return `${import.meta.env.BASE_URL}${rawPath.replace(/^\/+/, '')}`;
+}
+
 export function findLocalCatalogCover(title: string): string | null {
   const key = title.trim().toLowerCase();
   if (!key) return null;
   const exact = CATALOG_COVER_BY_TITLE.get(key);
-  if (exact) return `${import.meta.env.BASE_URL}${exact}`;
+  if (exact) return resolveCoverUrl(exact);
   return null;
 }
 
@@ -264,7 +275,7 @@ export function useMediaCover(
   const localCatalogUrl = isAnki
     ? null
     : explicitCoverImage
-      ? `${import.meta.env.BASE_URL}${explicitCoverImage}`
+      ? resolveCoverUrl(explicitCoverImage)
       : findLocalCatalogCover(title);
 
   const [resolved, setResolved] = useState<{ key: string; url: string } | null>(

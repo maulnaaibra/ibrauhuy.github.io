@@ -1271,11 +1271,12 @@ export const DashboardPage: React.FC = () => {
           <div key="tab-catalog" className="space-y-4 animate-tab-in">
             <div>
               <h2 className="text-xl font-extrabold text-slate-900 app-canvas-title">
-                Katalog 745 Media Immersion
+                Katalog 1.540+ Media & Live Search Semua Judul
               </h2>
               <p className="text-xs font-medium text-slate-500 app-canvas-subtitle mt-0.5">
-                Pilih novel, anime, manga, visual novel, game, YouTube, atau
-                podcast lalu langsung catat sesinya.
+                976+ Anime Bettermelon lengkap dengan level bahasa JLPT, Novel
+                Epub.moe, Manga, Visual Novel, Game, Drama Cinejoy, YouTube, &
+                Podcast — atau ketik judul apa saja untuk langsung buka 1-klik.
               </p>
             </div>
             <MediaCatalogBrowser
