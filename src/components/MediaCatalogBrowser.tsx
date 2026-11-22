@@ -149,6 +149,15 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
   const [searchingLive, setSearchingLive] = useState(false);
 
   useEffect(() => {
+    try {
+      localStorage.removeItem('immersiontrack_nsfw_mode');
+      localStorage.removeItem('immersiontrack_nsfw_blur');
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
     const clean = searchQuery.trim();
     if (clean.length < 2 || isContentNsfwOrHentai({ text: clean })) {
       setLiveResults([]);
