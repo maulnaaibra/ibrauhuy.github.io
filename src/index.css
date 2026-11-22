@@ -91,6 +91,14 @@
     --ink-primary: #0f172a;
     --ink-secondary: #475569;
     --app-custom-overlay: 0.45;
+    --app-wallpaper-blur: 0px;
+    --app-wallpaper-opacity: 0.65;
+    --app-glass-blur: 20px;
+    --app-glass-blur-sm: 12px;
+    --app-glass-alpha: 0.68;
+    --app-glass-hover-alpha: 0.78;
+    --app-header-alpha: 0.78;
+    --app-inner-alpha: 0.60;
   }
 
   html {
@@ -163,7 +171,7 @@
   height: 100vh;
   height: 100lvh;
   min-height: 100%;
-  z-index: -1;
+  z-index: -2;
   pointer-events: none;
   background-color: #f8fafc;
   background-image:
@@ -176,6 +184,25 @@
   transform: translate3d(0, 0, 0);
   -webkit-transform: translate3d(0, 0, 0);
   transition: background-color 0.35s ease;
+}
+
+.app-bg-canvas::after {
+  content: '';
+  position: fixed;
+  top: -36px;
+  left: -36px;
+  width: calc(100% + 72px);
+  height: calc(100vh + 72px);
+  height: calc(100lvh + 72px);
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  will-change: filter, opacity;
 }
 
 html[data-bg-preset="sakura-mist"] .app-bg-canvas::before {
@@ -208,18 +235,11 @@ html[data-bg-preset="midnight-slate"] .app-bg-canvas::before {
     linear-gradient(160deg, #090f18 0%, #0d1520 55%, #111d2e 100%);
 }
 
-html[data-bg-preset="custom"] .app-bg-canvas::before {
-  background-color: #0b121c;
-  background-image:
-    linear-gradient(
-      to bottom,
-      rgba(11, 18, 28, var(--app-custom-overlay, 0.45)),
-      rgba(11, 18, 28, var(--app-custom-overlay, 0.45))
-    ),
-    var(--app-custom-bg, linear-gradient(160deg, #0b121c 0%, #111d2e 100%));
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+html[data-bg-preset="custom"] .app-bg-canvas::after {
+  background-image: var(--app-custom-bg, none);
+  opacity: var(--app-wallpaper-opacity, 0.65);
+  filter: blur(var(--app-wallpaper-blur, 0px));
+  -webkit-filter: blur(var(--app-wallpaper-blur, 0px));
 }
 
 html[data-bg-preset="midnight-slate"] .app-canvas-title,
@@ -232,6 +252,16 @@ html[data-bg-preset="midnight-slate"] .app-canvas-subtitle,
 html[data-bg-preset="custom"] .app-canvas-subtitle {
   color: #cbd5e1 !important;
   text-shadow: 0 1px 10px rgba(15, 23, 42, 0.45);
+}
+
+html[data-wallpaper-light-canvas="true"] .app-canvas-title {
+  color: #0f172a !important;
+  text-shadow: none;
+}
+
+html[data-wallpaper-light-canvas="true"] .app-canvas-subtitle {
+  color: #475569 !important;
+  text-shadow: none;
 }
 
 .app-canvas-accent {
@@ -312,9 +342,9 @@ html[data-bg-preset="custom"] .app-canvas-accent {
   }
 
   .card-pro {
-    background-color: rgba(255, 255, 255, 0.68);
-    backdrop-filter: blur(18px) saturate(150%);
-    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    background-color: rgba(255, 255, 255, var(--app-glass-alpha, 0.68));
+    backdrop-filter: blur(var(--app-glass-blur, 20px)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--app-glass-blur, 20px)) saturate(150%);
     border: 1px solid rgba(255, 255, 255, 0.55);
     border-radius: 1rem;
     color: #0f172a;
@@ -333,9 +363,9 @@ html[data-bg-preset="custom"] .app-canvas-accent {
   }
 
   .card-pro-interactive {
-    background-color: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(18px) saturate(150%);
-    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    background-color: rgba(255, 255, 255, var(--app-glass-alpha, 0.72));
+    backdrop-filter: blur(var(--app-glass-blur, 20px)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--app-glass-blur, 20px)) saturate(150%);
     border: 1px solid rgba(255, 255, 255, 0.55);
     border-radius: 1rem;
     color: #0f172a;
@@ -417,6 +447,21 @@ html[data-bg-preset="custom"] .app-canvas-accent {
   }
 }
 
+html[data-theme="light"] header,
+html[data-theme="light"] aside {
+  background-color: rgba(255, 255, 255, var(--app-header-alpha, 0.80)) !important;
+  backdrop-filter: blur(var(--app-glass-blur, 20px)) saturate(155%) !important;
+  -webkit-backdrop-filter: blur(var(--app-glass-blur, 20px)) saturate(155%) !important;
+}
+
+.appearance-popover-panel {
+  background-color: rgba(255, 255, 255, 0.94) !important;
+  backdrop-filter: blur(22px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(160%) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+  color: #0f172a;
+}
+
 /* ============================================================================
    DARK THEME & TRANSPARENT FROSTED GLASSMORPHISM (html[data-theme="dark"])
    ============================================================================ */
@@ -439,18 +484,10 @@ html[data-theme="dark"] .app-bg-canvas::before {
     linear-gradient(160deg, #090f18 0%, #0d1520 55%, #111d2e 100%);
 }
 
-html[data-theme="dark"][data-bg-preset="custom"] .app-bg-canvas::before {
-  background-color: #0b121c;
-  background-image:
-    linear-gradient(
-      to bottom,
-      rgba(11, 18, 28, var(--app-custom-overlay, 0.45)),
-      rgba(11, 18, 28, var(--app-custom-overlay, 0.55))
-    ),
-    var(--app-custom-bg, linear-gradient(160deg, #0b121c 0%, #111d2e 100%));
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+html[data-theme="dark"] .appearance-popover-panel {
+  background-color: rgba(13, 21, 34, 0.92) !important;
+  border-color: rgba(148, 179, 214, 0.22) !important;
+  color: #f3f7fc !important;
 }
 
 html[data-theme="dark"] .app-canvas-title {
@@ -465,9 +502,9 @@ html[data-theme="dark"] .app-canvas-subtitle {
 
 html[data-theme="dark"] .card-pro,
 html[data-theme="dark"] .card-pro-interactive {
-  background-color: rgba(15, 24, 38, 0.68) !important;
-  backdrop-filter: blur(20px) saturate(160%) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+  background-color: rgba(15, 24, 38, var(--app-glass-alpha, 0.68)) !important;
+  backdrop-filter: blur(var(--app-glass-blur, 20px)) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(var(--app-glass-blur, 20px)) saturate(160%) !important;
   border: 1px solid rgba(148, 179, 214, 0.14) !important;
   color: #f3f7fc !important;
   box-shadow:
@@ -480,7 +517,7 @@ html[data-theme="dark"] .card-pro:hover {
 }
 
 html[data-theme="dark"] .card-pro-interactive:hover {
-  background-color: rgba(19, 30, 47, 0.78) !important;
+  background-color: rgba(19, 30, 47, var(--app-glass-hover-alpha, 0.78)) !important;
   border-color: rgba(78, 195, 247, 0.50) !important;
   box-shadow:
     0 18px 36px -10px rgba(56, 189, 248, 0.22),
@@ -489,9 +526,9 @@ html[data-theme="dark"] .card-pro-interactive:hover {
 
 html[data-theme="dark"] header,
 html[data-theme="dark"] aside {
-  background-color: rgba(11, 18, 28, 0.78) !important;
-  backdrop-filter: blur(22px) saturate(160%) !important;
-  -webkit-backdrop-filter: blur(22px) saturate(160%) !important;
+  background-color: rgba(11, 18, 28, var(--app-header-alpha, 0.78)) !important;
+  backdrop-filter: blur(var(--app-glass-blur, 20px)) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(var(--app-glass-blur, 20px)) saturate(160%) !important;
   border-color: rgba(148, 179, 214, 0.14) !important;
   color: #f3f7fc !important;
 }
@@ -506,12 +543,13 @@ html[data-theme="dark"] .bg-slate-50\/80,
 html[data-theme="dark"] .bg-slate-100,
 html[data-theme="dark"] .bg-slate-100\/90,
 html[data-theme="dark"] .bg-slate-200 {
-  background-color: rgba(20, 31, 47, 0.62) !important;
-  backdrop-filter: blur(12px);
+  background-color: rgba(20, 31, 47, var(--app-inner-alpha, 0.60)) !important;
+  backdrop-filter: blur(var(--app-glass-blur-sm, 12px));
+  -webkit-backdrop-filter: blur(var(--app-glass-blur-sm, 12px));
   color: #e6edf6 !important;
 }
 
-html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
+html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
 html[data-theme="dark"] select,
 html[data-theme="dark"] textarea {
   background-color: rgba(16, 25, 39, 0.72) !important;
@@ -519,7 +557,7 @@ html[data-theme="dark"] textarea {
   color: #f3f7fc !important;
 }
 
-html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):focus,
+html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
 html[data-theme="dark"] select:focus,
 html[data-theme="dark"] textarea:focus {
   background-color: rgba(16, 25, 39, 0.90) !important;

@@ -14,6 +14,10 @@ export interface AppearanceSettings {
   customOverlayStrength: CustomOverlayStrength;
   darkMode: boolean;
   glassMode: boolean;
+  wallpaperBlur: number;
+  wallpaperOpacity: number;
+  themeBlur: number;
+  themeGlassOpacity: number;
 }
 
 export interface BackgroundPresetMeta {
@@ -65,13 +69,61 @@ export const BACKGROUND_PRESETS: BackgroundPresetMeta[] = [
   },
 ];
 
+export const APPEARANCE_GLASS_PRESETS: Array<{
+  id: string;
+  label: string;
+  wallpaperBlur: number;
+  wallpaperOpacity: number;
+  themeBlur: number;
+  themeGlassOpacity: number;
+}> = [
+  {
+    id: 'crystal',
+    label: 'Kaca Bening',
+    wallpaperBlur: 0,
+    wallpaperOpacity: 85,
+    themeBlur: 8,
+    themeGlassOpacity: 40,
+  },
+  {
+    id: 'balanced',
+    label: 'Seimbang',
+    wallpaperBlur: 0,
+    wallpaperOpacity: 65,
+    themeBlur: 20,
+    themeGlassOpacity: 68,
+  },
+  {
+    id: 'soft-frosted',
+    label: 'Blur Lembut',
+    wallpaperBlur: 10,
+    wallpaperOpacity: 55,
+    themeBlur: 28,
+    themeGlassOpacity: 74,
+  },
+];
+
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
   preset: 'midnight-slate',
   customImageUrl: '',
   customOverlayStrength: 'medium',
   darkMode: true,
   glassMode: true,
+  wallpaperBlur: 0,
+  wallpaperOpacity: 65,
+  themeBlur: 20,
+  themeGlassOpacity: 68,
 };
+
+function clampNumber(
+  val: unknown,
+  min: number,
+  max: number,
+  fallback: number
+): number {
+  if (typeof val !== 'number' || !Number.isFinite(val)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(val)));
+}
 
 export function loadAppearanceSettings(): AppearanceSettings {
   try {
@@ -94,6 +146,8 @@ export function loadAppearanceSettings(): AppearanceSettings {
         parsed.customOverlayStrength === 'strong'
           ? parsed.customOverlayStrength
           : 'medium';
+      const legacyOpacity =
+        overlay === 'light' ? 82 : overlay === 'strong' ? 35 : 65;
       const darkMode =
         typeof parsed.darkMode === 'boolean'
           ? parsed.darkMode
@@ -111,6 +165,30 @@ export function loadAppearanceSettings(): AppearanceSettings {
         customOverlayStrength: overlay,
         darkMode,
         glassMode,
+        wallpaperBlur: clampNumber(
+          parsed.wallpaperBlur,
+          0,
+          28,
+          DEFAULT_APPEARANCE.wallpaperBlur
+        ),
+        wallpaperOpacity: clampNumber(
+          parsed.wallpaperOpacity,
+          0,
+          100,
+          legacyOpacity
+        ),
+        themeBlur: clampNumber(
+          parsed.themeBlur,
+          0,
+          36,
+          DEFAULT_APPEARANCE.themeBlur
+        ),
+        themeGlassOpacity: clampNumber(
+          parsed.themeGlassOpacity,
+          15,
+          95,
+          DEFAULT_APPEARANCE.themeGlassOpacity
+        ),
       };
     }
   } catch {
@@ -176,13 +254,44 @@ export function applyAppearanceToDocument(settings: AppearanceSettings): void {
     root.style.removeProperty('--app-custom-bg');
   }
 
-  const overlayAlpha =
-    settings.customOverlayStrength === 'light'
-      ? '0.22'
-      : settings.customOverlayStrength === 'strong'
-        ? '0.68'
-        : '0.45';
-  root.style.setProperty('--app-custom-overlay', overlayAlpha);
+  root.style.setProperty('--app-wallpaper-blur', `${settings.wallpaperBlur}px`);
+  root.style.setProperty(
+    '--app-wallpaper-opacity',
+    (settings.wallpaperOpacity / 100).toFixed(2)
+  );
+  root.style.setProperty('--app-glass-blur', `${settings.themeBlur}px`);
+  root.style.setProperty(
+    '--app-glass-blur-sm',
+    `${Math.round(settings.themeBlur * 0.6)}px`
+  );
+  root.style.setProperty(
+    '--app-glass-alpha',
+    (settings.themeGlassOpacity / 100).toFixed(2)
+  );
+  root.style.setProperty(
+    '--app-glass-hover-alpha',
+    Math.min(0.96, (settings.themeGlassOpacity + 10) / 100).toFixed(2)
+  );
+  root.style.setProperty(
+    '--app-header-alpha',
+    Math.min(0.96, (settings.themeGlassOpacity + 10) / 100).toFixed(2)
+  );
+  root.style.setProperty(
+    '--app-inner-alpha',
+    Math.max(0.12, (settings.themeGlassOpacity - 8) / 100).toFixed(2)
+  );
+  root.style.setProperty(
+    '--app-custom-overlay',
+    (1 - settings.wallpaperOpacity / 100).toFixed(2)
+  );
+  root.setAttribute(
+    'data-wallpaper-light-canvas',
+    !settings.darkMode &&
+      settings.preset === 'custom' &&
+      settings.wallpaperOpacity < 35
+      ? 'true'
+      : 'false'
+  );
 }
 
 export function compressImageToDataUrl(

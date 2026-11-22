@@ -8,22 +8,12 @@ import {
   Copy,
   Database,
   Download,
-  Image,
   Palette,
   Save,
   Upload,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import {
-  BACKGROUND_PRESETS,
-  compressImageToDataUrl,
-  DEFAULT_APPEARANCE,
-  loadAppearanceSettings,
-  saveAppearanceSettings,
-  type AppearanceSettings,
-  type BackgroundPresetId,
-  type CustomOverlayStrength,
-} from '../lib/appearance';
+import { AppearanceControlsContent } from '../components/WallpaperCustomizerPopover';
 import {
   clearRuntimeSupabaseConfig,
   getSupabaseConfig,
@@ -193,71 +183,7 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
 export const SettingsPage: React.FC = () => {
   const { user, profile, refreshProfile } = useAuth();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const bgUploadInputRef = useRef<HTMLInputElement | null>(null);
   const [backingUp, setBackingUp] = useState(false);
-
-  const [appearance, setAppearance] = useState<AppearanceSettings>(
-    loadAppearanceSettings
-  );
-  const [customBgUrlInput, setCustomBgUrlInput] = useState(
-    () =>
-      loadAppearanceSettings().customImageUrl.startsWith('data:')
-        ? ''
-        : loadAppearanceSettings().customImageUrl
-  );
-
-  const updateAppearance = (patch: Partial<AppearanceSettings>) => {
-    setAppearance((prev) => {
-      const next = { ...prev, ...patch };
-      saveAppearanceSettings(next);
-      return next;
-    });
-  };
-
-  const handleSelectPreset = (preset: BackgroundPresetId) => {
-    const isDarkPreset = preset === 'midnight-slate';
-    updateAppearance({
-      preset,
-      darkMode: isDarkPreset,
-    });
-    toast.success('Background & tema website diperbarui!');
-  };
-
-  const handleUploadCustomWallpaper = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const dataUrl = await compressImageToDataUrl(file);
-      updateAppearance({
-        preset: 'custom',
-        customImageUrl: dataUrl,
-      });
-      setCustomBgUrlInput('');
-      toast.success('Wallpaper kustom diterapkan ke seluruh website!');
-    } catch (err: unknown) {
-      toast.error(
-        err instanceof Error ? err.message : 'Gagal memasang gambar background'
-      );
-    } finally {
-      e.target.value = '';
-    }
-  };
-
-  const handleApplyCustomBgUrl = (e: React.FormEvent) => {
-    e.preventDefault();
-    const clean = customBgUrlInput.trim();
-    if (!clean.startsWith('https://') && !clean.startsWith('http://')) {
-      toast.error('Masukkan URL gambar yang valid (https://...).');
-      return;
-    }
-    updateAppearance({
-      preset: 'custom',
-      customImageUrl: clean,
-    });
-    toast.success('URL background diterapkan!');
-  };
 
   const initialSb = getSupabaseConfig();
   const [sbUrl, setSbUrl] = useState(initialSb.url);
@@ -455,143 +381,22 @@ export const SettingsPage: React.FC = () => {
         </div>
 
         <div className="card-pro p-6 space-y-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-600">
-                <Palette className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-base font-extrabold text-slate-900">
-                  Tampilan & Background Website
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Pilih tema warna cerah/elegan atau unggah wallpaper sendiri.
-                  Tersimpan otomatis di browser Anda.
-                </p>
-              </div>
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-600">
+              <Palette className="w-5 h-5" />
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setCustomBgUrlInput('');
-                setAppearance(DEFAULT_APPEARANCE);
-                saveAppearanceSettings(DEFAULT_APPEARANCE);
-                toast.success('Background dikembalikan ke default.');
-              }}
-              className="text-xs font-bold text-rose-600 hover:underline shrink-0 cursor-pointer"
-            >
-              Reset Default
-            </button>
-          </div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-            {BACKGROUND_PRESETS.map((preset) => {
-              const active = appearance.preset === preset.id;
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => handleSelectPreset(preset.id)}
-                  className={`p-3 rounded-xl border text-left transition cursor-pointer space-y-2 ${
-                    active
-                      ? 'border-rose-500 bg-rose-50/70 ring-2 ring-rose-500/20'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <div
-                    className="h-12 rounded-lg border border-black/10 shadow-inner"
-                    style={{ background: preset.swatchStyle }}
-                  />
-                  <div>
-                    <div className="text-xs font-extrabold text-slate-900 flex items-center justify-between gap-1">
-                      <span>{preset.name}</span>
-                      {active && (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                      )}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                      {preset.description}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
-                <Image className="w-4 h-4 text-rose-600" />
-                Gunakan Gambar / Wallpaper Kustom
-              </div>
-              <button
-                type="button"
-                onClick={() => bgUploadInputRef.current?.click()}
-                className="btn-crimson px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                Unggah Gambar dari Perangkat
-              </button>
-              <input
-                ref={bgUploadInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleUploadCustomWallpaper}
-                className="hidden"
-              />
+            <div>
+              <h2 className="text-base font-extrabold text-slate-900">
+                Tampilan, Wallpaper &amp; Blur Tema
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Atur wallpaper, blur &amp; opacity wallpaper, serta blur kaca
+                tema secara langsung. Tersimpan otomatis di browser Anda.
+              </p>
             </div>
-
-            <form
-              onSubmit={handleApplyCustomBgUrl}
-              className="flex flex-col sm:flex-row gap-2"
-            >
-              <input
-                type="url"
-                placeholder="Atau tempel URL gambar (https://...)"
-                value={customBgUrlInput}
-                onChange={(e) => setCustomBgUrlInput(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium text-slate-900 focus:outline-none focus:border-rose-500"
-              />
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:border-rose-300 text-xs font-bold text-rose-600 cursor-pointer"
-              >
-                Pakai URL
-              </button>
-            </form>
-
-            {appearance.preset === 'custom' && (
-              <div className="flex items-center justify-between gap-3 pt-1">
-                <span className="text-[11px] font-semibold text-slate-600">
-                  Kepekatan Lapisan Gelap:
-                </span>
-                <div className="flex gap-1.5">
-                  {(
-                    [
-                      { id: 'light', label: 'Tipis' },
-                      { id: 'medium', label: 'Sedang' },
-                      { id: 'strong', label: 'Pekat' },
-                    ] as Array<{ id: CustomOverlayStrength; label: string }>
-                  ).map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() =>
-                        updateAppearance({ customOverlayStrength: opt.id })
-                      }
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer border ${
-                        appearance.customOverlayStrength === opt.id
-                          ? 'bg-rose-600 text-white border-rose-600'
-                          : 'bg-white text-slate-600 border-slate-200'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
+
+          <AppearanceControlsContent />
         </div>
 
         <div className="card-pro p-6 space-y-4">

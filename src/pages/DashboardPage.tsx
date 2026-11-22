@@ -50,6 +50,7 @@ import {
   type PendingTrackedSession,
 } from '../lib/companionClient';
 import { MediaCover } from '../components/MediaCover';
+import { WallpaperNavbarButton } from '../components/WallpaperCustomizerPopover';
 import { useAuth } from '../context/AuthContext';
 import {
   getCategoryMeta,
@@ -864,6 +865,8 @@ export const DashboardPage: React.FC = () => {
                 </>
               )}
             </button>
+
+            <WallpaperNavbarButton />
 
             <button
               type="button"
