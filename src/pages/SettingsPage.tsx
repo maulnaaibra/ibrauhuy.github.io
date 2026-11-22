@@ -215,8 +215,12 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleSelectPreset = (preset: BackgroundPresetId) => {
-    updateAppearance({ preset });
-    toast.success('Background website diperbarui!');
+    const isDarkPreset = preset === 'midnight-slate';
+    updateAppearance({
+      preset,
+      darkMode: isDarkPreset ? true : appearance.darkMode,
+    });
+    toast.success('Background & tema website diperbarui!');
   };
 
   const handleUploadCustomWallpaper = async (

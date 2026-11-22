@@ -13,14 +13,21 @@ import {
   LayoutDashboard,
   LogOut,
   MonitorSmartphone,
+  Moon,
   Plus,
   Settings,
+  Sun,
   Target,
   Trophy,
   User,
   Zap,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import {
+  loadAppearanceSettings,
+  subscribeAppearanceChanges,
+  toggleDarkThemeMode,
+} from '../lib/appearance';
 import { supabase } from '../lib/supabase';
 import { getCatalogMediaDestinations } from '../lib/mediaLinks';
 import {
@@ -192,7 +199,26 @@ export const DashboardPage: React.FC = () => {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
+  const [isDarkTheme, setIsDarkTheme] = useState<boolean>(
+    () => loadAppearanceSettings().darkMode
+  );
   const [modalKey, setModalKey] = useState(0);
+
+  useEffect(() => {
+    return subscribeAppearanceChanges((next) => {
+      setIsDarkTheme(next.darkMode);
+    });
+  }, []);
+
+  const handleToggleDarkGlassTheme = () => {
+    const next = toggleDarkThemeMode();
+    setIsDarkTheme(next.darkMode);
+    toast.success(
+      next.darkMode
+        ? 'Tema Gelap • Blur Transparan diaktifkan!'
+        : 'Tema Terang • Blur Transparan diaktifkan!'
+    );
+  };
   const [editingLog, setEditingLog] = useState<ImmersionLog | null>(null);
   const [prefillDuration, setPrefillDuration] = useState<number | undefined>(
     undefined
@@ -795,6 +821,29 @@ export const DashboardPage: React.FC = () => {
           </Link>
 
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleToggleDarkGlassTheme}
+              title={
+                isDarkTheme
+                  ? 'Ganti ke Tema Terang (Glass)'
+                  : 'Ganti ke Tema Gelap (Blur Transparan)'
+              }
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 border border-slate-200 hover:border-rose-300 text-[11px] font-bold text-slate-700 hover:text-rose-700 transition cursor-pointer"
+            >
+              {isDarkTheme ? (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-rose-400" />
+                  <span className="hidden sm:inline">Tema Gelap</span>
+                </>
+              ) : (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-amber-500" />
+                  <span className="hidden sm:inline">Tema Terang</span>
+                </>
+              )}
+            </button>
+
             <button
               type="button"
               onClick={() => setShortcutsModalOpen(true)}

@@ -12,6 +12,8 @@ export interface AppearanceSettings {
   preset: BackgroundPresetId;
   customImageUrl: string;
   customOverlayStrength: CustomOverlayStrength;
+  darkMode: boolean;
+  glassMode: boolean;
 }
 
 export interface BackgroundPresetMeta {
@@ -23,8 +25,16 @@ export interface BackgroundPresetMeta {
 }
 
 const APPEARANCE_STORAGE_KEY = 'immersiontrack_appearance_v2';
+const APPEARANCE_EVENT_NAME = 'immersiontrack:appearance-changed';
 
 export const BACKGROUND_PRESETS: BackgroundPresetMeta[] = [
+  {
+    id: 'midnight-slate',
+    name: 'Gelap Elegan (Midnight Glass)',
+    description: 'Tema gelap blur transparan modern yang menonjolkan wallpaper',
+    swatchStyle: 'linear-gradient(145deg, #090d16 0%, #0f172a 60%, #1e293b 100%)',
+    isDarkCanvas: true,
+  },
   {
     id: 'porcelain-clean',
     name: 'Putih Bersih Modern',
@@ -53,19 +63,14 @@ export const BACKGROUND_PRESETS: BackgroundPresetMeta[] = [
     swatchStyle: 'linear-gradient(135deg, #fff7ed 0%, #ffffff 58%, #fef2f2 100%)',
     isDarkCanvas: false,
   },
-  {
-    id: 'midnight-slate',
-    name: 'Gelap Elegan (Midnight)',
-    description: 'Latar slate gelap modern yang nyaman untuk sesi belajar malam',
-    swatchStyle: 'linear-gradient(145deg, #0f172a 0%, #1e293b 65%, #334155 100%)',
-    isDarkCanvas: true,
-  },
 ];
 
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
-  preset: 'porcelain-clean',
+  preset: 'midnight-slate',
   customImageUrl: '',
   customOverlayStrength: 'medium',
+  darkMode: true,
+  glassMode: true,
 };
 
 export function loadAppearanceSettings(): AppearanceSettings {
@@ -89,6 +94,14 @@ export function loadAppearanceSettings(): AppearanceSettings {
         parsed.customOverlayStrength === 'strong'
           ? parsed.customOverlayStrength
           : 'medium';
+      const darkMode =
+        typeof parsed.darkMode === 'boolean'
+          ? parsed.darkMode
+          : true;
+      const glassMode =
+        typeof parsed.glassMode === 'boolean'
+          ? parsed.glassMode
+          : true;
       return {
         preset,
         customImageUrl:
@@ -96,6 +109,8 @@ export function loadAppearanceSettings(): AppearanceSettings {
             ? parsed.customImageUrl
             : '',
         customOverlayStrength: overlay,
+        darkMode,
+        glassMode,
       };
     }
   } catch {
@@ -111,12 +126,48 @@ export function saveAppearanceSettings(settings: AppearanceSettings): void {
     // ignore storage quota errors
   }
   applyAppearanceToDocument(settings);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(APPEARANCE_EVENT_NAME));
+  }
+}
+
+export function toggleDarkThemeMode(): AppearanceSettings {
+  const current = loadAppearanceSettings();
+  const nextDark = !current.darkMode;
+  const next: AppearanceSettings = {
+    ...current,
+    darkMode: nextDark,
+    glassMode: true,
+    preset:
+      current.preset === 'custom' && current.customImageUrl
+        ? 'custom'
+        : nextDark
+          ? 'midnight-slate'
+          : 'porcelain-clean',
+  };
+  saveAppearanceSettings(next);
+  return next;
+}
+
+export function subscribeAppearanceChanges(
+  callback: (settings: AppearanceSettings) => void
+): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const handler = () => callback(loadAppearanceSettings());
+  window.addEventListener(APPEARANCE_EVENT_NAME, handler);
+  window.addEventListener('storage', handler);
+  return () => {
+    window.removeEventListener(APPEARANCE_EVENT_NAME, handler);
+    window.removeEventListener('storage', handler);
+  };
 }
 
 export function applyAppearanceToDocument(settings: AppearanceSettings): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   root.setAttribute('data-bg-preset', settings.preset);
+  root.setAttribute('data-theme', settings.darkMode ? 'dark' : 'light');
+  root.setAttribute('data-glass', settings.glassMode ? 'true' : 'false');
 
   if (settings.preset === 'custom' && settings.customImageUrl.trim()) {
     const safeUrl = settings.customImageUrl.trim().replace(/"/g, '\\"');
