@@ -72,8 +72,8 @@ import { ActivityLogList } from '../components/ActivityLogList';
 import { DevicesSection } from '../components/DevicesSection';
 import { MediaCatalogBrowser } from '../components/MediaCatalogBrowser';
 import {
+  LeftSidebarNavigation,
   ShortcutsHubModal,
-  ShortcutsQuickDock,
 } from '../components/ShortcutsHubModal';
 
 type DashboardTab =
@@ -734,7 +734,7 @@ export const DashboardPage: React.FC = () => {
   return (
     <div className="min-h-screen app-bg-canvas text-slate-900">
       <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-2xs">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+        <div className="px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <Link to="/showcase" className="flex items-center gap-3 shrink-0 group">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-rose-500 to-rose-700 flex items-center justify-center font-extrabold text-white shadow-sm shadow-rose-500/25">
               I
@@ -754,30 +754,6 @@ export const DashboardPage: React.FC = () => {
               </p>
             </div>
           </Link>
-
-          <nav className="hidden lg:flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/80">
-            {navTabs.map((tab) => {
-              const active = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    active
-                      ? 'bg-gradient-to-r from-rose-600 to-rose-500 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
-                  }`}
-                >
-                  <tab.icon className="w-3.5 h-3.5" />
-                  {tab.label}
-                  {tab.dot && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  )}
-                </button>
-              );
-            })}
-          </nav>
 
           <div className="flex items-center gap-2 shrink-0">
             <button
@@ -879,7 +855,16 @@ export const DashboardPage: React.FC = () => {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-7 space-y-6">
+      <div className="flex items-start">
+        <LeftSidebarNavigation
+          activeTab={activeTab}
+          onSelectTab={(t) => setActiveTab(t)}
+          companionConnected={companionConnected}
+          onOpenCommandPalette={() => setShortcutsModalOpen(true)}
+          onQuickLog={() => openNewLogModal()}
+        />
+
+        <main className="flex-1 min-w-0 max-w-6xl mx-auto px-4 sm:px-6 py-7 space-y-6">
         {companionConnected && companionStatus && (
           <div className="w-full px-4 py-3 rounded-xl bg-emerald-50/90 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-fade-in">
             <div className="flex items-center gap-2.5 text-emerald-950 min-w-0 flex-wrap">
@@ -1224,14 +1209,6 @@ export const DashboardPage: React.FC = () => {
             </div>
 
             <div className="animate-fade-up delay-3">
-              <ShortcutsQuickDock
-                onOpenCommandPalette={() => setShortcutsModalOpen(true)}
-                onQuickLog={() => openNewLogModal()}
-                onJumpTab={(t) => setActiveTab(t)}
-              />
-            </div>
-
-            <div className="animate-fade-up delay-3">
               <LiveStopwatch
                 onSaveDuration={({ minutes, category, title }) => {
                   openNewLogModal({
@@ -1518,7 +1495,8 @@ export const DashboardPage: React.FC = () => {
             />
           </div>
         )}
-      </main>
+        </main>
+      </div>
 
       <LogModal
         key={modalKey}
