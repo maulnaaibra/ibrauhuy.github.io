@@ -3,17 +3,22 @@ import {
   BookOpen,
   Copy,
   ExternalLink,
+  Eye,
+  EyeOff,
+  Flame,
   Globe,
   Info,
   Loader2,
   Plus,
   Search,
+  ShieldAlert,
   Sparkles,
   X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import rawCatalog from '../data/immersionCatalog.json';
 import {
+  getNsfwDirectPortals,
   getUniversalDirectSearchPortals,
   searchLiveCatalogMedia,
 } from '../lib/liveCatalogSearch';
@@ -43,6 +48,8 @@ export type DifficultyTier =
   | 'Medium'
   | 'Hard'
   | 'Very Hard';
+
+export type NsfwFilterMode = 'safe' | 'all' | 'nsfw_only';
 
 export interface BettermelonLanguageStats {
   jlptLevel?: string;
@@ -78,6 +85,7 @@ export interface SheetCatalogItem {
   watchUrl?: string;
   downloadUrl?: string;
   bmStats?: BettermelonLanguageStats;
+  isNsfw?: boolean;
 }
 
 const ALL_ITEMS = rawCatalog as SheetCatalogItem[];
@@ -138,6 +146,26 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
 }) => {
   const [section, setSection] = useState<CatalogSection>(defaultSection);
   const [tierFilter, setTierFilter] = useState<DifficultyTier>('all');
+  const [nsfwMode, setNsfwMode] = useState<NsfwFilterMode>(() => {
+    try {
+      const saved = localStorage.getItem('immersiontrack_nsfw_mode') as
+        | NsfwFilterMode
+        | null;
+      if (saved === 'safe' || saved === 'all' || saved === 'nsfw_only') {
+        return saved;
+      }
+    } catch {
+      // ignore
+    }
+    return 'all';
+  });
+  const [blurNsfwCovers, setBlurNsfwCovers] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('immersiontrack_nsfw_blur') !== 'off';
+    } catch {
+      return true;
+    }
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [visibleLimit, setVisibleLimit] = useState(pageSize);
   const [selectedDetail, setSelectedDetail] = useState<SheetCatalogItem | null>(
@@ -145,6 +173,28 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
   );
   const [liveResults, setLiveResults] = useState<SheetCatalogItem[]>([]);
   const [searchingLive, setSearchingLive] = useState(false);
+
+  const handleSelectNsfwMode = (mode: NsfwFilterMode) => {
+    setNsfwMode(mode);
+    setVisibleLimit(pageSize);
+    try {
+      localStorage.setItem('immersiontrack_nsfw_mode', mode);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleToggleBlurNsfw = () => {
+    setBlurNsfwCovers((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('immersiontrack_nsfw_blur', next ? 'on' : 'off');
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     const clean = searchQuery.trim();
@@ -157,7 +207,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
     let cancelled = false;
     setSearchingLive(true);
     const timer = setTimeout(() => {
-      void searchLiveCatalogMedia(clean, section)
+      void searchLiveCatalogMedia(clean, section, nsfwMode)
         .then((items) => {
           if (!cancelled) {
             setLiveResults(items);
@@ -174,19 +224,29 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [searchQuery, section]);
+  }, [searchQuery, section, nsfwMode]);
 
   const sectionCounts = useMemo(() => {
-    const counts: Record<string, number> = { Semua: ALL_ITEMS.length };
+    const counts: Record<string, number> = { Semua: 0 };
     for (const item of ALL_ITEMS) {
+      if (nsfwMode === 'safe' && item.isNsfw) continue;
+      if (nsfwMode === 'nsfw_only' && !item.isNsfw) continue;
+      counts.Semua = (counts.Semua ?? 0) + 1;
       counts[item.section] = (counts[item.section] ?? 0) + 1;
     }
     return counts;
-  }, []);
+  }, [nsfwMode]);
+
+  const nsfwTotalCount = useMemo(
+    () => ALL_ITEMS.filter((x) => Boolean(x.isNsfw)).length,
+    []
+  );
 
   const filteredItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const localMatched = ALL_ITEMS.filter((item) => {
+      if (nsfwMode === 'safe' && item.isNsfw) return false;
+      if (nsfwMode === 'nsfw_only' && !item.isNsfw) return false;
       if (section !== 'Semua' && item.section !== section) return false;
       if (tierFilter !== 'all' && item.difficultyTier !== tierFilter) return false;
       if (!q) return true;
@@ -211,6 +271,8 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
     }
 
     const extraLive = liveResults.filter((item) => {
+      if (nsfwMode === 'safe' && item.isNsfw) return false;
+      if (nsfwMode === 'nsfw_only' && !item.isNsfw) return false;
       if (section !== 'Semua' && item.section !== section) return false;
       if (tierFilter !== 'all' && item.difficultyTier !== tierFilter) return false;
       if (item.anilistId && seenAnilist.has(item.anilistId)) return false;
@@ -222,14 +284,19 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
     });
 
     return [...localMatched, ...extraLive];
-  }, [section, tierFilter, searchQuery, liveResults]);
+  }, [section, tierFilter, nsfwMode, searchQuery, liveResults]);
 
   const universalPortals = useMemo(() => {
-    const portals = getUniversalDirectSearchPortals(searchQuery);
+    const portals = getUniversalDirectSearchPortals(searchQuery, nsfwMode);
     if (section === 'Semua') return portals;
     const filtered = portals.filter((p) => p.section === section);
     return filtered.length > 0 ? filtered : portals;
-  }, [searchQuery, section]);
+  }, [searchQuery, section, nsfwMode]);
+
+  const nsfwDedicatedPortals = useMemo(
+    () => getNsfwDirectPortals(searchQuery),
+    [searchQuery]
+  );
 
   const visibleItems = filteredItems.slice(0, visibleLimit);
   const hasMore = visibleLimit < filteredItems.length;
@@ -312,6 +379,74 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
           </div>
         </div>
 
+        {/* 18+ / NSFW Filter Row */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-600 mr-1">
+              <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
+              Filter Konten 18+ / NSFW:
+            </span>
+            <button
+              type="button"
+              onClick={() => handleSelectNsfwMode('safe')}
+              className={`px-3 py-1 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                nsfwMode === 'safe'
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300'
+              }`}
+            >
+              Sembunyikan 18+ (Safe)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectNsfwMode('all')}
+              className={`px-3 py-1 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                nsfwMode === 'all'
+                  ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              Semua (+18+)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectNsfwMode('nsfw_only')}
+              className={`px-3 py-1 rounded-xl text-xs font-bold border inline-flex items-center gap-1.5 transition cursor-pointer ${
+                nsfwMode === 'nsfw_only'
+                  ? 'bg-gradient-to-r from-rose-700 to-fuchsia-700 text-white border-rose-700 shadow-xs'
+                  : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+              }`}
+            >
+              <Flame className="w-3.5 h-3.5" />
+              Khusus 18+ / NSFW ({nsfwTotalCount})
+            </button>
+          </div>
+
+          {nsfwMode !== 'safe' && (
+            <button
+              type="button"
+              onClick={handleToggleBlurNsfw}
+              className={`px-3 py-1 rounded-xl text-xs font-bold border inline-flex items-center gap-1.5 transition cursor-pointer ${
+                blurNsfwCovers
+                  ? 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                  : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+              }`}
+            >
+              {blurNsfwCovers ? (
+                <>
+                  <EyeOff className="w-3.5 h-3.5" />
+                  Blur Sampul 18+: ON
+                </>
+              ) : (
+                <>
+                  <Eye className="w-3.5 h-3.5" />
+                  Blur Sampul 18+: OFF
+                </>
+              )}
+            </button>
+          )}
+        </div>
+
         {/* Spreadsheet Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
           {SECTION_ORDER.map((sec) => {
@@ -343,6 +478,38 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
           })}
         </div>
       </div>
+
+      {/* Dedicated 18+ / NSFW Portal Bar when 'Khusus 18+ / NSFW' is active */}
+      {nsfwMode === 'nsfw_only' && searchQuery.trim().length === 0 && (
+        <div className="card-pro p-4 border-rose-300 bg-gradient-to-r from-rose-50/80 via-fuchsia-50/50 to-rose-50/80 space-y-2.5 animate-fade-in">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-extrabold text-rose-900">
+              <Flame className="w-4 h-4 text-rose-600" />
+              <span>
+                Mode Khusus 18+ / NSFW Aktif — Portal R18 & Eroge Bahasa Jepang
+                (1-Klik):
+              </span>
+            </div>
+            <span className="text-[11px] font-mono font-bold text-rose-700">
+              {nsfwTotalCount} Judul 18+ Tersedia + Live Search R18
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {nsfwDedicatedPortals.map((portal) => (
+              <a
+                key={portal.id}
+                href={portal.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`px-3 py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 shadow-2xs hover:opacity-95 transition ${portal.badgeColor}`}
+              >
+                <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                <span>{portal.label}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Universal 1-Click Direct Launch Bar whenever user types ANY search query */}
       {searchQuery.trim().length > 0 && (
@@ -481,17 +648,35 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                         )
                       }
                       title={`${destinations.primary.label} (${item.title})`}
-                      className="shrink-0"
+                      className="shrink-0 relative"
                     >
-                      <MediaCover
-                        title={item.title}
-                        category={item.category}
-                        coverImage={item.coverImage}
-                        className="w-16 h-22 rounded-xl"
-                      />
+                      <div
+                        className={
+                          item.isNsfw && blurNsfwCovers
+                            ? 'blur-[6px] group-hover:blur-none transition-all duration-300'
+                            : ''
+                        }
+                      >
+                        <MediaCover
+                          title={item.title}
+                          category={item.category}
+                          coverImage={item.coverImage}
+                          className="w-16 h-22 rounded-xl"
+                        />
+                      </div>
+                      {item.isNsfw && (
+                        <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-rose-700/95 text-white text-[9px] font-extrabold tracking-tight shadow-xs">
+                          18+
+                        </span>
+                      )}
                     </a>
                     <div className="min-w-0 flex-1 space-y-1.5">
                       <div className="flex items-center gap-1.5 flex-wrap">
+                        {item.isNsfw && (
+                          <span className="inline-block px-1.5 py-0.5 rounded-md bg-rose-700 text-white text-[10px] font-extrabold">
+                            18+ NSFW
+                          </span>
+                        )}
                         <span
                           className={`inline-block px-2 py-0.5 rounded-md border text-[10px] font-bold ${getRankingBadgeStyle(
                             item.difficultyTier

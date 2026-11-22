@@ -1,6 +1,7 @@
 import type {
   BettermelonLanguageStats,
   CatalogSection,
+  NsfwFilterMode,
   SheetCatalogItem,
 } from '../components/MediaCatalogBrowser';
 
@@ -11,16 +12,117 @@ export interface UniversalSearchPortal {
   siteName: string;
   url: string;
   badgeColor: string;
+  isNsfwPortal?: boolean;
+}
+
+export function getNsfwDirectPortals(rawQuery: string): UniversalSearchPortal[] {
+  const clean = rawQuery.trim();
+  const q = encodeURIComponent(clean);
+
+  return [
+    {
+      id: 'bm-ecchi',
+      section: 'Anime',
+      label: clean
+        ? `Cari Anime 18+ "${clean}" di Bettermelon`
+        : 'Browse Anime 18+ / Ecchi di Bettermelon',
+      siteName: 'Bettermelon.ru',
+      url: clean
+        ? `https://bettermelon.ru/search?query=${q}`
+        : 'https://bettermelon.ru/search?genres=Ecchi',
+      badgeColor: 'bg-rose-700 text-white border-rose-700',
+      isNsfwPortal: true,
+    },
+    {
+      id: 'dlsite-r18',
+      section: 'Visual Novels',
+      label: clean
+        ? `Cari Eroge / VN / ASMR 18+ "${clean}" di DLsite R18`
+        : 'Buka Katalog Eroge & Doujin 18+ (DLsite R18 JP)',
+      siteName: 'DLsite R18',
+      url: clean
+        ? `https://www.dlsite.com/maniax/fsr/=/keyword/${q}`
+        : 'https://www.dlsite.com/maniax/',
+      badgeColor: 'bg-fuchsia-700 text-white border-fuchsia-700',
+      isNsfwPortal: true,
+    },
+    {
+      id: 'vndb-r18',
+      section: 'Visual Novels',
+      label: clean
+        ? `Cari Visual Novel 18+ "${clean}" di VNDB`
+        : 'Database Visual Novel Eroge 18+ (VNDB)',
+      siteName: 'VNDB.org',
+      url: clean ? `https://vndb.org/v?sq=${q}` : 'https://vndb.org/v?f=0280UJ',
+      badgeColor: 'bg-indigo-700 text-white border-indigo-700',
+      isNsfwPortal: true,
+    },
+    {
+      id: 'mangadex-r18',
+      section: 'Manga',
+      label: clean
+        ? `Baca Manga 18+ "${clean}" di MangaDex`
+        : 'Browse Manga 18+ / Erotica (MangaDex)',
+      siteName: 'MangaDex 18+',
+      url: clean
+        ? `https://mangadex.org/titles?q=${q}&content=suggestive,erotica,pornographic`
+        : 'https://mangadex.org/titles?content=erotica,pornographic',
+      badgeColor: 'bg-red-700 text-white border-red-700',
+      isNsfwPortal: true,
+    },
+    {
+      id: 'rawkuma-r18',
+      section: 'Manga',
+      label: clean
+        ? `Cari Raw Manga 18+ "${clean}" di Rawkuma`
+        : 'Baca Raw Manga Ecchi / Mature (Rawkuma)',
+      siteName: 'Rawkuma.net',
+      url: clean
+        ? `https://rawkuma.net/?s=${q}`
+        : 'https://rawkuma.net/manga/?genre%5B%5D=ecchi',
+      badgeColor: 'bg-slate-900 text-white border-slate-900',
+      isNsfwPortal: true,
+    },
+    {
+      id: 'syosetu-r18',
+      section: 'Novels',
+      label: clean
+        ? `Baca Web Novel 18+ "${clean}" (Nocturne Syosetu)`
+        : 'Buka Web Novel 18+ Jepang (Syosetu R18)',
+      siteName: 'Syosetu R18',
+      url: clean
+        ? `https://noc.syosetu.com/search/search/search.php?word=${q}`
+        : 'https://noc.syosetu.com/',
+      badgeColor: 'bg-amber-700 text-white border-amber-700',
+      isNsfwPortal: true,
+    },
+    {
+      id: 'epub-r18',
+      section: 'Novels',
+      label: clean
+        ? `Cari EPUB Novel 18+ "${clean}" di Epub.moe`
+        : 'Cari Light Novel 18+ di Epub.moe',
+      siteName: 'Epub.moe',
+      url: clean ? `https://epub.moe/?q=${q}` : 'https://epub.moe/',
+      badgeColor: 'bg-rose-50 text-rose-800 border-rose-300',
+      isNsfwPortal: true,
+    },
+  ];
 }
 
 export function getUniversalDirectSearchPortals(
-  rawQuery: string
+  rawQuery: string,
+  nsfwMode: NsfwFilterMode = 'all'
 ): UniversalSearchPortal[] {
   const clean = rawQuery.trim();
   const q = encodeURIComponent(clean);
   if (!clean) return [];
 
-  return [
+  if (nsfwMode === 'nsfw_only') {
+    return getNsfwDirectPortals(clean);
+  }
+
+  const base: UniversalSearchPortal[] = [
     {
       id: 'bm-anime',
       section: 'Anime',
@@ -112,12 +214,27 @@ export function getUniversalDirectSearchPortals(
       badgeColor: 'bg-emerald-600 text-white border-emerald-600',
     },
   ];
+
+  if (nsfwMode === 'all') {
+    base.push({
+      id: 'dlsite-r18-quick',
+      section: 'Visual Novels',
+      label: `18+ DLsite "${clean}"`,
+      siteName: 'DLsite R18',
+      url: `https://www.dlsite.com/maniax/fsr/=/keyword/${q}`,
+      badgeColor: 'bg-fuchsia-700 text-white border-fuchsia-700',
+      isNsfwPortal: true,
+    });
+  }
+
+  return base;
 }
 
 interface AniListLiveMedia {
   id: number;
   type: 'ANIME' | 'MANGA';
   format?: string;
+  isAdult?: boolean;
   title?: {
     native?: string;
     romaji?: string;
@@ -210,7 +327,8 @@ function cleanHtml(str?: string): string {
 
 async function searchAniListLive(
   search: string,
-  section: CatalogSection
+  section: CatalogSection,
+  nsfwMode: NsfwFilterMode
 ): Promise<SheetCatalogItem[]> {
   const wantAnime = section === 'Semua' || section === 'Anime';
   const wantMangaOrNovel =
@@ -218,13 +336,17 @@ async function searchAniListLive(
 
   if (!wantAnime && !wantMangaOrNovel) return [];
 
+  const isAdultFilter =
+    nsfwMode === 'safe' ? false : nsfwMode === 'nsfw_only' ? true : undefined;
+
   const query = `
-    query ($search: String, $includeAnime: Boolean!, $includeManga: Boolean!) {
+    query ($search: String, $includeAnime: Boolean!, $includeManga: Boolean!, $isAdult: Boolean) {
       animePage: Page(page: 1, perPage: 18) @include(if: $includeAnime) {
-        media(search: $search, type: ANIME, isAdult: false, sort: [POPULARITY_DESC]) {
+        media(search: $search, type: ANIME, isAdult: $isAdult, sort: [POPULARITY_DESC]) {
           id
           type
           format
+          isAdult
           title {
             native
             romaji
@@ -241,10 +363,11 @@ async function searchAniListLive(
         }
       }
       mangaPage: Page(page: 1, perPage: 12) @include(if: $includeManga) {
-        media(search: $search, type: MANGA, isAdult: false, sort: [POPULARITY_DESC]) {
+        media(search: $search, type: MANGA, isAdult: $isAdult, sort: [POPULARITY_DESC]) {
           id
           type
           format
+          isAdult
           title {
             native
             romaji
@@ -271,6 +394,7 @@ async function searchAniListLive(
           search,
           includeAnime: wantAnime,
           includeManga: wantMangaOrNovel,
+          isAdult: isAdultFilter,
         },
       }),
     });
@@ -285,6 +409,13 @@ async function searchAniListLive(
     const results: SheetCatalogItem[] = [];
 
     for (const m of json.data?.animePage?.media || []) {
+      const genres = m.genres || [];
+      const isNsfw =
+        Boolean(m.isAdult) ||
+        genres.includes('Hentai') ||
+        genres.includes('Ecchi');
+      if (nsfwMode === 'safe' && isNsfw) continue;
+
       const nativeTitle = (m.title?.native || '').trim();
       const romajiOrEn = (
         m.title?.english ||
@@ -301,7 +432,7 @@ async function searchAniListLive(
         id: `live-anime-${m.id}`,
         section: 'Anime',
         category: 'anime',
-        ranking: est.ranking,
+        ranking: isNsfw ? `18+ • ${est.ranking}` : est.ranking,
         difficultyTier: est.difficultyTier,
         title: fullTitle,
         romajiTitle: romajiOrEn,
@@ -316,6 +447,7 @@ async function searchAniListLive(
         directUrl: `https://bettermelon.ru/info/${m.id}`,
         watchUrl: `https://bettermelon.ru/watch/${m.id}/1`,
         bmStats: est.bmStats,
+        isNsfw,
       });
     }
 
@@ -323,6 +455,13 @@ async function searchAniListLive(
       const isNovel = m.format === 'NOVEL';
       if (section === 'Novels' && !isNovel) continue;
       if (section === 'Manga' && isNovel) continue;
+
+      const genres = m.genres || [];
+      const isNsfw =
+        Boolean(m.isAdult) ||
+        genres.includes('Hentai') ||
+        genres.includes('Ecchi');
+      if (nsfwMode === 'safe' && isNsfw) continue;
 
       const nativeTitle = (m.title?.native || '').trim();
       const romajiOrEn = (
@@ -340,7 +479,11 @@ async function searchAniListLive(
         id: `live-manga-${m.id}`,
         section: isNovel ? 'Novels' : 'Manga',
         category: isNovel ? 'light_novel' : 'manga',
-        ranking: isNovel ? 'Light Novel • N3–N2' : 'Manga • N4–N3',
+        ranking: isNsfw
+          ? '18+ R18 • N3'
+          : isNovel
+            ? 'Light Novel • N3–N2'
+            : 'Manga • N4–N3',
         difficultyTier: isNovel ? 'Medium' : 'Easy',
         title: fullTitle,
         romajiTitle: romajiOrEn,
@@ -357,6 +500,7 @@ async function searchAniListLive(
         directUrl: isNovel
           ? `https://bookwalker.jp/search/?word=${searchWord}`
           : `https://mangadex.org/titles?q=${encodeURIComponent(romajiOrEn)}`,
+        isNsfw,
       });
     }
 
@@ -368,7 +512,8 @@ async function searchAniListLive(
 
 async function searchVndbLive(
   search: string,
-  section: CatalogSection
+  section: CatalogSection,
+  nsfwMode: NsfwFilterMode
 ): Promise<SheetCatalogItem[]> {
   if (section !== 'Semua' && section !== 'Visual Novels') return [];
   try {
@@ -377,7 +522,7 @@ async function searchVndbLive(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         filters: ['search', '=', search],
-        fields: 'id, title, alttitle, description, image.url, rating',
+        fields: 'id, title, alttitle, description, image.url, image.sexual, rating',
         results: 8,
       }),
     });
@@ -388,24 +533,28 @@ async function searchVndbLive(
         title?: string;
         alttitle?: string;
         description?: string;
-        image?: { url?: string };
+        image?: { url?: string; sexual?: number };
         rating?: number;
       }>;
     };
 
-    return (data.results || []).map((vn) => {
+    const items: SheetCatalogItem[] = [];
+    for (const vn of data.results || []) {
+      const isNsfw = (vn.image?.sexual ?? 0) >= 1 || nsfwMode === 'nsfw_only';
+      if (nsfwMode === 'safe' && (vn.image?.sexual ?? 0) >= 1) continue;
+
       const jpTitle = vn.alttitle || vn.title || vn.id;
       const romaji = vn.title || jpTitle;
       const fullTitle =
         jpTitle && romaji && jpTitle !== romaji
           ? `${jpTitle} (${romaji})`
           : jpTitle;
-      return {
+      items.push({
         id: `live-vn-${vn.id}`,
         section: 'Visual Novels',
         category: 'visual_novel',
         ranking: vn.rating
-          ? `VNDB ${(vn.rating / 10).toFixed(1)}★`
+          ? `${isNsfw ? '18+ • ' : ''}VNDB ${(vn.rating / 10).toFixed(1)}★`
           : 'Visual Novel • N3–N2',
         difficultyTier: 'Medium',
         title: fullTitle,
@@ -418,8 +567,10 @@ async function searchVndbLive(
         coverImage: vn.image?.url,
         sourceUrl: `https://vndb.org/${vn.id}`,
         directUrl: `https://vndb.org/${vn.id}`,
-      };
-    });
+        isNsfw,
+      });
+    }
+    return items;
   } catch {
     return [];
   }
@@ -427,14 +578,15 @@ async function searchVndbLive(
 
 export async function searchLiveCatalogMedia(
   query: string,
-  section: CatalogSection
+  section: CatalogSection,
+  nsfwMode: NsfwFilterMode = 'all'
 ): Promise<SheetCatalogItem[]> {
   const clean = query.trim();
   if (clean.length < 2) return [];
 
   const [anilistItems, vndbItems] = await Promise.all([
-    searchAniListLive(clean, section),
-    searchVndbLive(clean, section),
+    searchAniListLive(clean, section, nsfwMode),
+    searchVndbLive(clean, section, nsfwMode),
   ]);
 
   return [...anilistItems, ...vndbItems];
