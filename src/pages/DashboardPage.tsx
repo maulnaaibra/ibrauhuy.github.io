@@ -904,7 +904,7 @@ export const DashboardPage: React.FC = () => {
         />
 
         <main className="flex-1 min-w-0 max-w-6xl mx-auto px-4 sm:px-6 py-7 space-y-6">
-        {companionConnected && companionStatus && (
+        {activeTab !== 'overview' && companionConnected && companionStatus && (
           <div className="w-full px-4 py-3 rounded-xl bg-emerald-50/90 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-fade-in">
             <div className="flex items-center gap-2.5 text-emerald-950 min-w-0 flex-wrap">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
@@ -1249,13 +1249,13 @@ export const DashboardPage: React.FC = () => {
 
             <div className="animate-fade-up delay-3">
               <LiveStopwatch
-                onSaveDuration={({ minutes, category, title }) => {
-                  openNewLogModal({
-                    duration: minutes,
-                    category,
-                    title,
-                  });
-                }}
+                companionUrl={companionSettings.url}
+                companionStatus={companionStatus}
+                onRefreshCompanion={handleManualRefreshCompanion}
+                onImportPending={(items, notify) =>
+                  importPendingSessions(items, notify ?? true)
+                }
+                onOpenDevicesTab={() => setActiveTab('devices')}
               />
             </div>
 
