@@ -124,6 +124,9 @@ export const DashboardPage: React.FC = () => {
   const { user, profile, refreshProfile, signOut } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+  const [initialCatalogTitle, setInitialCatalogTitle] = useState<string | null>(
+    null
+  );
   const [inspectedMemberId, setInspectedMemberId] = useState<string | null>(
     null
   );
@@ -1219,28 +1222,18 @@ export const DashboardPage: React.FC = () => {
 
                         <div className="flex flex-col items-end gap-1.5 shrink-0">
                           {mediaDest && (
-                            <a
-                              href={mediaDest.primary.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <button
+                              type="button"
                               onClick={() => {
-                                try {
-                                  void navigator.clipboard?.writeText(
-                                    media.title
-                                  );
-                                } catch {
-                                  // ignore clipboard error
-                                }
-                                toast.success(
-                                  `Membuka ${mediaDest.primary.siteName} (${media.title})`
-                                );
+                                setInitialCatalogTitle(media.title);
+                                setActiveTab('catalog');
                               }}
-                              title={mediaDest.primary.label}
-                              className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-rose-600 text-slate-700 hover:text-white text-[11px] font-bold inline-flex items-center gap-1 transition"
+                              title="Buka tampilan detail & timeline"
+                              className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-rose-600 text-slate-700 hover:text-white text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
                             >
                               <ExternalLink className="w-3 h-3" />
-                              {mediaDest.primary.shortLabel}
-                            </a>
+                              Timeline
+                            </button>
                           )}
                           <button
                             type="button"
@@ -1391,6 +1384,8 @@ export const DashboardPage: React.FC = () => {
             <MediaCatalogBrowser
               defaultSection="Semua"
               pageSize={12}
+              initialSelectedTitle={initialCatalogTitle}
+              onClearInitialSelected={() => setInitialCatalogTitle(null)}
               onStartMedia={(title, category, suggestedMinutes) =>
                 openNewLogModal({
                   title,

@@ -20,7 +20,8 @@ for (const entry of rawCatalog as Array<{
   }
 }
 
-function resolveCoverUrl(rawPath: string): string {
+export function resolveCoverUrl(rawPath?: string): string {
+  if (!rawPath) return '';
   if (
     rawPath.startsWith('https://') ||
     rawPath.startsWith('http://') ||
