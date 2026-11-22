@@ -3,6 +3,13 @@ import type { PrimaryMediaCategory } from '../types';
 export const DEFAULT_COMPANION_URL = 'http://127.0.0.1:41937';
 const COMPANION_SETTINGS_KEY = 'immersiontrack_companion_settings_v1';
 
+export type TrackingSourceMode =
+  | 'foreground'
+  | 'background'
+  | 'pinned'
+  | 'catalog'
+  | 'none';
+
 export interface TrackerRule {
   id: string;
   name: string;
@@ -16,14 +23,38 @@ export interface CompanionConfig {
   idleThresholdSeconds: number;
   minSessionMinutes: number;
   inactivityCommitSeconds: number;
+  trackBackgroundWindows?: boolean;
   rules: TrackerRule[];
+}
+
+export interface OpenWindowItem {
+  hwnd: number;
+  pid: number;
+  process: string;
+  title: string;
+  isForeground: boolean;
+  matchedRule: string | null;
+  matchedCategory: PrimaryMediaCategory | null;
+  isTracked: boolean;
+}
+
+export interface PinnedWindowTarget {
+  hwnd?: number;
+  process: string;
+  title: string;
+  customTitle?: string;
+  category: PrimaryMediaCategory;
+  ruleName: string;
+  fromCatalog?: boolean;
 }
 
 export interface ActiveTrackedSession {
   title: string;
   category: PrimaryMediaCategory;
   process: string;
+  ruleId?: string;
   ruleName: string;
+  trackingSource?: TrackingSourceMode;
   startedAt: string;
   lastSeenAt: string;
   activeSeconds: number;
@@ -43,6 +74,7 @@ export interface PendingTrackedSession {
 
 export interface CompanionStatus {
   ok: boolean;
+  version?: string;
   deviceName: string;
   trackingEnabled: boolean;
   uptimeSeconds: number;
@@ -50,10 +82,15 @@ export interface CompanionStatus {
   lastWindow: {
     process: string;
     title: string;
+    foregroundProcess?: string;
+    foregroundTitle?: string;
     idleSeconds: number;
     matchedRule: string | null;
+    trackingSource?: TrackingSourceMode;
     timestamp: string;
   };
+  openWindows?: OpenWindowItem[];
+  pinnedTarget?: PinnedWindowTarget | null;
   activeSession: ActiveTrackedSession | null;
   pendingCount: number;
   pending: PendingTrackedSession[];
@@ -92,6 +129,17 @@ function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, '') || DEFAULT_COMPANION_URL;
 }
 
+function getFallbackBaseUrl(baseUrl: string): string | null {
+  const normalized = normalizeBaseUrl(baseUrl);
+  if (normalized.includes('127.0.0.1')) {
+    return normalized.replace('127.0.0.1', 'localhost');
+  }
+  if (normalized.includes('localhost')) {
+    return normalized.replace('localhost', '127.0.0.1');
+  }
+  return null;
+}
+
 async function fetchJsonWithTimeout<T>(
   url: string,
   init?: RequestInit,
@@ -116,11 +164,18 @@ async function fetchJsonWithTimeout<T>(
 export async function fetchCompanionStatus(
   baseUrl: string
 ): Promise<CompanionStatus | null> {
+  const primary = normalizeBaseUrl(baseUrl);
   try {
-    return await fetchJsonWithTimeout<CompanionStatus>(
-      `${normalizeBaseUrl(baseUrl)}/status`
-    );
+    return await fetchJsonWithTimeout<CompanionStatus>(`${primary}/status`);
   } catch {
+    const fallback = getFallbackBaseUrl(primary);
+    if (fallback) {
+      try {
+        return await fetchJsonWithTimeout<CompanionStatus>(`${fallback}/status`);
+      } catch {
+        return null;
+      }
+    }
     return null;
   }
 }
@@ -134,6 +189,60 @@ export async function toggleCompanionTracking(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(typeof enabled === 'boolean' ? { enabled } : {}),
   });
+}
+
+export async function pinCompanionWindow(
+  baseUrl: string,
+  payload: {
+    hwnd?: number;
+    process: string;
+    title: string;
+    customTitle?: string;
+    category: PrimaryMediaCategory;
+  }
+): Promise<{
+  ok: boolean;
+  pinnedTarget: PinnedWindowTarget | null;
+  activeSession: ActiveTrackedSession | null;
+}> {
+  return fetchJsonWithTimeout(`${normalizeBaseUrl(baseUrl)}/pin-window`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function unpinCompanionWindow(
+  baseUrl: string
+): Promise<{ ok: boolean; pinnedTarget: null }> {
+  return fetchJsonWithTimeout(`${normalizeBaseUrl(baseUrl)}/pin-window`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clear: true }),
+  });
+}
+
+export async function notifyCompanionMediaLaunch(
+  baseUrl: string,
+  payload: {
+    title: string;
+    category: PrimaryMediaCategory;
+    url?: string;
+  }
+): Promise<void> {
+  try {
+    await fetchJsonWithTimeout(
+      `${normalizeBaseUrl(baseUrl)}/hint`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+      1500
+    );
+  } catch {
+    // Silent if companion agent is offline
+  }
 }
 
 export async function flushCompanionSession(

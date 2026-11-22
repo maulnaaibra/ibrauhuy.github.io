@@ -16,84 +16,135 @@ const HOST = '127.0.0.1';
 const DEVICE_NAME = os.hostname();
 const STARTED_AT = Date.now();
 
+const DEFAULT_RULES = [
+  {
+    id: 'rule-fushi',
+    name: 'Fushi / Hoshi Reader (Immersion Suite)',
+    enabled: true,
+    matchType: 'process',
+    pattern: '^fushi$',
+    category: 'light_novel',
+  },
+  {
+    id: 'rule-mpv-vlc',
+    name: 'Video Player (MPV / VLC / PotPlayer / MPC)',
+    enabled: true,
+    matchType: 'process',
+    pattern: '^(mpv|vlc|potplayer|potplayer64|potplayermini64|mpc-hc|mpc-hc64|mpc-be|mpc-be64|kmplayer|gom)$',
+    category: 'anime',
+  },
+  {
+    id: 'rule-anime-sites',
+    name: 'Streaming Anime (Bettermelon / Animelon / Netflix / Crunchyroll / Muse)',
+    enabled: true,
+    matchType: 'title',
+    pattern: 'bettermelon|animelon|crunchyroll|netflix|muse indonesia|ani-one|bilibili.*anime|hianime|aniwatch|9anime|gogoanime|miruro|animepahe|nyaa|asbplayer|anime',
+    category: 'anime',
+  },
+  {
+    id: 'rule-ln',
+    name: 'Light Novel & Web Novel (Epub.moe / Ttsu / Syosetsu / Kakuyomu / BookWalker)',
+    enabled: true,
+    matchType: 'title',
+    pattern: 'epub\\.moe|reader\\.epub|ttsu|📘|syosetu|syosetsu|小説家になろう|カクヨム|kakuyomu|青空文庫|aozora|bookwalker|honto|kindle|calibre|koodo|thorium|foliate|hoshi reader|light novel|web novel',
+    category: 'light_novel',
+  },
+  {
+    id: 'rule-drama-tv',
+    name: 'Drama & TV Jepang (Cinejoy / MyDramaList / TVer / Abema / NHK)',
+    enabled: true,
+    matchType: 'title',
+    pattern: 'cinejoy|mydramalist|tver|abema|nhkプラス|nhk world|jdrama|dorama|paravi|u-next',
+    category: 'video',
+  },
+  {
+    id: 'rule-youtube-video',
+    name: 'Video Online (YouTube / Niconico / Bilibili / Twitch / VTuber)',
+    enabled: true,
+    matchType: 'title',
+    pattern: 'youtube|niconico|ニコニコ|bilibili|twitch|holodex|hololive|nijisanji|実況',
+    category: 'video',
+  },
+  {
+    id: 'rule-anki',
+    name: 'Anki Flashcards & Mining',
+    enabled: true,
+    matchType: 'process',
+    pattern: '^anki$',
+    category: 'study',
+  },
+  {
+    id: 'rule-study-sites',
+    name: 'SRS & Kamus Jepang (JPDB / WaniKani / Bunpro / Jisho / Renshuu)',
+    enabled: true,
+    matchType: 'title',
+    pattern: 'jpdb\\.io|jpdb|wanikani|bunpro|renshuu|jisho\\.org|jisho|weblio|kotobank|goo辞書|takoboto|marumori|satori reader|nhk news web easy|やさしいことばニュース',
+    category: 'study',
+  },
+  {
+    id: 'rule-manga',
+    name: 'Manga Reader (MangaDex / Rawkuma / Mokuro / Comick / Mihon)',
+    enabled: true,
+    matchType: 'title',
+    pattern: 'mangadex|rawkuma|mokuro|comick|mangaplus|shonenjump|comic-walker|カドコミ|tonarinoyj|少年ジャンプ|cmoa|manga|マンガ|漫画|tachiyomi|mihon|suwayomi|houdoku|yomikiru',
+    category: 'manga',
+  },
+  {
+    id: 'rule-vn-process',
+    name: 'Aplikasi Texthooker & Emulator Game Jepang',
+    enabled: true,
+    matchType: 'process',
+    pattern: '^(textractor|lunatranslator|agent|chiitranslite|vnr|yuzu|ryujinx|ppssppwindows64|ppsspp|pcsx2|pcsx2-qt|rpcs3|citra-qt|dolphin|retroarch)$',
+    category: 'visual_novel',
+  },
+  {
+    id: 'rule-vn',
+    name: 'Visual Novel & Game (VNDB / Textractor / LunaTranslator / Steam VN)',
+    enabled: true,
+    matchType: 'title',
+    pattern: 'textractor|lunatranslator|texthooker|visual novel|vndb|vnreader|steins;gate|clannad|fate/stay|tsukihime|umineko|higurashi|subahibi|white album|muramasa|baldr sky|aokana|yuzusoft|kirikiri|siglus|renpy|backloggd',
+    category: 'visual_novel',
+  },
+  {
+    id: 'rule-book',
+    name: 'Pembaca Buku PDF / EPUB (SumatraPDF / Calibre / Kindle)',
+    enabled: true,
+    matchType: 'process',
+    pattern: '^(sumatrapdf|ebook-viewer|calibre|kindle|thorium|koodo-reader)$',
+    category: 'book',
+  },
+  {
+    id: 'rule-audio-process',
+    name: 'Aplikasi Audio & Podcast (Spotify / Foobar2000 / MusicBee)',
+    enabled: true,
+    matchType: 'process',
+    pattern: '^(spotify|foobar2000|musicbee|aimp)$',
+    category: 'audio',
+  },
+  {
+    id: 'rule-audio',
+    name: 'Podcast & Audio Jepang (Spotify / Teppei / Sakura Tips / Audible)',
+    enabled: true,
+    matchType: 'title',
+    pattern: 'podcast|teppei|sakura tips|yuyuの日本語|audible|radiko|spotify|soundcloud',
+    category: 'audio',
+  },
+  {
+    id: 'rule-jp-script',
+    name: 'Jendela Berjudul Bahasa Jepang (Kanji / Hiragana / Katakana)',
+    enabled: true,
+    matchType: 'title',
+    pattern: '[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FAF]{2,}',
+    category: 'study',
+  },
+];
+
 const DEFAULT_CONFIG = {
-  idleThresholdSeconds: 180,
+  idleThresholdSeconds: 1800,
   minSessionMinutes: 1,
-  inactivityCommitSeconds: 45,
-  rules: [
-    {
-      id: 'rule-mpv-vlc',
-      name: 'Video Player (MPV / VLC / PotPlayer)',
-      enabled: true,
-      matchType: 'process',
-      pattern: 'mpv|vlc|potplayer|mpc-hc|mpc-be',
-      category: 'anime',
-    },
-    {
-      id: 'rule-anime-sites',
-      name: 'Streaming Anime (Netflix / Crunchyroll / Muse)',
-      enabled: true,
-      matchType: 'title',
-      pattern: 'netflix|crunchyroll|animelon|muse|ani-one|bilibili.*anime|anime',
-      category: 'anime',
-    },
-    {
-      id: 'rule-youtube-video',
-      name: 'Video Online (YouTube / Niconico / Abema / TVer)',
-      enabled: true,
-      matchType: 'title',
-      pattern: 'youtube|niconico|abema|tver|bilibili',
-      category: 'video',
-    },
-    {
-      id: 'rule-anki',
-      name: 'Anki Flashcards & Mining',
-      enabled: true,
-      matchType: 'process',
-      pattern: '^anki$',
-      category: 'study',
-    },
-    {
-      id: 'rule-manga',
-      name: 'Manga Reader (Mokuro / MangaDex / BookWalker)',
-      enabled: true,
-      matchType: 'title',
-      pattern: 'mangadex|mokuro|bookwalker|manga',
-      category: 'manga',
-    },
-    {
-      id: 'rule-vn',
-      name: 'Visual Novel & Texthooker',
-      enabled: true,
-      matchType: 'title',
-      pattern: 'textractor|lunatranslator|texthooker|visual novel|vnreader|steins;gate|clannad',
-      category: 'visual_novel',
-    },
-    {
-      id: 'rule-ln',
-      name: 'Light Novel / Web Novel (Ttsu / Syosetsu / Kakuyomu)',
-      enabled: true,
-      matchType: 'title',
-      pattern: 'ttsu|syosetsu|kakuyomu|light novel|kindle|calibre',
-      category: 'light_novel',
-    },
-    {
-      id: 'rule-book',
-      name: 'Pembaca Buku PDF / EPUB (SumatraPDF)',
-      enabled: true,
-      matchType: 'process',
-      pattern: 'sumatrapdf',
-      category: 'book',
-    },
-    {
-      id: 'rule-audio',
-      name: 'Podcast & Audio (Spotify / Teppei / Audible)',
-      enabled: true,
-      matchType: 'title',
-      pattern: 'podcast|teppei|sakura tips|audible|spotify',
-      category: 'audio',
-    },
-  ],
+  inactivityCommitSeconds: 60,
+  trackBackgroundWindows: true,
+  rules: DEFAULT_RULES,
 };
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -113,11 +164,55 @@ function writeJsonSafe(filePath, value) {
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2), 'utf8');
 }
 
-let config = readJsonSafe(RULES_FILE, null);
-if (!config || !Array.isArray(config.rules)) {
-  config = structuredClone(DEFAULT_CONFIG);
-  writeJsonSafe(RULES_FILE, config);
+function upgradeAndMergeConfig(loaded) {
+  if (!loaded || !Array.isArray(loaded.rules)) {
+    return structuredClone(DEFAULT_CONFIG);
+  }
+
+  const byId = new Map();
+  for (const r of loaded.rules) {
+    if (r && r.id) byId.set(r.id, r);
+  }
+  // Ensure all default rules exist and upgrade outdated default patterns
+  const mergedRules = [];
+  const seenIds = new Set();
+  for (const defRule of DEFAULT_RULES) {
+    const existing = byId.get(defRule.id);
+    if (existing) {
+      mergedRules.push({
+        ...defRule,
+        enabled: typeof existing.enabled === 'boolean' ? existing.enabled : true,
+      });
+    } else {
+      mergedRules.push(structuredClone(defRule));
+    }
+    seenIds.add(defRule.id);
+  }
+  // Preserve custom user-added rules
+  for (const r of loaded.rules) {
+    if (r && r.id && !seenIds.has(r.id)) {
+      mergedRules.push(r);
+    }
+  }
+
+  // Upgrade old 180s idle threshold that prematurely paused video watching
+  const rawIdle = Number(loaded.idleThresholdSeconds || 1800);
+  const idleThresholdSeconds = rawIdle <= 180 ? 1800 : Math.max(60, rawIdle);
+
+  return {
+    idleThresholdSeconds,
+    minSessionMinutes: Math.max(1, Number(loaded.minSessionMinutes || 1)),
+    inactivityCommitSeconds: Math.max(20, Number(loaded.inactivityCommitSeconds || 60)),
+    trackBackgroundWindows:
+      typeof loaded.trackBackgroundWindows === 'boolean'
+        ? loaded.trackBackgroundWindows
+        : true,
+    rules: mergedRules,
+  };
 }
+
+let config = upgradeAndMergeConfig(readJsonSafe(RULES_FILE, null));
+writeJsonSafe(RULES_FILE, config);
 
 let pendingSessions = readJsonSafe(PENDING_FILE, []);
 if (!Array.isArray(pendingSessions)) {
@@ -128,13 +223,34 @@ let trackingEnabled = true;
 let lastWindow = {
   process: '',
   title: '',
+  foregroundProcess: '',
+  foregroundTitle: '',
   idleSeconds: 0,
   matchedRule: null,
+  trackingSource: 'none',
   timestamp: new Date().toISOString(),
 };
+let openWindows = [];
 let activeSession = null;
+let pinnedTarget = null; // { process, title, category, ruleName }
+let catalogHint = null; // { title, category, url, expiresAt }
+let lastFocusedImmersionKey = null; // "process::category"
 let awaySeconds = 0;
 let lastSampleTime = Date.now();
+
+const GENERIC_SUBWINDOW_TITLES = new Set([
+  'add',
+  'browse',
+  'preview',
+  'edit current',
+  'statistics',
+  'preferences',
+  'new tab',
+  'tab baru',
+  'untitled',
+  'fushi',
+  'anki',
+]);
 
 function getLocalDateString(date = new Date()) {
   const y = date.getFullYear();
@@ -143,15 +259,52 @@ function getLocalDateString(date = new Date()) {
   return `${y}-${m}-${d}`;
 }
 
+function isTrackerDashboardWindow(title) {
+  const t = String(title || '').toLowerCase();
+  return (
+    t.includes('immersiontrack') ||
+    t.includes('nihongotracker') ||
+    t.includes('pelacak progres immersion')
+  );
+}
+
 function cleanDisplayTitle(rawTitle, processName, fallbackName) {
   const cleaned = String(rawTitle || '')
-    .replace(/\s+-\s+(Google Chrome|Microsoft Edge|Mozilla Firefox|Brave|Opera|VLC media player|mpv|YouTube)$/i, '')
-    .replace(/\s+\|\s+(YouTube|Netflix|Crunchyroll)$/i, '')
+    .replace(
+      /\s+[-—|]\s+(Google Chrome|Microsoft​? Edge|Mozilla Firefox|Brave|Opera|Vivaldi|Arc|VLC media player|mpv|YouTube|Netflix|Crunchyroll|Bettermelon|MangaDex)$/i,
+      ''
+    )
+    .replace(
+      /\s+[-—|]\s+(Google Chrome|Microsoft​? Edge|Mozilla Firefox|Brave|Opera)$/i,
+      ''
+    )
+    .replace(/^\(\d+\)\s+/, '')
     .trim();
-  return cleaned || fallbackName || processName || 'Sesi Immersion';
+
+  if (!cleaned) {
+    return fallbackName || processName || 'Sesi Immersion';
+  }
+  if (cleaned.toLowerCase() === 'fushi') {
+    return 'Fushi (Hoshi Reader / Immersion)';
+  }
+  if (/^user \d+ - anki$/i.test(cleaned)) {
+    return 'Anki SRS & Mining';
+  }
+  return cleaned;
+}
+
+function isGenericTitle(title) {
+  const lower = String(title || '').trim().toLowerCase();
+  if (!lower || lower.length <= 3) return true;
+  if (GENERIC_SUBWINDOW_TITLES.has(lower)) return true;
+  if (/^browse\s*\(/i.test(lower)) return true;
+  return false;
 }
 
 function matchWindowRule(processName, windowTitle) {
+  if (!processName && !windowTitle) return null;
+  if (isTrackerDashboardWindow(windowTitle)) return null;
+
   for (const rule of config.rules) {
     if (!rule.enabled || !rule.pattern) continue;
     try {
@@ -170,32 +323,50 @@ function matchWindowRule(processName, windowTitle) {
 function commitActiveSession(force = false) {
   if (!activeSession) return null;
 
-  const durationMinutes = force
-    ? activeSession.activeSeconds >= 10
-      ? Math.max(1, Math.round(activeSession.activeSeconds / 60))
-      : 0
-    : Math.round(activeSession.activeSeconds / 60);
+  const minSeconds = force
+    ? 1
+    : Math.max(15, (Number(config.minSessionMinutes || 1) - 0.75) * 60);
 
-  const minReq = force ? 1 : Number(config.minSessionMinutes || 1);
   let committed = null;
 
-  if (durationMinutes >= minReq) {
+  if (activeSession.activeSeconds >= minSeconds) {
+    const durationMinutes = Math.max(
+      1,
+      Math.round(activeSession.activeSeconds / 60)
+    );
     const now = new Date();
-    committed = {
-      id: `pc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      title: activeSession.title,
-      category: activeSession.category,
-      duration_minutes: durationMinutes,
-      cards_mined: 0,
-      notes: `Auto-tracked dari ${DEVICE_NAME} (${activeSession.process})`,
-      logged_date: getLocalDateString(now),
-      created_at: now.toISOString(),
-      source_device: DEVICE_NAME,
-    };
-    pendingSessions.push(committed);
+    const todayStr = getLocalDateString(now);
+
+    // Check if there's an existing pending session for the same title & category today
+    const existingIdx = pendingSessions.findIndex(
+      (p) =>
+        p.logged_date === todayStr &&
+        p.category === activeSession.category &&
+        p.title === activeSession.title
+    );
+
+    if (existingIdx >= 0) {
+      pendingSessions[existingIdx].duration_minutes += durationMinutes;
+      pendingSessions[existingIdx].created_at = now.toISOString();
+      committed = pendingSessions[existingIdx];
+    } else {
+      committed = {
+        id: `pc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        title: activeSession.title,
+        category: activeSession.category,
+        duration_minutes: durationMinutes,
+        cards_mined: 0,
+        notes: `Auto-tracked dari ${DEVICE_NAME} (${activeSession.process || 'Windows'})`,
+        logged_date: todayStr,
+        created_at: now.toISOString(),
+        source_device: DEVICE_NAME,
+      };
+      pendingSessions.push(committed);
+    }
+
     writeJsonSafe(PENDING_FILE, pendingSessions);
     console.log(
-      `[Commit] +${committed.duration_minutes}m | ${committed.category} | ${committed.title}`
+      `[Commit] +${durationMinutes}m | ${committed.category} | ${committed.title}`
     );
   }
 
@@ -204,30 +375,193 @@ function commitActiveSession(force = false) {
   return committed;
 }
 
+function selectTargetWindow(fgProc, fgTitle, rawOpenWindows) {
+  // Annotate all open windows with rule match info
+  const annotated = [];
+  for (const w of rawOpenWindows) {
+    const proc = String(w.process || '');
+    const title = String(w.title || '');
+    const rule = matchWindowRule(proc, title);
+    annotated.push({
+      hwnd: Number(w.hwnd || 0),
+      pid: Number(w.pid || 0),
+      process: proc,
+      title,
+      isForeground: Boolean(w.isForeground),
+      matchedRule: rule ? rule.name : null,
+      matchedCategory: rule ? rule.category : null,
+      _rule: rule,
+    });
+  }
+
+  // 1. Check if a manual pinned target matches any open window
+  if (pinnedTarget) {
+    const matchPinned = annotated.find(
+      (w) =>
+        (pinnedTarget.hwnd && w.hwnd === pinnedTarget.hwnd) ||
+        (pinnedTarget.process &&
+          w.process.toLowerCase() === pinnedTarget.process.toLowerCase())
+    );
+    if (matchPinned) {
+      return {
+        targetProc: matchPinned.process,
+        targetTitle:
+          pinnedTarget.customTitle || matchPinned.title || pinnedTarget.title,
+        rule: {
+          id: 'rule-pinned-manual',
+          name: pinnedTarget.ruleName || 'Dikunci Manual dari Dashboard',
+          category:
+            pinnedTarget.category || matchPinned.matchedCategory || 'study',
+        },
+        source: 'pinned',
+        annotated,
+      };
+    }
+    // If pinned from catalog hint and still valid
+    if (pinnedTarget.fromCatalog) {
+      return {
+        targetProc: pinnedTarget.process || fgProc || 'browser',
+        targetTitle: pinnedTarget.title,
+        rule: {
+          id: 'rule-catalog-launch',
+          name: 'Katalog Media (Direct Track)',
+          category: pinnedTarget.category || 'anime',
+        },
+        source: 'catalog',
+        annotated,
+      };
+    }
+  }
+
+  // 2. Check if the foreground window itself matches an immersion rule
+  const fgRule = matchWindowRule(fgProc, fgTitle);
+  if (fgRule) {
+    lastFocusedImmersionKey = `${fgProc.toLowerCase()}::${fgRule.category}`;
+    return {
+      targetProc: fgProc,
+      targetTitle: fgTitle,
+      rule: fgRule,
+      source: 'foreground',
+      annotated,
+    };
+  }
+
+  // 3. Background window detection (when user is viewing dashboard or multi-windowing)
+  if (config.trackBackgroundWindows !== false) {
+    const matchingOpen = annotated.filter((w) => w._rule !== null);
+    if (matchingOpen.length > 0) {
+      // Prefer the window that matches the most recently focused immersion app
+      let chosen = null;
+      if (lastFocusedImmersionKey) {
+        chosen = matchingOpen.find(
+          (w) =>
+            `${w.process.toLowerCase()}::${w._rule.category}` ===
+            lastFocusedImmersionKey
+        );
+      }
+      // Or prefer dedicated desktop immersion apps (fushi, mpv, vlc, anki, textractor, lunatranslator)
+      if (!chosen) {
+        chosen = matchingOpen.find((w) =>
+          /^(fushi|mpv|vlc|potplayer|potplayer64|mpc-hc|mpc-be|anki|textractor|lunatranslator)$/i.test(
+            w.process
+          )
+        );
+      }
+      if (!chosen) {
+        chosen = matchingOpen[0];
+      }
+
+      return {
+        targetProc: chosen.process,
+        targetTitle: chosen.title,
+        rule: chosen._rule,
+        source: 'background',
+        annotated,
+      };
+    }
+  }
+
+  return {
+    targetProc: fgProc,
+    targetTitle: fgTitle,
+    rule: null,
+    source: 'none',
+    annotated,
+  };
+}
+
 function handleWindowSample(sample) {
   const now = Date.now();
-  const deltaSec = Math.min(5, Math.max(1, Math.round((now - lastSampleTime) / 1000)));
+  const deltaSec = Math.min(
+    5,
+    Math.max(1, Math.round((now - lastSampleTime) / 1000))
+  );
   lastSampleTime = now;
 
-  const proc = String(sample.process || '');
-  const title = String(sample.title || '');
+  const fgProc = String(sample.process || '');
+  const fgTitle = String(sample.title || '');
   const idle = Number(sample.idleSeconds || 0);
-  const rule = trackingEnabled ? matchWindowRule(proc, title) : null;
+  const rawOpen = Array.isArray(sample.openWindows) ? sample.openWindows : [];
+
+  const { targetProc, targetTitle, rule, source, annotated } = trackingEnabled
+    ? selectTargetWindow(fgProc, fgTitle, rawOpen)
+    : {
+        targetProc: fgProc,
+        targetTitle: fgTitle,
+        rule: null,
+        source: 'none',
+        annotated: rawOpen.map((w) => ({
+          hwnd: Number(w.hwnd || 0),
+          pid: Number(w.pid || 0),
+          process: String(w.process || ''),
+          title: String(w.title || ''),
+          isForeground: Boolean(w.isForeground),
+          matchedRule: null,
+          matchedCategory: null,
+        })),
+      };
+
+  openWindows = annotated.map(({ _rule, ...rest }) => ({
+    ...rest,
+    isTracked:
+      Boolean(rule) &&
+      rest.process === targetProc &&
+      rest.title === targetTitle,
+  }));
 
   lastWindow = {
-    process: proc,
-    title,
+    process: targetProc || fgProc,
+    title: targetTitle || fgTitle,
+    foregroundProcess: fgProc,
+    foregroundTitle: fgTitle,
     idleSeconds: idle,
     matchedRule: rule ? rule.name : null,
+    trackingSource: source,
     timestamp: new Date(now).toISOString(),
   };
 
-  const isIdle = idle >= Number(config.idleThresholdSeconds || 180);
+  const idleLimit = Number(config.idleThresholdSeconds || 1800);
+  // Media/pinned sessions tolerate longer hands-free viewing
+  const effectiveIdleLimit =
+    source === 'pinned' || source === 'catalog'
+      ? Math.max(idleLimit, 5400)
+      : idleLimit;
+  const isIdle = idle >= effectiveIdleLimit;
 
   if (!trackingEnabled || isIdle || !rule) {
+    // If user is simply checking the ImmersionTrack dashboard tab, don't kill the active session!
+    if (
+      activeSession &&
+      trackingEnabled &&
+      !isIdle &&
+      isTrackerDashboardWindow(fgTitle)
+    ) {
+      return;
+    }
+
     if (activeSession) {
       awaySeconds += deltaSec;
-      if (awaySeconds >= Number(config.inactivityCommitSeconds || 45)) {
+      if (awaySeconds >= Number(config.inactivityCommitSeconds || 60)) {
         commitActiveSession(false);
       }
     }
@@ -235,15 +569,36 @@ function handleWindowSample(sample) {
   }
 
   awaySeconds = 0;
-  const displayTitle = cleanDisplayTitle(title, proc, rule.name);
 
+  // Apply catalog hint title if it matches the active category and hasn't expired
+  let displayTitle = cleanDisplayTitle(targetTitle, targetProc, rule.name);
+  if (
+    catalogHint &&
+    catalogHint.expiresAt > now &&
+    (catalogHint.category === rule.category || source === 'catalog')
+  ) {
+    displayTitle = catalogHint.title;
+  }
+
+  // Continue existing session if same category & same process/rule (prevents session loss on sub-window/chapter changes)
   if (
     activeSession &&
-    activeSession.title === displayTitle &&
-    activeSession.category === rule.category
+    activeSession.category === rule.category &&
+    (activeSession.title === displayTitle ||
+      activeSession.process.toLowerCase() === targetProc.toLowerCase() ||
+      activeSession.ruleId === rule.id)
   ) {
     activeSession.activeSeconds += deltaSec;
     activeSession.lastSeenAt = new Date(now).toISOString();
+    activeSession.trackingSource = source;
+    if (!isGenericTitle(displayTitle) && isGenericTitle(activeSession.title)) {
+      activeSession.title = displayTitle;
+    } else if (
+      !isGenericTitle(displayTitle) &&
+      activeSession.process.toLowerCase() !== 'anki'
+    ) {
+      activeSession.title = displayTitle;
+    }
     return;
   }
 
@@ -254,8 +609,10 @@ function handleWindowSample(sample) {
   activeSession = {
     title: displayTitle,
     category: rule.category,
-    process: proc,
+    process: targetProc,
+    ruleId: rule.id,
     ruleName: rule.name,
+    trackingSource: source,
     startedAt: new Date(now).toISOString(),
     lastSeenAt: new Date(now).toISOString(),
     activeSeconds: deltaSec,
@@ -274,10 +631,39 @@ $ProgressPreference = 'SilentlyContinue'
 $code = @"
 using System;
 using System.Text;
+using System.Threading;
 using System.Diagnostics;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
+public class WinInfo {
+  public long hwnd;
+  public uint pid;
+  public string process;
+  public string title;
+  public bool isForeground;
+}
+
+public class SnapInfo {
+  public string process;
+  public string title;
+  public uint idleSeconds;
+  public List<WinInfo> openWindows;
+}
+
 public static class Win32Tracker {
+  [DllImport("user32.dll")]
+  private static extern IntPtr OpenInputDesktop(uint dwFlags, bool fInherit, uint dwDesiredAccess);
+
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+  private static extern IntPtr OpenDesktop(string lpszDesktop, uint dwFlags, bool fInherit, uint dwDesiredAccess);
+
+  [DllImport("user32.dll")]
+  private static extern bool SetThreadDesktop(IntPtr hDesktop);
+
+  [DllImport("user32.dll")]
+  private static extern bool CloseDesktop(IntPtr hDesktop);
+
   [DllImport("user32.dll")]
   private static extern IntPtr GetForegroundWindow();
 
@@ -286,6 +672,14 @@ public static class Win32Tracker {
 
   [DllImport("user32.dll")]
   private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+  [DllImport("user32.dll")]
+  private static extern bool IsWindowVisible(IntPtr hWnd);
+
+  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+  [DllImport("user32.dll")]
+  private static extern bool EnumDesktopWindows(IntPtr hDesktop, EnumWindowsProc lpfn, IntPtr lParam);
 
   [StructLayout(LayoutKind.Sequential)]
   private struct LASTINPUTINFO {
@@ -296,37 +690,102 @@ public static class Win32Tracker {
   [DllImport("user32.dll")]
   private static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
 
-  public static object GetSnapshot() {
-    IntPtr hwnd = GetForegroundWindow();
-    StringBuilder sb = new StringBuilder(512);
-    if (hwnd != IntPtr.Zero) {
-      GetWindowText(hwnd, sb, sb.Capacity);
+  private static string SafeGetProcessName(uint pid) {
+    if (pid == 0) return "";
+    try {
+      return Process.GetProcessById((int)pid).ProcessName;
+    } catch {
+      return "";
     }
+  }
 
-    uint pid = 0;
-    string procName = "";
-    if (hwnd != IntPtr.Zero) {
-      GetWindowThreadProcessId(hwnd, out pid);
-      if (pid != 0) {
-        try {
-          procName = Process.GetProcessById((int)pid).ProcessName;
-        } catch {}
+  public static SnapInfo GetSnapshot() {
+    SnapInfo snapshot = null;
+    Thread worker = new Thread(() => {
+      IntPtr desk = OpenInputDesktop(0, false, 0x01FF);
+      if (desk == IntPtr.Zero) {
+        desk = OpenDesktop("Default", 0, false, 0x01FF);
       }
-    }
+      if (desk != IntPtr.Zero) {
+        SetThreadDesktop(desk);
+      }
 
-    LASTINPUTINFO lii = new LASTINPUTINFO();
-    lii.cbSize = (uint)Marshal.SizeOf(typeof(LASTINPUTINFO));
-    uint idleSec = 0;
-    if (GetLastInputInfo(ref lii)) {
-      uint elapsedMs = unchecked((uint)Environment.TickCount - lii.dwTime);
-      idleSec = elapsedMs / 1000;
-    }
+      IntPtr fg = GetForegroundWindow();
+      StringBuilder fgSb = new StringBuilder(512);
+      if (fg != IntPtr.Zero) {
+        GetWindowText(fg, fgSb, fgSb.Capacity);
+      }
 
-    return new {
-      process = procName,
-      title = sb.ToString(),
-      idleSeconds = idleSec
-    };
+      uint fgPid = 0;
+      if (fg != IntPtr.Zero) {
+        GetWindowThreadProcessId(fg, out fgPid);
+      }
+      string fgProc = SafeGetProcessName(fgPid);
+      string fgTitle = fgSb.ToString().Trim();
+
+      var openList = new List<WinInfo>();
+      EnumDesktopWindows(desk, (hWnd, lParam) => {
+        if (!IsWindowVisible(hWnd)) return true;
+        StringBuilder sb = new StringBuilder(512);
+        int len = GetWindowText(hWnd, sb, sb.Capacity);
+        if (len <= 0) return true;
+        string wTitle = sb.ToString().Trim();
+        if (string.IsNullOrEmpty(wTitle)) return true;
+        if (
+          wTitle == "Program Manager" ||
+          wTitle == "Windows Input Experience" ||
+          wTitle == "Default IME" ||
+          wTitle == "MSCTFIME UI" ||
+          wTitle == "NVIDIA GeForce Overlay" ||
+          wTitle == "Fushi Floating Ball" ||
+          wTitle == "Nahimic" ||
+          wTitle.StartsWith("data:text/html")
+        ) {
+          return true;
+        }
+
+        uint wPid = 0;
+        GetWindowThreadProcessId(hWnd, out wPid);
+        string wProc = SafeGetProcessName(wPid);
+        if (string.IsNullOrEmpty(wProc)) return true;
+
+        var info = new WinInfo();
+        info.hwnd = hWnd.ToInt64();
+        info.pid = wPid;
+        info.process = wProc;
+        info.title = wTitle;
+        info.isForeground = (hWnd == fg);
+        openList.Add(info);
+        return true;
+      }, IntPtr.Zero);
+
+      if (fg == IntPtr.Zero && openList.Count > 0) {
+        fgProc = openList[0].process;
+        fgTitle = openList[0].title;
+      }
+
+      LASTINPUTINFO lii = new LASTINPUTINFO();
+      lii.cbSize = (uint)Marshal.SizeOf(typeof(LASTINPUTINFO));
+      uint idleSec = 0;
+      if (GetLastInputInfo(ref lii)) {
+        uint elapsedMs = unchecked((uint)Environment.TickCount - lii.dwTime);
+        idleSec = elapsedMs / 1000;
+      }
+
+      if (desk != IntPtr.Zero) {
+        CloseDesktop(desk);
+      }
+
+      var s = new SnapInfo();
+      s.process = fgProc;
+      s.title = fgTitle;
+      s.idleSeconds = idleSec;
+      s.openWindows = openList;
+      snapshot = s;
+    });
+    worker.Start();
+    worker.Join(1500);
+    return snapshot;
   }
 }
 "@
@@ -334,7 +793,9 @@ Add-Type -TypeDefinition $code -Language CSharp
 while ($true) {
   try {
     $snap = [Win32Tracker]::GetSnapshot()
-    [Console]::WriteLine(($snap | ConvertTo-Json -Compress))
+    if ($null -ne $snap) {
+      [Console]::WriteLine(($snap | ConvertTo-Json -Compress -Depth 4))
+    }
   } catch {}
   Start-Sleep -Seconds 2
 }
@@ -343,7 +804,14 @@ while ($true) {
   const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
   const child = spawn(
     'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-EncodedCommand',
+      encoded,
+    ],
     { windowsHide: true }
   );
 
@@ -371,21 +839,32 @@ while ($true) {
 
   child.on('exit', (code) => {
     if (code !== null && code !== 0) {
-      console.error(`[Watcher Exited] code=${code}`);
+      console.error(`[Watcher Exited] code=${code}, restarting in 3s...`);
+      setTimeout(() => {
+        watcher = startWindowsWatcher();
+      }, 3000);
     }
   });
 
   return child;
 }
 
-function sendJson(res, statusCode, data) {
-  res.writeHead(statusCode, {
+function getCorsHeaders(req) {
+  const origin = req?.headers?.origin || '*';
+  return {
     'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Anki-Url',
+    'Access-Control-Allow-Headers':
+      req?.headers?.['access-control-request-headers'] ||
+      'Content-Type, X-Anki-Url',
     'Access-Control-Allow-Private-Network': 'true',
-  });
+  };
+}
+
+function sendJson(req, res, statusCode, data) {
+  res.writeHead(statusCode, getCorsHeaders(req));
   res.end(JSON.stringify(data));
 }
 
@@ -420,7 +899,7 @@ function resolveAnkiUrl(headerVal) {
   return fallback;
 }
 
-function proxyToAnki(targetUrl, bodyStr, res) {
+function proxyToAnki(req, targetUrl, bodyStr, res) {
   const parsed = new URL(targetUrl);
   const proxyReq = http.request(
     {
@@ -432,7 +911,7 @@ function proxyToAnki(targetUrl, bodyStr, res) {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(bodyStr, 'utf8'),
       },
-      timeout: 2500,
+      timeout: 3000,
     },
     (proxyRes) => {
       let data = '';
@@ -440,13 +919,7 @@ function proxyToAnki(targetUrl, bodyStr, res) {
         data += chunk.toString('utf8');
       });
       proxyRes.on('end', () => {
-        res.writeHead(proxyRes.statusCode || 200, {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, X-Anki-Url',
-          'Access-Control-Allow-Private-Network': 'true',
-        });
+        res.writeHead(proxyRes.statusCode || 200, getCorsHeaders(req));
         res.end(data);
       });
     }
@@ -454,11 +927,14 @@ function proxyToAnki(targetUrl, bodyStr, res) {
 
   proxyReq.on('timeout', () => {
     proxyReq.destroy();
-    sendJson(res, 504, { result: null, error: 'Koneksi ke AnkiConnect timeout' });
+    sendJson(req, res, 504, {
+      result: null,
+      error: 'Koneksi ke AnkiConnect timeout',
+    });
   });
 
   proxyReq.on('error', () => {
-    sendJson(res, 502, {
+    sendJson(req, res, 502, {
       result: null,
       error: 'Anki / AnkiConnect tidak merespons di port tersebut',
     });
@@ -470,12 +946,7 @@ function proxyToAnki(targetUrl, bodyStr, res) {
 
 const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, X-Anki-Url',
-      'Access-Control-Allow-Private-Network': 'true',
-    });
+    res.writeHead(204, getCorsHeaders(req));
     res.end();
     return;
   }
@@ -483,9 +954,9 @@ const server = http.createServer(async (req, res) => {
   const reqPath = (req.url || '/').split('?')[0];
 
   if (req.method === 'GET' && reqPath === '/health') {
-    sendJson(res, 200, {
+    sendJson(req, res, 200, {
       ok: true,
-      version: '1.0.0',
+      version: '2.0.0',
       deviceName: DEVICE_NAME,
       platform: process.platform,
       trackingEnabled,
@@ -496,13 +967,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && reqPath === '/status') {
-    sendJson(res, 200, {
+    sendJson(req, res, 200, {
       ok: true,
+      version: '2.0.0',
       deviceName: DEVICE_NAME,
       trackingEnabled,
       uptimeSeconds: Math.round((Date.now() - STARTED_AT) / 1000),
       config,
       lastWindow,
+      openWindows,
+      pinnedTarget,
       activeSession,
       pendingCount: pendingSessions.length,
       pending: pendingSessions,
@@ -523,13 +997,137 @@ const server = http.createServer(async (req, res) => {
     if (!trackingEnabled && activeSession) {
       commitActiveSession(false);
     }
-    sendJson(res, 200, { ok: true, trackingEnabled });
+    sendJson(req, res, 200, { ok: true, trackingEnabled });
+    return;
+  }
+
+  if (req.method === 'POST' && reqPath === '/pin-window') {
+    const raw = await readRequestBody(req);
+    try {
+      const parsed = JSON.parse(raw || '{}');
+      if (parsed.clear) {
+        pinnedTarget = null;
+        catalogHint = null;
+        sendJson(req, res, 200, { ok: true, pinnedTarget: null });
+        return;
+      }
+
+      const proc = String(parsed.process || '').trim();
+      const rawTitle = String(parsed.title || proc || 'Sesi Immersion').trim();
+      const cat = String(parsed.category || 'study').trim();
+      const display = cleanDisplayTitle(rawTitle, proc, rawTitle);
+
+      pinnedTarget = {
+        hwnd: Number(parsed.hwnd || 0) || undefined,
+        process: proc,
+        title: rawTitle,
+        customTitle: parsed.customTitle ? String(parsed.customTitle).trim() : display,
+        category: cat,
+        ruleName: `Pinned: ${proc || display}`,
+        fromCatalog: Boolean(parsed.fromCatalog),
+      };
+
+      // Switch or start active session immediately so user sees instant recording
+      if (
+        activeSession &&
+        (activeSession.category !== cat || activeSession.title !== display)
+      ) {
+        commitActiveSession(false);
+      }
+
+      trackingEnabled = true;
+      if (!activeSession) {
+        const nowIso = new Date().toISOString();
+        activeSession = {
+          title: pinnedTarget.customTitle || display,
+          category: cat,
+          process: proc || 'Windows',
+          ruleId: 'rule-pinned-manual',
+          ruleName: pinnedTarget.ruleName,
+          trackingSource: parsed.fromCatalog ? 'catalog' : 'pinned',
+          startedAt: nowIso,
+          lastSeenAt: nowIso,
+          activeSeconds: 1,
+        };
+      }
+
+      sendJson(req, res, 200, {
+        ok: true,
+        pinnedTarget,
+        activeSession,
+      });
+    } catch {
+      sendJson(req, res, 400, { ok: false, error: 'Payload tidak valid' });
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && reqPath === '/hint') {
+    const raw = await readRequestBody(req);
+    try {
+      const parsed = JSON.parse(raw || '{}');
+      const title = String(parsed.title || '').trim();
+      const category = String(parsed.category || 'anime').trim();
+      if (!title) {
+        sendJson(req, res, 400, { ok: false, error: 'Judul diperlukan' });
+        return;
+      }
+
+      catalogHint = {
+        title,
+        category,
+        url: String(parsed.url || ''),
+        expiresAt: Date.now() + 2 * 3600 * 1000,
+      };
+
+      pinnedTarget = {
+        process: '',
+        title,
+        customTitle: title,
+        category,
+        ruleName: 'Katalog Media (Direct Track)',
+        fromCatalog: true,
+      };
+
+      if (
+        activeSession &&
+        (activeSession.title !== title || activeSession.category !== category)
+      ) {
+        commitActiveSession(false);
+      }
+
+      trackingEnabled = true;
+      if (!activeSession) {
+        const nowIso = new Date().toISOString();
+        activeSession = {
+          title,
+          category,
+          process: 'Browser (Katalog)',
+          ruleId: 'rule-catalog-launch',
+          ruleName: 'Katalog Media (Direct Track)',
+          trackingSource: 'catalog',
+          startedAt: nowIso,
+          lastSeenAt: nowIso,
+          activeSeconds: 1,
+        };
+      }
+
+      sendJson(req, res, 200, {
+        ok: true,
+        catalogHint,
+        activeSession,
+      });
+    } catch {
+      sendJson(req, res, 400, { ok: false, error: 'Payload tidak valid' });
+    }
     return;
   }
 
   if (req.method === 'POST' && reqPath === '/flush') {
     const committed = commitActiveSession(true);
-    sendJson(res, 200, {
+    pinnedTarget = null;
+    catalogHint = null;
+    sendJson(req, res, 200, {
       ok: true,
       committed,
       pending: pendingSessions,
@@ -538,7 +1136,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && reqPath === '/pending') {
-    sendJson(res, 200, { ok: true, pending: pendingSessions });
+    sendJson(req, res, 200, { ok: true, pending: pendingSessions });
     return;
   }
 
@@ -554,12 +1152,12 @@ const server = http.createServer(async (req, res) => {
     const ackSet = new Set(ids);
     pendingSessions = pendingSessions.filter((s) => !ackSet.has(s.id));
     writeJsonSafe(PENDING_FILE, pendingSessions);
-    sendJson(res, 200, { ok: true, remaining: pendingSessions.length });
+    sendJson(req, res, 200, { ok: true, remaining: pendingSessions.length });
     return;
   }
 
   if (req.method === 'GET' && reqPath === '/rules') {
-    sendJson(res, 200, { ok: true, config });
+    sendJson(req, res, 200, { ok: true, config });
     return;
   }
 
@@ -569,7 +1167,7 @@ const server = http.createServer(async (req, res) => {
       const incoming = JSON.parse(raw || '{}');
       config = {
         idleThresholdSeconds: Math.max(
-          30,
+          60,
           Number(incoming.idleThresholdSeconds ?? config.idleThresholdSeconds)
         ),
         minSessionMinutes: Math.max(
@@ -577,17 +1175,21 @@ const server = http.createServer(async (req, res) => {
           Number(incoming.minSessionMinutes ?? config.minSessionMinutes)
         ),
         inactivityCommitSeconds: Math.max(
-          10,
+          15,
           Number(
             incoming.inactivityCommitSeconds ?? config.inactivityCommitSeconds
           )
         ),
+        trackBackgroundWindows:
+          typeof incoming.trackBackgroundWindows === 'boolean'
+            ? incoming.trackBackgroundWindows
+            : (config.trackBackgroundWindows ?? true),
         rules: Array.isArray(incoming.rules) ? incoming.rules : config.rules,
       };
       writeJsonSafe(RULES_FILE, config);
-      sendJson(res, 200, { ok: true, config });
+      sendJson(req, res, 200, { ok: true, config });
     } catch {
-      sendJson(res, 400, { ok: false, error: 'Format JSON tidak valid' });
+      sendJson(req, res, 400, { ok: false, error: 'Format JSON tidak valid' });
     }
     return;
   }
@@ -595,18 +1197,28 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && reqPath === '/anki') {
     const raw = await readRequestBody(req);
     const targetUrl = resolveAnkiUrl(req.headers['x-anki-url']);
-    proxyToAnki(targetUrl, raw || '{}', res);
+    proxyToAnki(req, targetUrl, raw || '{}', res);
     return;
   }
 
-  sendJson(res, 404, { ok: false, error: 'Endpoint tidak ditemukan' });
+  sendJson(req, res, 404, { ok: false, error: 'Endpoint tidak ditemukan' });
 });
 
-const watcher = startWindowsWatcher();
+let watcher = startWindowsWatcher();
+
+server.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    console.log(
+      `[ImmersionTrack] Companion Agent sudah berjalan di http://${HOST}:${PORT}`
+    );
+    process.exit(0);
+  }
+  console.error('[Server Error]', err);
+});
 
 server.listen(PORT, HOST, () => {
   console.log(`==============================================`);
-  console.log(` ImmersionTrack Background Agent aktif!`);
+  console.log(` ImmersionTrack Background Agent v2.0 aktif!`);
   console.log(` Device : ${DEVICE_NAME}`);
   console.log(` API    : http://${HOST}:${PORT}`);
   console.log(` Rules  : ${RULES_FILE}`);

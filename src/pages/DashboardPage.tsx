@@ -262,7 +262,7 @@ export const DashboardPage: React.FC = () => {
     void pollCompanion();
     const timer = setInterval(() => {
       void pollCompanion();
-    }, 8000);
+    }, 2500);
     return () => clearInterval(timer);
   }, [user, pollCompanion]);
 

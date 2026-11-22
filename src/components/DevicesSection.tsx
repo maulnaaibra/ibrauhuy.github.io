@@ -5,9 +5,13 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Crosshair,
   Download,
   Laptop,
+  Layers,
   Pause,
+  Pin,
+  PinOff,
   Play,
   Plus,
   RefreshCw,
@@ -29,10 +33,13 @@ import {
 import {
   ackCompanionSessions,
   flushCompanionSession,
+  pinCompanionWindow,
   saveCompanionConfig,
   toggleCompanionTracking,
+  unpinCompanionWindow,
   type CompanionConfig,
   type CompanionStatus,
+  type OpenWindowItem,
   type PendingTrackedSession,
   type TrackerRule,
 } from '../lib/companionClient';
@@ -85,6 +92,14 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
   );
   const [busyAction, setBusyAction] = useState(false);
 
+  // Smooth 1-second client-side timer synced with companionStatus.activeSession
+  const [liveElapsedSec, setLiveElapsedSec] = useState<number>(
+    companionStatus?.activeSession?.activeSeconds ?? 0
+  );
+  const [windowCategoryOverrides, setWindowCategoryOverrides] = useState<
+    Record<string, PrimaryMediaCategory>
+  >({});
+
   const [newRuleName, setNewRuleName] = useState('');
   const [newRuleMatchType, setNewRuleMatchType] = useState<'process' | 'title'>(
     'title'
@@ -93,7 +108,8 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
   const [newRuleCategory, setNewRuleCategory] =
     useState<PrimaryMediaCategory>('anime');
 
-  const [ankiSettings, setAnkiSettings] = useState<AnkiSettings>(loadAnkiSettings);
+  const [ankiSettings, setAnkiSettings] =
+    useState<AnkiSettings>(loadAnkiSettings);
   const [ankiCheck, setAnkiCheck] = useState<AnkiConnectionCheck | null>(null);
   const [ankiStats, setAnkiStats] = useState<AnkiTodayStats | null>(null);
   const [checkingAnki, setCheckingAnki] = useState(false);
@@ -113,9 +129,40 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
       window.removeEventListener('beforeinstallprompt', onBeforeInstall);
   }, []);
 
+  useEffect(() => {
+    const remoteSec = companionStatus?.activeSession?.activeSeconds ?? 0;
+    setLiveElapsedSec(remoteSec);
+  }, [
+    companionStatus?.activeSession?.activeSeconds,
+    companionStatus?.activeSession?.title,
+    companionStatus?.activeSession?.startedAt,
+  ]);
+
+  useEffect(() => {
+    if (
+      !companionStatus?.ok ||
+      !companionStatus.trackingEnabled ||
+      !companionStatus.activeSession
+    ) {
+      return;
+    }
+    const timer = setInterval(() => {
+      setLiveElapsedSec((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [
+    companionStatus?.ok,
+    companionStatus?.trackingEnabled,
+    companionStatus?.activeSession,
+  ]);
+
   const formatDurationSec = (sec: number) => {
-    const mins = Math.floor(sec / 60);
+    const hrs = Math.floor(sec / 3600);
+    const mins = Math.floor((sec % 3600) / 60);
     const rem = sec % 60;
+    if (hrs > 0) {
+      return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
+    }
     return `${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
   };
 
@@ -158,7 +205,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
         );
         toast.success('Sesi aktif berhasil disimpan ke riwayat!');
       } else {
-        toast('Belum ada durasi minimal 10 detik pada sesi aktif.');
+        toast.error('Tidak ada sesi aktif untuk disimpan.');
       }
       await onRefreshCompanion();
     } catch {
@@ -187,12 +234,81 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
     }
   };
 
+  const handlePinWindow = async (win: OpenWindowItem) => {
+    const key = `${win.process}::${win.hwnd}`;
+    const chosenCat =
+      windowCategoryOverrides[key] ?? win.matchedCategory ?? 'study';
+    setBusyAction(true);
+    try {
+      await pinCompanionWindow(companionUrl, {
+        hwnd: win.hwnd,
+        process: win.process,
+        title: win.title,
+        category: chosenCat,
+      });
+      await onRefreshCompanion();
+      toast.success(`Mulai merekam jendela: ${win.title} (${win.process})`);
+    } catch {
+      toast.error('Gagal mengunci jendela untuk tracking');
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const handleUnpinWindow = async () => {
+    setBusyAction(true);
+    try {
+      await unpinCompanionWindow(companionUrl);
+      await onRefreshCompanion();
+      toast.success('Kembali ke mode deteksi otomatis');
+    } catch {
+      toast.error('Gagal melepas kunci jendela');
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const handleQuickCreateRuleFromWindow = async (win: OpenWindowItem) => {
+    if (!companionStatus) return;
+    const key = `${win.process}::${win.hwnd}`;
+    const chosenCat =
+      windowCategoryOverrides[key] ?? win.matchedCategory ?? 'study';
+    const isBrowser = /^(chrome|msedge|brave|firefox|opera|vivaldi)$/i.test(
+      win.process
+    );
+    const cleanTitle = win.title
+      .replace(
+        /\s+[-—|]\s+(Google Chrome|Microsoft Edge|Mozilla Firefox|Brave|Opera)$/i,
+        ''
+      )
+      .trim();
+    const escapedPattern = isBrowser
+      ? cleanTitle
+          .slice(0, 28)
+          .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      : `^${win.process.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
+
+    const added: TrackerRule = {
+      id: `rule-${Date.now()}`,
+      name: isBrowser ? `Web: ${cleanTitle.slice(0, 30)}` : `App: ${win.process}`,
+      enabled: true,
+      matchType: isBrowser ? 'title' : 'process',
+      pattern: escapedPattern,
+      category: chosenCat,
+    };
+
+    await updateRemoteConfig({
+      ...companionStatus.config,
+      rules: [added, ...companionStatus.config.rules],
+    });
+  };
+
   const updateRemoteConfig = async (nextConfig: CompanionConfig) => {
     setBusyAction(true);
     try {
       await saveCompanionConfig(companionUrl, nextConfig);
       await onRefreshCompanion();
-      toast.success('Aturan deteksi PC diperbarui');
+      toast.success('Pengaturan & aturan deteksi PC diperbarui');
     } catch {
       toast.error('Gagal menyimpan aturan ke Companion Agent');
     } finally {
@@ -200,12 +316,20 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
     }
   };
 
+  const handleToggleBackgroundMode = (enabled: boolean) => {
+    if (!companionStatus) return;
+    void updateRemoteConfig({
+      ...companionStatus.config,
+      trackBackgroundWindows: enabled,
+    });
+  };
+
   const handleToggleRule = (ruleId: string) => {
     if (!companionStatus) return;
     const nextRules = companionStatus.config.rules.map((r) =>
       r.id === ruleId ? { ...r, enabled: !r.enabled } : r
     );
-    updateRemoteConfig({ ...companionStatus.config, rules: nextRules });
+    void updateRemoteConfig({ ...companionStatus.config, rules: nextRules });
   };
 
   const handleDeleteRule = (ruleId: string) => {
@@ -213,12 +337,13 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
     const nextRules = companionStatus.config.rules.filter(
       (r) => r.id !== ruleId
     );
-    updateRemoteConfig({ ...companionStatus.config, rules: nextRules });
+    void updateRemoteConfig({ ...companionStatus.config, rules: nextRules });
   };
 
   const handleAddRule = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!companionStatus || !newRuleName.trim() || !newRulePattern.trim()) return;
+    if (!companionStatus || !newRuleName.trim() || !newRulePattern.trim())
+      return;
     const added: TrackerRule = {
       id: `rule-${Date.now()}`,
       name: newRuleName.trim(),
@@ -227,12 +352,46 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
       pattern: newRulePattern.trim(),
       category: newRuleCategory,
     };
-    updateRemoteConfig({
+    void updateRemoteConfig({
       ...companionStatus.config,
       rules: [added, ...companionStatus.config.rules],
     });
     setNewRuleName('');
     setNewRulePattern('');
+  };
+
+  const handleDownloadQuickLauncher = () => {
+    const batContent = [
+      '@echo off',
+      'title ImmersionTrack Windows Companion Auto-Starter',
+      'echo ========================================================',
+      'echo   Menyiapkan ImmersionTrack Windows Companion Agent v2.0',
+      'echo ========================================================',
+      'set "REPO_AGENT=C:\\Users\\mmaul\\immersion-vite\\companion\\tracker-agent.mjs"',
+      'set "REPO_VBS=C:\\Users\\mmaul\\immersion-vite\\companion\\start-hidden.vbs"',
+      'set "STARTUP_DIR=%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"',
+      'if exist "%REPO_VBS%" (',
+      '  copy /Y "%REPO_VBS%" "%STARTUP_DIR%\\ImmersionTrack-Companion.vbs" >nul',
+      '  wscript.exe "%REPO_VBS%"',
+      '  echo [OK] Companion Agent dijalankan dan didaftarkan ke Windows Startup!',
+      ') else (',
+      '  echo Pastikan folder proyek C:\\Users\\mmaul\\immersion-vite tersedia.',
+      ')',
+      'timeout /t 3',
+    ].join('\r\n');
+
+    const blob = new Blob([batContent], { type: 'application/bat' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ImmersionTrack-Companion-Start.bat';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success(
+      'File ImmersionTrack-Companion-Start.bat diunduh! Klik ganda file tersebut untuk menyalakan Agent.'
+    );
   };
 
   const updateAnkiSetting = (patch: Partial<AnkiSettings>) => {
@@ -317,6 +476,39 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
   const activeMeta = activeSession
     ? getCategoryMeta(activeSession.category)
     : null;
+  const openWindows = companionStatus?.openWindows ?? [];
+  const pinnedTarget = companionStatus?.pinnedTarget ?? null;
+
+  const getTrackingSourceBadge = (source?: string) => {
+    switch (source) {
+      case 'foreground':
+        return {
+          label: 'Aktif di Foreground',
+          cls: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        };
+      case 'background':
+        return {
+          label: 'Terdeteksi di Background',
+          cls: 'bg-sky-50 text-sky-700 border-sky-200',
+        };
+      case 'pinned':
+        return {
+          label: 'Dikunci Manual',
+          cls: 'bg-amber-50 text-amber-800 border-amber-200',
+        };
+      case 'catalog':
+        return {
+          label: 'Dari Katalog Media',
+          cls: 'bg-rose-50 text-rose-700 border-rose-200',
+        };
+      default:
+        return null;
+    }
+  };
+
+  const sourceBadge = getTrackingSourceBadge(
+    activeSession?.trackingSource ?? companionStatus?.lastWindow?.trackingSource
+  );
 
   return (
     <div className="space-y-6">
@@ -340,7 +532,8 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                 {connected ? (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Terhubung • {companionStatus?.deviceName}
+                    Terhubung • {companionStatus?.deviceName} (v
+                    {companionStatus?.version ?? '2.0'})
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-[11px] font-medium text-slate-600">
@@ -350,78 +543,131 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                 )}
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                Otomatis deteksi aplikasi/media aktif di Windows (MPV, VLC, Anki,
-                YouTube, Netflix, Manga, VN) walaupun browser ditutup.
+                Otomatis mendeteksi aplikasi & jendela immersion di Windows
+                (Fushi, Anki, MPV, VLC, Bettermelon, Epub.moe, Cinejoy,
+                YouTube, MangaDex, Visual Novel) di foreground maupun
+                background.
               </p>
             </div>
           </div>
 
-          <form
-            onSubmit={handleApplyUrl}
-            className="flex items-center gap-2 flex-wrap"
-          >
-            <input
-              type="text"
-              value={urlDraft}
-              onChange={(e) => setUrlDraft(e.target.value)}
-              aria-label="URL Companion Agent"
-              className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 w-52 focus:outline-none focus:border-red-500 focus:bg-white"
-            />
-            <button
-              type="submit"
-              disabled={companionChecking}
-              className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 inline-flex items-center gap-1.5 cursor-pointer"
+          <div className="flex items-center gap-2 flex-wrap">
+            {!connected && (
+              <button
+                type="button"
+                onClick={handleDownloadQuickLauncher}
+                className="btn-crimson px-3.5 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download Starter (.BAT)
+              </button>
+            )}
+            <form
+              onSubmit={handleApplyUrl}
+              className="flex items-center gap-2 flex-wrap"
             >
-              <RefreshCw
-                className={`w-3.5 h-3.5 ${
-                  companionChecking ? 'animate-spin' : ''
-                }`}
+              <input
+                type="text"
+                value={urlDraft}
+                onChange={(e) => setUrlDraft(e.target.value)}
+                aria-label="URL Companion Agent"
+                className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 w-48 focus:outline-none focus:border-red-500 focus:bg-white"
               />
-              Cek Koneksi
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={companionChecking}
+                className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${
+                    companionChecking ? 'animate-spin' : ''
+                  }`}
+                />
+                Cek Koneksi
+              </button>
+            </form>
+          </div>
         </div>
 
         {connected && companionStatus && (
           <div className="space-y-5 pt-3 border-t border-slate-100">
             <div className="grid lg:grid-cols-2 gap-4">
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
-                <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center justify-between text-xs gap-2 flex-wrap">
                   <span className="font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                     <Activity className="w-3.5 h-3.5 text-red-600" />
-                    Jendela Aktif Saat Ini
+                    Target Jendela Terdeteksi
                   </span>
-                  <span className="font-mono text-slate-400">
-                    Idle: {companionStatus.lastWindow.idleSeconds}d
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {sourceBadge && (
+                      <span
+                        className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold ${sourceBadge.cls}`}
+                      >
+                        {sourceBadge.label}
+                      </span>
+                    )}
+                    <span className="font-mono text-slate-400">
+                      Idle: {companionStatus.lastWindow.idleSeconds}d
+                    </span>
+                  </div>
                 </div>
-                <div className="text-sm font-medium text-slate-900 truncate">
+                <div className="text-sm font-semibold text-slate-900 truncate">
                   {companionStatus.lastWindow.title || '(Tidak ada judul)'}
                 </div>
-                <div className="flex items-center gap-2 text-xs text-slate-500">
+                <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap">
                   <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 font-mono text-slate-700">
                     {companionStatus.lastWindow.process || 'unknown'}
                   </span>
-                  <span>
+                  <span
+                    className={
+                      companionStatus.lastWindow.matchedRule
+                        ? 'text-emerald-700 font-medium'
+                        : 'text-slate-500'
+                    }
+                  >
                     {companionStatus.lastWindow.matchedRule
-                      ? `Cocok: ${companionStatus.lastWindow.matchedRule}`
+                      ? `✓ Cocok: ${companionStatus.lastWindow.matchedRule}`
                       : 'Tidak cocok aturan immersion'}
                   </span>
                 </div>
+                {companionStatus.lastWindow.foregroundTitle &&
+                  companionStatus.lastWindow.foregroundTitle !==
+                    companionStatus.lastWindow.title && (
+                    <div className="text-[11px] text-slate-400 truncate pt-1 border-t border-slate-200/60">
+                      Layar Depan (Foreground):{' '}
+                      <span className="font-mono text-slate-600">
+                        {companionStatus.lastWindow.foregroundProcess}
+                      </span>{' '}
+                      — {companionStatus.lastWindow.foregroundTitle}
+                    </div>
+                  )}
               </div>
 
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col justify-between gap-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                     Sesi Berjalan di Background
                   </span>
-                  {activeSession && activeMeta ? (
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-700 font-medium">
-                      {activeMeta.label}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-slate-400">Standby</span>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {pinnedTarget && (
+                      <button
+                        type="button"
+                        disabled={busyAction}
+                        onClick={handleUnpinWindow}
+                        className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-900 font-semibold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <PinOff className="w-3 h-3" />
+                        Lepas Kunci
+                      </button>
+                    )}
+                    {activeSession && activeMeta ? (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-700 font-medium">
+                        {activeMeta.label}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-slate-400">Standby</span>
+                    )}
+                  </div>
                 </div>
 
                 {activeSession ? (
@@ -430,18 +676,21 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                       <div className="text-sm font-semibold text-slate-900 truncate">
                         {activeSession.title}
                       </div>
-                      <div className="text-xs font-mono text-red-600 mt-0.5">
-                        {activeMeta?.label ?? activeSession.category} • Sedang direkam
+                      <div className="text-xs font-mono text-red-600 mt-0.5 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-red-600 animate-ping" />
+                        {activeMeta?.label ?? activeSession.category} •{' '}
+                        {activeSession.process} • Sedang direkam
                       </div>
                     </div>
                     <div className="text-2xl font-mono font-bold text-emerald-600 tabular-nums shrink-0">
-                      {formatDurationSec(activeSession.activeSeconds)}
+                      {formatDurationSec(liveElapsedSec)}
                     </div>
                   </div>
                 ) : (
                   <p className="text-xs text-slate-500">
-                    Buka MPV, VLC, Anki, atau tonton/baca konten sesuai aturan di
-                    bawah—agent akan mulai menghitung otomatis.
+                    Buka Fushi, Anki, MPV, VLC, atau pilih salah satu jendela
+                    terbuka di bawah untuk mulai menghitung waktu secara
+                    otomatis.
                   </p>
                 )}
 
@@ -475,7 +724,8 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                       className="btn-crimson px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                     >
                       <Save className="w-3.5 h-3.5" />
-                      Simpan Sesi Sekarang
+                      Simpan Sesi Sekarang (
+                      {Math.max(1, Math.round(liveElapsedSec / 60))}m)
                     </button>
                   )}
 
@@ -494,22 +744,42 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
             </div>
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
-              <label className="flex items-center gap-2.5 cursor-pointer text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={companionAutoSync}
-                  onChange={(e) => onToggleCompanionAutoSync(e.target.checked)}
-                  className="accent-red-600 w-4 h-4 rounded"
-                />
-                <span>
-                  <strong>Auto-Sync otomatis</strong> setiap kali sesi dari PC
-                  selesai
-                </span>
-              </label>
+              <div className="flex flex-wrap items-center gap-4">
+                <label className="flex items-center gap-2 cursor-pointer text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={companionAutoSync}
+                    onChange={(e) =>
+                      onToggleCompanionAutoSync(e.target.checked)
+                    }
+                    className="accent-red-600 w-4 h-4 rounded"
+                  />
+                  <span>
+                    <strong>Auto-Sync ke Log</strong> saat sesi selesai
+                  </span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={
+                      companionStatus.config.trackBackgroundWindows !== false
+                    }
+                    onChange={(e) =>
+                      handleToggleBackgroundMode(e.target.checked)
+                    }
+                    className="accent-red-600 w-4 h-4 rounded"
+                  />
+                  <span>
+                    <strong>Track Aplikasi Immersion di Background</strong>{' '}
+                    (Fushi, Anki, MPV, Browser)
+                  </span>
+                </label>
+              </div>
 
               <div className="flex items-center gap-3 text-slate-500">
                 <span>
-                  Idle pause:{' '}
+                  Batas Idle:{' '}
                   <strong className="text-slate-900">
                     {Math.round(
                       companionStatus.config.idleThresholdSeconds / 60
@@ -526,6 +796,135 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
               </div>
             </div>
 
+            {/* Live Open Windows Picker */}
+            {openWindows.length > 0 && (
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-red-600" />
+                    Jendela Windows yang Sedang Terbuka ({openWindows.length})
+                  </h4>
+                  <span className="text-[11px] text-slate-400">
+                    Klik &ldquo;Track Jendela Ini&rdquo; untuk langsung merekam
+                    aplikasi mana pun
+                  </span>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
+                  {openWindows.map((win) => {
+                    const key = `${win.process}::${win.hwnd}`;
+                    const selectedCat =
+                      windowCategoryOverrides[key] ??
+                      win.matchedCategory ??
+                      'study';
+                    return (
+                      <div
+                        key={key}
+                        className={`p-3 rounded-xl border flex flex-col justify-between gap-2 transition ${
+                          win.isTracked
+                            ? 'bg-emerald-50/70 border-emerald-300'
+                            : win.matchedRule
+                              ? 'bg-white border-slate-200'
+                              : 'bg-slate-50/70 border-slate-200/70'
+                        }`}
+                      >
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="px-2 py-0.5 rounded bg-slate-900 text-white font-mono text-[10px] font-semibold shrink-0">
+                                {win.process}
+                              </span>
+                              {win.isForeground && (
+                                <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-semibold shrink-0">
+                                  Foreground
+                                </span>
+                              )}
+                              {win.isTracked && (
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-semibold shrink-0 inline-flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                                  Direkam
+                                </span>
+                              )}
+                            </div>
+                            {win.matchedRule && (
+                              <span className="text-[10px] font-semibold text-emerald-700 truncate">
+                                ✓ {win.matchedRule}
+                              </span>
+                            )}
+                          </div>
+                          <div
+                            className="text-xs font-medium text-slate-800 truncate"
+                            title={win.title}
+                          >
+                            {win.title}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-slate-200/60">
+                          <select
+                            value={selectedCat}
+                            onChange={(e) =>
+                              setWindowCategoryOverrides((prev) => ({
+                                ...prev,
+                                [key]: e.target.value as PrimaryMediaCategory,
+                              }))
+                            }
+                            aria-label={`Kategori untuk ${win.process}`}
+                            className="px-2 py-1 rounded-md bg-white border border-slate-200 text-[11px] text-slate-700 focus:outline-none focus:border-red-500"
+                          >
+                            {PRIMARY_CATEGORIES.map((cat) => (
+                              <option key={cat} value={cat}>
+                                {CATEGORY_META[cat].shortLabel}
+                              </option>
+                            ))}
+                          </select>
+
+                          <div className="flex items-center gap-1">
+                            {!win.matchedRule && (
+                              <button
+                                type="button"
+                                disabled={busyAction}
+                                onClick={() =>
+                                  void handleQuickCreateRuleFromWindow(win)
+                                }
+                                className="px-2 py-1 rounded-md bg-white border border-slate-200 hover:border-slate-300 text-[11px] font-semibold text-slate-700 inline-flex items-center gap-1 cursor-pointer"
+                                title="Simpan sebagai aturan otomatis"
+                              >
+                                <Plus className="w-3 h-3" />
+                                Aturan
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              disabled={busyAction}
+                              onClick={() => void handlePinWindow(win)}
+                              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer ${
+                                win.isTracked
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'btn-crimson'
+                              }`}
+                            >
+                              {win.isTracked ? (
+                                <>
+                                  <Crosshair className="w-3 h-3" />
+                                  Sedang Direkam
+                                </>
+                              ) : (
+                                <>
+                                  <Pin className="w-3 h-3" />
+                                  Track Jendela Ini
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-3">
               <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Aturan Deteksi Aplikasi & Judul (
@@ -539,7 +938,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="Nama (mis. Bilibili)"
+                  placeholder="Nama (mis. Bilibili / Fushi)"
                   value={newRuleName}
                   onChange={(e) => setNewRuleName(e.target.value)}
                   className="sm:col-span-3 px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-red-500"
@@ -557,7 +956,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="Kata kunci / regex (mis. bilibili|anime)"
+                  placeholder="Kata kunci / regex (mis. fushi|anime)"
                   value={newRulePattern}
                   onChange={(e) => setNewRulePattern(e.target.value)}
                   className="sm:col-span-3 px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500"
@@ -656,25 +1055,26 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
           {showCompanionGuide && (
             <div className="mt-3 p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 space-y-2.5">
               <p>
-                1. Jalankan lewat terminal di folder proyek:{' '}
+                1. Klik tombol <strong>Download Starter (.BAT)</strong> di atas
+                atau klik ganda{' '}
+                <code className="px-2 py-0.5 rounded bg-white border border-slate-200 font-mono text-slate-800">
+                  companion\start-hidden.vbs
+                </code>{' '}
+                agar berjalan diam-diam di background Windows.
+              </p>
+              <p>
+                2. Atau jalankan lewat terminal di folder proyek:{' '}
                 <code className="px-2 py-0.5 rounded bg-white border border-slate-200 font-mono text-red-700">
                   npm run tracker
                 </code>
               </p>
               <p>
-                2. Atau klik ganda{' '}
-                <code className="px-2 py-0.5 rounded bg-white border border-slate-200 font-mono text-slate-800">
-                  companion\start-hidden.vbs
-                </code>{' '}
-                agar berjalan diam-diam di background tanpa jendela CMD.
-              </p>
-              <p>
-                3. Supaya otomatis jalan saat laptop menyala: tekan{' '}
-                <code className="font-mono text-slate-800">Win + R</code> →
-                ketik{' '}
-                <code className="font-mono text-slate-800">shell:startup</code> →
-                taruh shortcut{' '}
-                <code className="font-mono">start-hidden.vbs</code> di sana.
+                3. Agent v2.0 sudah otomatis mendeteksi aplikasi seperti{' '}
+                <strong>Fushi</strong>, <strong>Anki</strong>,{' '}
+                <strong>MPV / VLC</strong>, <strong>Bettermelon</strong>,{' '}
+                <strong>Epub.moe</strong>, <strong>Cinejoy</strong>,{' '}
+                <strong>MangaDex</strong>, dan <strong>YouTube</strong> baik di
+                jendela depan maupun saat sedang dibuka di background.
               </p>
             </div>
           )}
@@ -873,8 +1273,8 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
             </div>
             <p>
               Atau langsung buka{' '}
-              <strong className="text-red-700">nihongotracker.my.id</strong> dari
-              HP Anda, atau jalankan lokal dengan:
+              <strong className="text-red-700">nihongotracker.my.id</strong>{' '}
+              dari HP Anda, atau jalankan lokal dengan:
             </p>
             <code className="block px-3 py-2 rounded-lg bg-white border border-slate-200 font-mono text-red-700">
               npm run dev:host
@@ -893,9 +1293,9 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
           ) : (
             <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 leading-relaxed">
               <strong className="text-slate-900">Tips Install di HP:</strong> Di
-              Chrome Android ketuk menu <strong>⋮ → Install app</strong>, atau di
-              Safari iOS ketuk <strong>Share → Add to Home Screen</strong> agar
-              ImmersionTrack tampil full-screen seperti aplikasi native.
+              Chrome Android ketuk menu <strong>⋮ → Install app</strong>, atau
+              di Safari iOS ketuk <strong>Share → Add to Home Screen</strong>{' '}
+              agar ImmersionTrack tampil full-screen seperti aplikasi native.
             </div>
           )}
         </div>
