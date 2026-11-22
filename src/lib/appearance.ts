@@ -30,16 +30,16 @@ const APPEARANCE_EVENT_NAME = 'immersiontrack:appearance-changed';
 export const BACKGROUND_PRESETS: BackgroundPresetMeta[] = [
   {
     id: 'midnight-slate',
-    name: 'Gelap Elegan (Midnight Glass)',
-    description: 'Tema gelap blur transparan modern yang menonjolkan wallpaper',
-    swatchStyle: 'linear-gradient(145deg, #090d16 0%, #0f172a 60%, #1e293b 100%)',
+    name: 'Manatan Navy (Gelap Glass)',
+    description: 'Tema gelap navy & sky-cyan lembut di mata dengan efek blur kaca transparan',
+    swatchStyle: 'linear-gradient(145deg, #0b121c 0%, #111c2d 60%, #1c324a 100%)',
     isDarkCanvas: true,
   },
   {
     id: 'porcelain-clean',
     name: 'Putih Bersih Modern',
-    description: 'Latar putih bersih & abu netral dengan aksen crimson cerah',
-    swatchStyle: 'linear-gradient(135deg, #ffffff 0%, #f1f5f9 60%, #ffe4e6 100%)',
+    description: 'Latar putih bersih & abu netral dengan aksen sky-blue cerah',
+    swatchStyle: 'linear-gradient(135deg, #ffffff 0%, #f1f5f9 60%, #e0f2fe 100%)',
     isDarkCanvas: false,
   },
   {

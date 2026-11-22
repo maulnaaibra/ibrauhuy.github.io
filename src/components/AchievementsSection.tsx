@@ -38,8 +38,8 @@ const RARITY_STYLES: Record<
   },
   epic: {
     label: 'Mahir',
-    badge: 'bg-red-50 text-red-700 border-red-200',
-    iconBg: 'bg-red-50 text-red-600',
+    badge: 'bg-rose-50 text-rose-700 border-rose-200',
+    iconBg: 'bg-rose-50 text-rose-600',
   },
   legendary: {
     label: 'Master',
@@ -109,7 +109,7 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
         </div>
         <div className="card-pro p-4">
           <div className="text-xs text-slate-500">Sisa Pencapaian</div>
-          <div className="text-2xl font-bold font-mono text-red-600 mt-1 tabular-nums">
+          <div className="text-2xl font-bold font-mono text-rose-600 mt-1 tabular-nums">
             {remainingCount}
           </div>
         </div>

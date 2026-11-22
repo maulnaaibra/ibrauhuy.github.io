@@ -132,7 +132,7 @@ export const LogModal: React.FC<LogModalProps> = ({
                 placeholder="Contoh: Sousou no Frieren / Steins;Gate"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-rose-500 focus:bg-white"
               />
               <p className="text-[11px] text-slate-400 mt-1.5">
                 Sampul media otomatis ditampilkan di riwayat aktivitas Anda.
@@ -199,7 +199,7 @@ export const LogModal: React.FC<LogModalProps> = ({
               max={1440}
               value={duration}
               onChange={(e) => setDuration(Number(e.target.value))}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white"
             />
           </div>
 
@@ -213,7 +213,7 @@ export const LogModal: React.FC<LogModalProps> = ({
                 required
                 value={loggedDate}
                 onChange={(e) => setLoggedDate(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white"
               />
             </div>
 
@@ -226,7 +226,7 @@ export const LogModal: React.FC<LogModalProps> = ({
                 min={0}
                 value={cardsMined}
                 onChange={(e) => setCardsMined(Number(e.target.value))}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white"
               />
             </div>
           </div>
@@ -240,7 +240,7 @@ export const LogModal: React.FC<LogModalProps> = ({
               placeholder="Episode berapa, tingkat pemahaman, atau kosakata menarik..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-red-500 focus:bg-white resize-none"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-rose-500 focus:bg-white resize-none"
             />
           </div>
 

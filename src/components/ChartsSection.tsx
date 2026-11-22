@@ -305,7 +305,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
             </div>
             <div>
               <div className="text-xs text-slate-500">Streak Terbaik</div>
-              <div className="text-xl font-bold font-mono text-red-600 mt-1 tabular-nums">
+              <div className="text-xl font-bold font-mono text-rose-600 mt-1 tabular-nums">
                 {kpis.longestStreak}h
               </div>
             </div>
@@ -371,7 +371,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
           <ResponsiveContainer width="100%" height="100%">
             {chartType === 'bar' ? (
               <BarChart data={timelineData}>
-                <CartesianGrid stroke="#e2e8f0" vertical={false} />
+                <CartesianGrid stroke="rgba(148, 179, 214, 0.16)" vertical={false} />
                 <XAxis
                   dataKey="label"
                   stroke="#64748b"
@@ -391,16 +391,18 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                     chartMetric === 'hours' ? 'Durasi' : 'Kartu Anki',
                   ]}
                   contentStyle={{
-                    backgroundColor: '#ffffff',
-                    borderColor: '#e2e8f0',
+                    backgroundColor: '#111c2d',
+                    borderColor: 'rgba(148, 179, 214, 0.24)',
                     borderRadius: '12px',
-                    color: '#0f172a',
-                    boxShadow: '0 8px 20px rgba(15,23,42,0.08)',
+                    color: '#f3f7fc',
+                    boxShadow: '0 10px 24px rgba(4, 9, 17, 0.45)',
                   }}
+                  itemStyle={{ color: '#e6edf6' }}
+                  labelStyle={{ color: '#8ea0b5' }}
                 />
                 <Bar
                   dataKey={chartMetric}
-                  fill={chartMetric === 'hours' ? '#e11d48' : '#2563eb'}
+                  fill={chartMetric === 'hours' ? '#38bdf8' : '#818cf8'}
                   radius={[6, 6, 0, 0]}
                 />
               </BarChart>
@@ -410,17 +412,17 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                   <linearGradient id="timelineFill" x1="0" y1="0" x2="0" y2="1">
                     <stop
                       offset="5%"
-                      stopColor={chartMetric === 'hours' ? '#e11d48' : '#2563eb'}
+                      stopColor={chartMetric === 'hours' ? '#38bdf8' : '#818cf8'}
                       stopOpacity={0.34}
                     />
                     <stop
                       offset="95%"
-                      stopColor={chartMetric === 'hours' ? '#e11d48' : '#2563eb'}
+                      stopColor={chartMetric === 'hours' ? '#38bdf8' : '#818cf8'}
                       stopOpacity={0}
                     />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke="#e2e8f0" vertical={false} />
+                <CartesianGrid stroke="rgba(148, 179, 214, 0.16)" vertical={false} />
                 <XAxis
                   dataKey="label"
                   stroke="#64748b"
@@ -440,17 +442,19 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                     chartMetric === 'hours' ? 'Durasi' : 'Kartu Anki',
                   ]}
                   contentStyle={{
-                    backgroundColor: '#ffffff',
-                    borderColor: '#e2e8f0',
+                    backgroundColor: '#111c2d',
+                    borderColor: 'rgba(148, 179, 214, 0.24)',
                     borderRadius: '12px',
-                    color: '#0f172a',
-                    boxShadow: '0 8px 20px rgba(15,23,42,0.08)',
+                    color: '#f3f7fc',
+                    boxShadow: '0 10px 24px rgba(4, 9, 17, 0.45)',
                   }}
+                  itemStyle={{ color: '#e6edf6' }}
+                  labelStyle={{ color: '#8ea0b5' }}
                 />
                 <Area
                   type="monotone"
                   dataKey={chartMetric}
-                  stroke={chartMetric === 'hours' ? '#e11d48' : '#2563eb'}
+                  stroke={chartMetric === 'hours' ? '#38bdf8' : '#818cf8'}
                   strokeWidth={2}
                   fill="url(#timelineFill)"
                 />
@@ -520,12 +524,14 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                       'Total',
                     ]}
                     contentStyle={{
-                      backgroundColor: '#ffffff',
-                      borderColor: '#e2e8f0',
+                      backgroundColor: '#111c2d',
+                      borderColor: 'rgba(148, 179, 214, 0.24)',
                       borderRadius: '12px',
-                      color: '#0f172a',
-                      boxShadow: '0 8px 20px rgba(15,23,42,0.08)',
+                      color: '#f3f7fc',
+                      boxShadow: '0 10px 24px rgba(4, 9, 17, 0.45)',
                     }}
+                    itemStyle={{ color: '#e6edf6' }}
+                    labelStyle={{ color: '#8ea0b5' }}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -594,7 +600,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                 : 'Terus tambah sesi immersion untuk membuka proyeksi menuju milestone berikutnya.'}
             </p>
           </div>
-          <span className="text-xs font-mono font-semibold text-red-600">
+          <span className="text-xs font-mono font-semibold text-rose-600">
             {Math.round(kpis.milestone.progress)}% menuju{' '}
             {kpis.milestone.nextMilestone}j
           </span>
@@ -602,7 +608,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
 
         <div className="h-2 rounded-full bg-slate-100 overflow-hidden mb-5">
           <div
-            className="h-full bg-gradient-to-r from-red-600 to-rose-500 rounded-full animate-bar"
+            className="h-full bg-gradient-to-r from-rose-600 to-rose-400 rounded-full animate-bar"
             style={{ width: `${kpis.milestone.progress}%` }}
           />
         </div>
@@ -617,7 +623,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
                   reached
                     ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
                     : m === kpis.milestone.nextMilestone
-                      ? 'bg-red-50 border-red-200 text-red-700'
+                      ? 'bg-rose-50 border-rose-200 text-rose-700'
                       : 'bg-slate-50 border-slate-200 text-slate-400'
                 }`}
               >

@@ -124,7 +124,7 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
       {showForm && (
         <form
           onSubmit={handleCreate}
-          className="card-pro p-5 border-red-200 space-y-4 animate-scale-in"
+          className="card-pro p-5 border-rose-200 space-y-4 animate-scale-in"
         >
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
@@ -137,7 +137,7 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
                 placeholder="Contoh: 50 Jam Reading VN"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white"
               />
             </div>
             <div>
@@ -151,7 +151,7 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
                 max={5000}
                 value={targetHours}
                 onChange={(e) => setTargetHours(Number(e.target.value))}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white"
               />
             </div>
           </div>
@@ -164,7 +164,7 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
               <select
                 value={track}
                 onChange={(e) => setTrack(e.target.value as 'all' | SkillTrack)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white"
               >
                 <option value="all">Semua Aktivitas</option>
                 <option value="listening">Listening (Anime/Video/Audio)</option>
@@ -182,7 +182,7 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
                 min={todayStr}
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white"
               />
             </div>
           </div>
@@ -219,7 +219,7 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
                 ? 'border-t-emerald-500'
                 : p.status === 'behind'
                   ? 'border-t-amber-500'
-                  : 'border-t-red-600';
+                  : 'border-t-rose-500';
 
             const statusBadge =
               p.status === 'completed'
@@ -242,7 +242,7 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
                       }
                     : {
                         text: 'On Track',
-                        cls: 'bg-red-50 text-red-700 border-red-200',
+                        cls: 'bg-rose-50 text-rose-700 border-rose-200',
                         Icon: TrendingUp,
                       };
 
@@ -290,7 +290,7 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
                           ? 'bg-emerald-500'
                           : p.status === 'behind'
                             ? 'bg-amber-500'
-                            : 'bg-gradient-to-r from-red-600 to-rose-500'
+                            : 'bg-gradient-to-r from-rose-600 to-rose-400'
                       }`}
                       style={{ width: `${p.progressPct}%` }}
                     />

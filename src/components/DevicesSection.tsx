@@ -582,7 +582,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                 value={urlDraft}
                 onChange={(e) => setUrlDraft(e.target.value)}
                 aria-label="URL Companion Agent"
-                className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 w-48 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 w-48 focus:outline-none focus:border-rose-500 focus:bg-white"
               />
               <button
                 type="submit"
@@ -606,7 +606,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
                 <div className="flex items-center justify-between text-xs gap-2 flex-wrap">
                   <span className="font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                    <Activity className="w-3.5 h-3.5 text-red-600" />
+                    <Activity className="w-3.5 h-3.5 text-rose-600" />
                     Target Jendela Terdeteksi
                   </span>
                   <div className="flex items-center gap-2">
@@ -687,8 +687,8 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                       <div className="text-sm font-semibold text-slate-900 truncate">
                         {activeSession.title}
                       </div>
-                      <div className="text-xs font-mono text-red-600 mt-0.5 flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-red-600 animate-ping" />
+                      <div className="text-xs font-mono text-rose-600 mt-0.5 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping" />
                         {activeMeta?.label ?? activeSession.category} •{' '}
                         {activeSession.process} • Sedang direkam
                       </div>
@@ -763,7 +763,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                     onChange={(e) =>
                       onToggleCompanionAutoSync(e.target.checked)
                     }
-                    className="accent-red-600 w-4 h-4 rounded"
+                    className="accent-sky-400 w-4 h-4 rounded"
                   />
                   <span>
                     <strong>Auto-Sync ke Log</strong> saat sesi selesai
@@ -779,7 +779,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                     onChange={(e) =>
                       handleToggleBackgroundMode(e.target.checked)
                     }
-                    className="accent-red-600 w-4 h-4 rounded"
+                    className="accent-sky-400 w-4 h-4 rounded"
                   />
                   <span>
                     <strong>Track Aplikasi Immersion di Background</strong>{' '}
@@ -813,7 +813,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                      <Layers className="w-3.5 h-3.5 text-red-600" />
+                      <Layers className="w-3.5 h-3.5 text-rose-600" />
                       Pilih Aplikasi / Jendela Windows yang Di-Track (
                       {openWindows.filter((w) => w.appEnabled).length}/
                       {openWindows.length} Aktif)
@@ -912,7 +912,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                               }))
                             }
                             aria-label={`Kategori untuk ${win.process}`}
-                            className="px-2 py-1 rounded-md bg-white border border-slate-200 text-[11px] text-slate-700 focus:outline-none focus:border-red-500"
+                            className="px-2 py-1 rounded-md bg-white border border-slate-200 text-[11px] text-slate-700 focus:outline-none focus:border-rose-500"
                           >
                             {PRIMARY_CATEGORIES.map((cat) => (
                               <option key={cat} value={cat}>
@@ -928,7 +928,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                             className={`px-2.5 py-1 rounded-md text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer ${
                               win.isTracked
                                 ? 'bg-emerald-600 text-white'
-                                : 'bg-white border border-slate-200 hover:border-red-300 text-slate-700 hover:text-red-700'
+                                : 'bg-white border border-slate-200 hover:border-rose-300 text-slate-700 hover:text-rose-700'
                             }`}
                           >
                             {win.isTracked ? (
@@ -999,14 +999,14 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                   placeholder="Nama (mis. Bilibili / Fushi)"
                   value={newRuleName}
                   onChange={(e) => setNewRuleName(e.target.value)}
-                  className="sm:col-span-3 px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-red-500"
+                  className="sm:col-span-3 px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-rose-500"
                 />
                 <select
                   value={newRuleMatchType}
                   onChange={(e) =>
                     setNewRuleMatchType(e.target.value as 'process' | 'title')
                   }
-                  className="sm:col-span-2 px-2.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-red-500"
+                  className="sm:col-span-2 px-2.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-rose-500"
                 >
                   <option value="title">Judul Jendela</option>
                   <option value="process">Nama Proses</option>
@@ -1017,14 +1017,14 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                   placeholder="Kata kunci / regex (mis. fushi|anime)"
                   value={newRulePattern}
                   onChange={(e) => setNewRulePattern(e.target.value)}
-                  className="sm:col-span-3 px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500"
+                  className="sm:col-span-3 px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-rose-500"
                 />
                 <select
                   value={newRuleCategory}
                   onChange={(e) =>
                     setNewRuleCategory(e.target.value as PrimaryMediaCategory)
                   }
-                  className="sm:col-span-2 px-2.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-red-500"
+                  className="sm:col-span-2 px-2.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-rose-500"
                 >
                   {PRIMARY_CATEGORIES.map((cat) => (
                     <option key={cat} value={cat}>
@@ -1118,7 +1118,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
           <button
             type="button"
             onClick={() => setShowCompanionGuide(!showCompanionGuide)}
-            className="text-xs font-semibold text-red-600 hover:text-red-700 flex items-center gap-1.5 cursor-pointer"
+            className="text-xs font-semibold text-rose-600 hover:text-rose-700 flex items-center gap-1.5 cursor-pointer"
           >
             <Terminal className="w-3.5 h-3.5" />
             Cara Menjalankan Background Agent di Windows
@@ -1141,7 +1141,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
               </p>
               <p>
                 2. Atau jalankan lewat terminal di folder proyek:{' '}
-                <code className="px-2 py-0.5 rounded bg-white border border-slate-200 font-mono text-red-700">
+                <code className="px-2 py-0.5 rounded bg-white border border-slate-200 font-mono text-rose-700">
                   npm run tracker
                 </code>
               </p>
@@ -1164,7 +1164,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
             <div
               className={`p-2.5 rounded-xl border ${
                 ankiCheck?.connected
-                  ? 'bg-red-50 border-red-200 text-red-600'
+                  ? 'bg-rose-50 border-rose-200 text-rose-600'
                   : 'bg-slate-100 border-slate-200 text-slate-600'
               }`}
             >
@@ -1195,7 +1195,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
               value={ankiSettings.url}
               onChange={(e) => updateAnkiSetting({ url: e.target.value })}
               aria-label="URL AnkiConnect"
-              className="flex-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:border-red-500 focus:bg-white"
+              className="flex-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:border-rose-500 focus:bg-white"
             />
             <button
               type="button"
@@ -1222,7 +1222,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                     onChange={(e) =>
                       updateAnkiSetting({ selectedDeck: e.target.value })
                     }
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-red-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-rose-500"
                   >
                     <option value="all">Semua Deck</option>
                     {(ankiCheck.decks ?? []).map((deck) => (
@@ -1247,7 +1247,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                         secondsPerReview: Number(e.target.value),
                       })
                     }
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-rose-500"
                   />
                 </div>
               </div>
@@ -1256,7 +1256,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                 <div className="grid grid-cols-3 gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-center">
                   <div>
                     <div className="text-[11px] text-slate-500">Kartu Baru</div>
-                    <div className="text-lg font-bold font-mono text-red-600">
+                    <div className="text-lg font-bold font-mono text-rose-600">
                       +{ankiStats.newCardsToday}
                     </div>
                   </div>
@@ -1324,7 +1324,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
 
         <div className="card-pro p-5 space-y-4">
           <div className="flex items-start gap-3">
-            <div className="p-2.5 rounded-xl bg-red-50 border border-red-100 text-red-600">
+            <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-600">
               <Smartphone className="w-5 h-5" />
             </div>
             <div>
@@ -1350,10 +1350,10 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
             </div>
             <p>
               Atau langsung buka{' '}
-              <strong className="text-red-700">nihongotracker.my.id</strong>{' '}
+              <strong className="text-rose-700">nihongotracker.my.id</strong>{' '}
               dari HP Anda, atau jalankan lokal dengan:
             </p>
-            <code className="block px-3 py-2 rounded-lg bg-white border border-slate-200 font-mono text-red-700">
+            <code className="block px-3 py-2 rounded-lg bg-white border border-slate-200 font-mono text-rose-700">
               npm run dev:host
             </code>
           </div>

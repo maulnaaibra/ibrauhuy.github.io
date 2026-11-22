@@ -43,9 +43,7 @@ import { loadUserGoals, saveUserGoals } from '../lib/demoData';
 import {
   ackCompanionSessions,
   fetchCompanionStatus,
-  flushCompanionSession,
   loadCompanionSettings,
-  pinCompanionWindow,
   saveCompanionSettings,
   type CompanionSettings,
   type CompanionStatus,
@@ -976,89 +974,6 @@ export const DashboardPage: React.FC = () => {
         />
 
         <main className="flex-1 min-w-0 max-w-6xl mx-auto px-3 sm:px-6 py-4 sm:py-7 pb-[max(2.5rem,env(safe-area-inset-bottom))] space-y-5 sm:space-y-6">
-        {activeTab !== 'overview' && companionConnected && companionStatus && (
-          <div className="w-full px-4 py-3 rounded-xl bg-emerald-50/90 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-fade-in">
-            <div className="flex items-center gap-2.5 text-emerald-950 min-w-0 flex-wrap">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-              {companionStatus.activeSession ? (
-                <span className="truncate">
-                  <strong>Windows Companion Aktif Merekam:</strong>{' '}
-                  <span className="font-bold text-emerald-800">
-                    {companionStatus.activeSession.title}
-                  </span>{' '}
-                  <span className="font-mono font-bold text-emerald-700">
-                    ({Math.floor(companionStatus.activeSession.activeSeconds / 60)}m{' '}
-                    {companionStatus.activeSession.activeSeconds % 60}d)
-                  </span>{' '}
-                  <span className="text-[11px] text-emerald-700/80">
-                    • Auto-sync ke log setiap 1 menit
-                  </span>
-                </span>
-              ) : (
-                <span>
-                  <strong>Windows Companion Terhubung ({companionStatus.deviceName}):</strong>{' '}
-                  Siap mendeteksi aplikasi immersion otomatis
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-              {(companionStatus.openWindows ?? [])
-                .filter((w) => w.matchedCategory !== null)
-                .slice(0, 3)
-                .map((w) => (
-                  <button
-                    key={`${w.process}-${w.hwnd}`}
-                    type="button"
-                    onClick={async () => {
-                      await pinCompanionWindow(companionSettings.url, {
-                        hwnd: w.hwnd,
-                        process: w.process,
-                        title: w.title,
-                        category: w.matchedCategory ?? 'study',
-                      });
-                      await pollCompanion();
-                      toast.success(`Beralih merekam: ${w.process}`);
-                    }}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
-                      w.isTracked
-                        ? 'bg-emerald-600 text-white shadow-2xs'
-                        : 'bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
-                    }`}
-                  >
-                    {w.isTracked ? `● ${w.process}` : `Track ${w.process}`}
-                  </button>
-                ))}
-
-              {companionStatus.activeSession && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const res = await flushCompanionSession(
-                      companionSettings.url
-                    );
-                    if (res.pending.length > 0) {
-                      await importPendingSessions(res.pending, true);
-                    }
-                    await pollCompanion();
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold transition cursor-pointer"
-                >
-                  Simpan Sekarang
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('devices')}
-                className="px-2.5 py-1 rounded-lg bg-white hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-[11px] font-bold transition cursor-pointer"
-              >
-                Kelola ({companionStatus.openWindows?.length ?? 0} Jendela) →
-              </button>
-            </div>
-          </div>
-        )}
-
         {loadingLogs ? (
           <div className="grid sm:grid-cols-3 gap-4">
             {[1, 2, 3].map((i) => (

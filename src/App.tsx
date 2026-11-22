@@ -17,12 +17,12 @@ export function App() {
           position="bottom-right"
           toastOptions={{
             style: {
-              background: '#ffffff',
-              color: '#0f172a',
-              border: '1px solid #e2e8f0',
+              background: '#111c2d',
+              color: '#f3f7fc',
+              border: '1px solid rgba(148, 179, 214, 0.22)',
               borderRadius: '12px',
               fontWeight: 600,
-              boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.1)',
+              boxShadow: '0 12px 28px -6px rgba(4, 9, 17, 0.55)',
             },
           }}
         />

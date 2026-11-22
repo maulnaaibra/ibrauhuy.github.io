@@ -636,7 +636,7 @@ export const SettingsPage: React.FC = () => {
                 placeholder="https://your-project-id.supabase.co"
                 value={sbUrl}
                 onChange={(e) => setSbUrl(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white"
               />
             </div>
             <div>
@@ -649,7 +649,7 @@ export const SettingsPage: React.FC = () => {
                 placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                 value={sbKey}
                 onChange={(e) => setSbKey(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white"
               />
             </div>
 

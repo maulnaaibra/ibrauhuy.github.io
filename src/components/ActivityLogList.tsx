@@ -77,7 +77,7 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
           <button
             type="button"
             onClick={onViewAll}
-            className="text-xs font-semibold text-red-600 hover:text-red-700 transition-colors cursor-pointer self-start sm:self-center"
+            className="text-xs font-semibold text-rose-600 hover:text-rose-700 transition-colors cursor-pointer self-start sm:self-center"
           >
             Lihat Semua ({logs.length}) →
           </button>
@@ -94,7 +94,7 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Cari judul atau catatan..."
-                className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-red-500 focus:bg-white"
+                className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-rose-500 focus:bg-white"
               />
             </div>
 
@@ -103,7 +103,7 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
               onChange={(e) =>
                 setSortBy(e.target.value as 'newest' | 'duration' | 'cards')
               }
-              className="px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700 focus:outline-none focus:border-red-500 focus:bg-white"
+              className="px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700 focus:outline-none focus:border-rose-500 focus:bg-white"
             >
               <option value="newest">Urutkan: Terbaru</option>
               <option value="duration">Urutkan: Durasi Terlama</option>

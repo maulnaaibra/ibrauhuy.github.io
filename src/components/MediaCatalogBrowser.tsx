@@ -1545,7 +1545,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                     onClick={() => setSelectedDetail(item)}
                     className="btn-crimson flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <Play className="w-3.5 h-3.5 fill-white shrink-0" />
+                    <Play className="w-3.5 h-3.5 fill-current shrink-0" />
                     <span className="truncate">Buka Timeline & Play</span>
                   </button>
 

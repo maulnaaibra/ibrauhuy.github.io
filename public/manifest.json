@@ -4,8 +4,8 @@
   "description": "Catat, ukur, dan analisis progres immersion bahasamu di PC & HP.",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#e11d48",
+  "background_color": "#0b121c",
+  "theme_color": "#0b121c",
   "icons": [
     {
       "src": "favicon.svg",
