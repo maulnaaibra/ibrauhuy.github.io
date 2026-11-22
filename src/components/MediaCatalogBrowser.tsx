@@ -226,6 +226,44 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
     };
   }, [selectedDetail]);
 
+  // Keyboard shortcuts inside Cinematic Showcase View (Esc / Backspace = Back, P = Play, L = Add to List)
+  useEffect(() => {
+    if (!selectedDetail) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      if (e.key === 'Escape' || e.key === 'Backspace') {
+        e.preventDefault();
+        setSelectedDetail(null);
+      } else if (
+        (e.key === 'p' || e.key === 'P') &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        const dest = getCatalogMediaDestinations(selectedDetail);
+        window.open(dest.primary.url, '_blank', 'noopener,noreferrer');
+      } else if (
+        (e.key === 'l' || e.key === 'L') &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        const res = toggleUserWatchlistItem(selectedDetail.id);
+        setWatchlistIds(res.list);
+        toast.success(
+          res.added
+            ? `「${selectedDetail.title}」 ditambahkan ke Daftar Saya!`
+            : `「${selectedDetail.title}」 dihapus dari Daftar Saya`
+        );
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedDetail]);
+
   // Live API Search (AniList Anime/Manga/Novel + VNDB)
   useEffect(() => {
     const clean = searchQuery.trim();
@@ -419,7 +457,8 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
     const coverUrl =
       enrichedMedia?.coverExtraLarge ||
       resolveCoverUrl(selectedDetail.coverImage);
-    const bannerUrl = enrichedMedia?.bannerImage || coverUrl;
+    const wideBannerUrl =
+      enrichedMedia?.bannerImage || enrichedMedia?.widescreenStill || null;
 
     const scoreDisplay =
       enrichedMedia?.averageScore ??
@@ -471,68 +510,81 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
 
     return (
       <div className="rounded-3xl bg-[#09090d] text-white overflow-hidden shadow-2xl border border-white/10 animate-fade-in">
-        {/* HERO STAGE */}
-        <div className="relative min-h-[500px] sm:min-h-[580px] flex flex-col justify-between overflow-hidden">
-          {/* Background Backdrop Image */}
-          {bannerUrl && (
-            <>
-              {/* Ambient blurred fill */}
-              <div
-                className="absolute inset-0 bg-cover bg-center scale-110 blur-2xl opacity-35"
-                style={{ backgroundImage: `url(${bannerUrl})` }}
+        {/* HERO STAGE — Proportional Widescreen Banner + Overlap Info Stage */}
+        <div className="relative overflow-hidden">
+          {/* Top Proportional Widescreen Backdrop Stage (4.5:1 / 16:9 friendly, never over-zoomed or stretched) */}
+          <div className="relative h-52 sm:h-68 lg:h-80 w-full overflow-hidden bg-[#101018]">
+            {wideBannerUrl ? (
+              <img
+                src={wideBannerUrl}
+                alt={selectedDetail.title}
+                className="w-full h-full object-cover object-center"
               />
-              {/* Crisp Main Backdrop / Right-Focused Artwork */}
-              <div
-                className="absolute inset-0 bg-cover bg-center sm:bg-right-top opacity-75 transition-all duration-700"
-                style={{ backgroundImage: `url(${bannerUrl})` }}
-              />
-            </>
-          )}
+            ) : coverUrl ? (
+              <>
+                <img
+                  src={coverUrl}
+                  alt=""
+                  className="w-full h-full object-cover object-center scale-110 blur-2xl opacity-45"
+                />
+                <div className="absolute inset-0 flex items-center justify-end pr-12 opacity-65">
+                  <img
+                    src={coverUrl}
+                    alt={selectedDetail.title}
+                    className="h-full w-auto object-contain"
+                  />
+                </div>
+              </>
+            ) : null}
 
-          {/* Cinema Vignette Overlays (Left-to-Right & Bottom-to-Top) */}
-          <div className="absolute inset-0 bg-gradient-to-r from-[#09090d] via-[#09090d]/85 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#09090d] via-[#09090d]/55 to-black/20" />
+            {/* Smooth Cinema Vignette Overlays */}
+            <div className="absolute inset-0 bg-gradient-to-r from-[#09090d]/90 via-[#09090d]/45 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#09090d] via-[#09090d]/55 to-black/15" />
 
-          {/* Top Floating Navigation Bar (< and Home buttons just like Movy.sx) */}
-          <div className="relative z-10 p-5 sm:p-8 flex items-center justify-between gap-4">
-            <div className="inline-flex items-center gap-1 p-1.5 rounded-full bg-black/55 backdrop-blur-md border border-white/15 shadow-lg">
-              <button
-                type="button"
-                onClick={() => setSelectedDetail(null)}
-                title="Kembali ke Katalog"
-                className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center text-white/90 hover:text-white transition cursor-pointer"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedDetail(null);
-                  setSection('Semua');
-                  setTierFilter('all');
-                }}
-                title="Beranda Katalog"
-                className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center text-white/90 hover:text-white transition cursor-pointer"
-              >
-                <Home className="w-4 h-4" />
-              </button>
-            </div>
+            {/* Top Floating Navigation Bar (< and Home buttons + Keyboard Shortcut Hints) */}
+            <div className="relative z-10 p-5 sm:p-7 flex items-center justify-between gap-4">
+              <div className="inline-flex items-center gap-1 p-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/15 shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDetail(null)}
+                  title="Kembali ke Katalog (Esc / Backspace)"
+                  className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center text-white/90 hover:text-white transition cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedDetail(null);
+                    setSection('Semua');
+                    setTierFilter('all');
+                  }}
+                  title="Beranda Katalog"
+                  className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center text-white/90 hover:text-white transition cursor-pointer"
+                >
+                  <Home className="w-4 h-4" />
+                </button>
+              </div>
 
-            <div className="flex items-center gap-2">
-              {loadingEnriched && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/50 backdrop-blur-md border border-white/10 text-[11px] text-white/70">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
-                  Memuat info...
+              <div className="flex items-center gap-2">
+                {loadingEnriched && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/55 backdrop-blur-md border border-white/10 text-[11px] text-white/75">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
+                    Memuat info...
+                  </span>
+                )}
+                <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/55 backdrop-blur-md border border-white/10 text-[11px] font-mono text-white/70">
+                  Esc: Kembali • P: Play • L: List
                 </span>
-              )}
-              <span className="px-3 py-1 rounded-full bg-black/55 backdrop-blur-md border border-white/15 text-xs font-bold text-white/90">
-                {selectedDetail.section}
-              </span>
+                <span className="px-3 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/15 text-xs font-bold text-white/90">
+                  {selectedDetail.section}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Bottom-Left Hero Info & Action Controls */}
-          <div className="relative z-10 px-6 sm:px-10 pb-8 pt-12 flex flex-col lg:flex-row lg:items-end justify-between gap-8">
+          {/* Hero Info & Action Controls (Overlapping the smooth bottom fade of the banner) */}
+          <div className="relative z-10 -mt-20 sm:-mt-28 px-6 sm:px-10 pb-8 flex flex-col lg:flex-row lg:items-end justify-between gap-8">
             <div className="space-y-4 max-w-2xl">
               {/* Romaji / Section Eyebrow */}
               {selectedDetail.romajiTitle &&
@@ -737,13 +789,13 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                     key={c.id}
                     className="group rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 overflow-hidden transition flex flex-col"
                   >
-                    <div className="aspect-[3/4] w-full bg-white/5 overflow-hidden relative">
+                    <div className="h-52 sm:h-60 w-full bg-white/5 overflow-hidden relative">
                       {c.image ? (
                         <img
                           src={c.image}
                           alt={c.name}
                           loading="lazy"
-                          className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                          className="w-full h-full object-cover object-top group-hover:scale-105 transition duration-500"
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-white/30 text-xs">

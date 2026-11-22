@@ -13,6 +13,7 @@ export interface CastMember {
 
 export interface EnrichedCinematicMedia {
   bannerImage?: string;
+  widescreenStill?: string;
   coverExtraLarge?: string;
   averageScore?: number; // e.g. 8.5
   popularity?: number;
@@ -184,6 +185,15 @@ export async function fetchEnrichedCinematicMedia(
         status
         genres
         description(asHtml: false)
+        trailer {
+          id
+          site
+          thumbnail
+        }
+        streamingEpisodes {
+          title
+          thumbnail
+        }
         studios(isMain: true) {
           nodes { name }
         }
@@ -224,6 +234,15 @@ export async function fetchEnrichedCinematicMedia(
         status
         genres
         description(asHtml: false)
+        trailer {
+          id
+          site
+          thumbnail
+        }
+        streamingEpisodes {
+          title
+          thumbnail
+        }
         studios(isMain: true) {
           nodes { name }
         }
@@ -312,8 +331,18 @@ export async function fetchEnrichedCinematicMedia(
         ? studioNodes[0]?.name
         : undefined;
 
+    const epThumb =
+      Array.isArray(m.streamingEpisodes) && m.streamingEpisodes.length > 0
+        ? m.streamingEpisodes[0]?.thumbnail
+        : undefined;
+    const trailerThumb =
+      m.trailer?.site === 'youtube' && m.trailer?.id
+        ? `https://i.ytimg.com/vi/${m.trailer.id}/hqdefault.jpg`
+        : m.trailer?.thumbnail;
+
     const enriched: EnrichedCinematicMedia = {
       bannerImage: m.bannerImage || undefined,
+      widescreenStill: epThumb || trailerThumb || undefined,
       coverExtraLarge: m.coverImage?.extraLarge || m.coverImage?.large,
       averageScore: m.averageScore
         ? Number((m.averageScore / 10).toFixed(1))

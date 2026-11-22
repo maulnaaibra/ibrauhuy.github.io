@@ -71,6 +71,10 @@ import { AchievementsSection } from '../components/AchievementsSection';
 import { ActivityLogList } from '../components/ActivityLogList';
 import { DevicesSection } from '../components/DevicesSection';
 import { MediaCatalogBrowser } from '../components/MediaCatalogBrowser';
+import {
+  ShortcutsHubModal,
+  ShortcutsQuickDock,
+} from '../components/ShortcutsHubModal';
 
 type DashboardTab =
   | 'overview'
@@ -148,6 +152,7 @@ export const DashboardPage: React.FC = () => {
   const importedPendingIdsRef = useRef<Set<string>>(new Set());
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
   const [modalKey, setModalKey] = useState(0);
   const [editingLog, setEditingLog] = useState<ImmersionLog | null>(null);
   const [prefillDuration, setPrefillDuration] = useState<number | undefined>(
@@ -315,6 +320,60 @@ export const DashboardPage: React.FC = () => {
     }, 2500);
     return () => clearInterval(timer);
   }, [user, pollCompanion]);
+
+  // Global keyboard shortcuts (Ctrl+K, /, ?, N, 1..8, Esc)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setShortcutsModalOpen((prev) => !prev);
+        return;
+      }
+
+      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
+      const isTyping =
+        tag === 'input' ||
+        tag === 'textarea' ||
+        tag === 'select' ||
+        (e.target as HTMLElement | null)?.isContentEditable;
+      if (isTyping) return;
+
+      if (e.key === '/' || e.key === '?') {
+        e.preventDefault();
+        setShortcutsModalOpen(true);
+      } else if (
+        (e.key === 'n' || e.key === 'N') &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        setEditingLog(null);
+        setPrefillDuration(undefined);
+        setPrefillTitle(undefined);
+        setPrefillCategory(undefined);
+        setModalKey((k) => k + 1);
+        setModalOpen(true);
+      } else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        const tabMap: Record<string, DashboardTab> = {
+          '1': 'overview',
+          '2': 'profile',
+          '3': 'catalog',
+          '4': 'stats',
+          '5': 'goals',
+          '6': 'achievements',
+          '7': 'activity',
+          '8': 'devices',
+        };
+        if (tabMap[e.key]) {
+          e.preventDefault();
+          setActiveTab(tabMap[e.key]);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -721,6 +780,19 @@ export const DashboardPage: React.FC = () => {
           </nav>
 
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShortcutsModalOpen(true)}
+              title="Buka Pintasan & Command Palette (Ctrl + K)"
+              className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 border border-slate-200 hover:border-rose-300 text-[11px] font-bold text-slate-700 hover:text-rose-700 transition cursor-pointer"
+            >
+              <Zap className="w-3.5 h-3.5 text-rose-600" />
+              <span>Shortcuts</span>
+              <kbd className="px-1.5 py-0.2 rounded bg-white border border-slate-200 font-mono text-[10px] text-slate-500">
+                Ctrl+K
+              </kbd>
+            </button>
+
             <span
               title="Data tersinkron dengan akun cloud Supabase"
               className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-700"
@@ -1152,6 +1224,14 @@ export const DashboardPage: React.FC = () => {
             </div>
 
             <div className="animate-fade-up delay-3">
+              <ShortcutsQuickDock
+                onOpenCommandPalette={() => setShortcutsModalOpen(true)}
+                onQuickLog={() => openNewLogModal()}
+                onJumpTab={(t) => setActiveTab(t)}
+              />
+            </div>
+
+            <div className="animate-fade-up delay-3">
               <LiveStopwatch
                 onSaveDuration={({ minutes, category, title }) => {
                   openNewLogModal({
@@ -1452,6 +1532,17 @@ export const DashboardPage: React.FC = () => {
         initialDuration={prefillDuration}
         initialTitle={prefillTitle}
         initialCategory={prefillCategory}
+      />
+
+      <ShortcutsHubModal
+        isOpen={shortcutsModalOpen}
+        onClose={() => setShortcutsModalOpen(false)}
+        onJumpTab={(t) => setActiveTab(t)}
+        onQuickLog={() => openNewLogModal()}
+        onSelectCatalogTitle={(title) => {
+          setInitialCatalogTitle(title);
+          setActiveTab('catalog');
+        }}
       />
     </div>
   );

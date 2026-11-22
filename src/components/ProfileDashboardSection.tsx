@@ -274,22 +274,7 @@ export const ProfileDashboardSection: React.FC<
   );
 
   return (
-    <div
-      className="relative rounded-3xl p-3 sm:p-6 space-y-6 overflow-hidden border border-slate-200/80 shadow-lg transition-all"
-      style={
-        hasCustomBanner
-          ? {
-              backgroundImage: `linear-gradient(180deg, rgba(248, 250, 252, 0.78) 0%, rgba(255, 255, 255, 0.9) 45%, rgba(248, 250, 252, 0.92) 100%), url("${activeProfile.banner_url}")`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              backgroundAttachment: 'fixed',
-            }
-          : {
-              background:
-                'linear-gradient(180deg, rgba(255,241,242,0.65) 0%, rgba(255,255,255,0.95) 100%)',
-            }
-      }
-    >
+    <div className="space-y-6">
       {/* Hidden file inputs for quick avatar, banner, and full-page wallpaper upload */}
       {isOwnProfile && (
         <>
@@ -317,22 +302,28 @@ export const ProfileDashboardSection: React.FC<
         </>
       )}
 
-      {/* Profile Hero Banner & Identity Card */}
-      <div className="card-pro overflow-hidden shadow-xl border border-white/60 bg-white/90 backdrop-blur-md">
+      {/* Profile Hero Banner & Identity Card — Proportional Widescreen Banner (Never stretched/gepeng) */}
+      <div className="card-pro overflow-hidden shadow-xl border border-slate-200/90">
         <div
-          className="h-52 sm:h-68 relative p-4 sm:p-6 flex flex-col justify-between bg-cover bg-center transition-all duration-500"
+          className="relative w-full h-44 sm:h-56 lg:h-64 overflow-hidden flex flex-col justify-between p-4 sm:p-6"
           style={
-            hasCustomBanner
+            !hasCustomBanner
               ? {
-                  backgroundImage: `linear-gradient(to bottom, rgba(9, 9, 13, 0.25) 0%, rgba(9, 9, 13, 0.15) 45%, rgba(9, 9, 13, 0.78) 100%), url("${activeProfile.banner_url}")`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                }
-              : {
                   background: bannerTheme.backgroundStyle,
                 }
+              : undefined
           }
         >
+          {hasCustomBanner && (
+            <>
+              <img
+                src={activeProfile.banner_url!}
+                alt="Profile Banner"
+                className="absolute inset-0 w-full h-full object-cover object-center"
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-slate-950/35 via-slate-950/15 to-slate-950/75" />
+            </>
+          )}
           <div className="flex items-center justify-between gap-2 flex-wrap relative z-10">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/45 backdrop-blur-md border border-white/25 text-white text-xs font-bold shadow-xs">
               <Globe className="w-3.5 h-3.5" />
