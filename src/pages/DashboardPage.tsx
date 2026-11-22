@@ -7,6 +7,7 @@ import {
   Clock,
   Cloud,
   Compass,
+  ExternalLink,
   Flame,
   History,
   LayoutDashboard,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
+import { getCatalogMediaDestinations } from '../lib/mediaLinks';
 import { COMMUNITY_LEADERBOARD } from '../lib/publicShowcase';
 import { loadUserGoals, saveUserGoals } from '../lib/demoData';
 import {
@@ -1011,18 +1013,17 @@ export const DashboardPage: React.FC = () => {
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
                   {stats.recentMedia.map((media) => {
                     const meta = getCategoryMeta(media.category);
-                    return (
-                      <button
-                        key={`${media.title}-${media.category}`}
-                        type="button"
-                        onClick={() =>
-                          openNewLogModal({
+                    const mediaDest =
+                      media.category !== 'study'
+                        ? getCatalogMediaDestinations({
                             title: media.title,
                             category: media.category,
-                            duration: 30,
                           })
-                        }
-                        className="card-pro-interactive p-3.5 text-left flex items-center gap-3.5 group cursor-pointer"
+                        : null;
+                    return (
+                      <div
+                        key={`${media.title}-${media.category}`}
+                        className="card-pro-interactive p-3.5 text-left flex items-center gap-3.5 group"
                       >
                         <MediaCover
                           title={media.title}
@@ -1055,10 +1056,46 @@ export const DashboardPage: React.FC = () => {
                           </div>
                         </div>
 
-                        <span className="px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-200 group-hover:bg-rose-600 group-hover:border-rose-600 group-hover:text-white text-xs font-bold text-rose-700 transition shrink-0">
-                          + Log
-                        </span>
-                      </button>
+                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                          {mediaDest && (
+                            <a
+                              href={mediaDest.primary.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => {
+                                try {
+                                  void navigator.clipboard?.writeText(
+                                    media.title
+                                  );
+                                } catch {
+                                  // ignore clipboard error
+                                }
+                                toast.success(
+                                  `Membuka ${mediaDest.primary.siteName} (${media.title})`
+                                );
+                              }}
+                              title={mediaDest.primary.label}
+                              className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-rose-600 text-slate-700 hover:text-white text-[11px] font-bold inline-flex items-center gap-1 transition"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              {mediaDest.primary.shortLabel}
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openNewLogModal({
+                                title: media.title,
+                                category: media.category,
+                                duration: 30,
+                              })
+                            }
+                            className="px-2.5 py-1 rounded-lg bg-rose-50 border border-rose-200 hover:bg-rose-600 hover:border-rose-600 hover:text-white text-xs font-bold text-rose-700 transition cursor-pointer"
+                          >
+                            + Log
+                          </button>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>

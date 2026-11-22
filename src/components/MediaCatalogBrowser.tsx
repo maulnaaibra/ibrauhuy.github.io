@@ -1,6 +1,16 @@
 import React, { useMemo, useState } from 'react';
-import { BookOpen, Info, Play, Search, X } from 'lucide-react';
+import {
+  BookOpen,
+  Copy,
+  ExternalLink,
+  Info,
+  Plus,
+  Search,
+  X,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
 import rawCatalog from '../data/immersionCatalog.json';
+import { getCatalogMediaDestinations } from '../lib/mediaLinks';
 import { MediaCover } from './MediaCover';
 import { getCategoryMeta, type PrimaryMediaCategory } from '../types';
 
@@ -138,6 +148,26 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
     setVisibleLimit(pageSize);
   };
 
+  const handleExternalLaunch = (title: string, siteName: string) => {
+    try {
+      void navigator.clipboard?.writeText(title);
+      toast.success(
+        `Membuka ${siteName} • Judul 「${title}」 disalin ke clipboard!`
+      );
+    } catch {
+      toast.success(`Membuka ${siteName}...`);
+    }
+  };
+
+  const handleCopyTitle = async (title: string) => {
+    try {
+      await navigator.clipboard.writeText(title);
+      toast.success(`Judul 「${title}」 berhasil disalin!`);
+    } catch {
+      toast.error('Gagal menyalin judul');
+    }
+  };
+
   return (
     <div className="space-y-5">
       {/* Filter & Search Bar */}
@@ -208,12 +238,16 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
       </div>
 
       {/* Results Header */}
-      <div className="flex items-center justify-between text-xs font-semibold text-slate-500 app-canvas-subtitle px-1">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-semibold text-slate-500 app-canvas-subtitle px-1">
         <span>
           Menampilkan {visibleItems.length} dari {filteredItems.length} judul
           {section !== 'Semua' ? ` di ${section}` : ''}
         </span>
-        <span className="font-mono">Total Katalog: {ALL_ITEMS.length} Media</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] px-2.5 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-700 font-bold">
+            Klik tombol utama untuk langsung membuka media berdasarkan judul (Anime → Bettermelon.ru • Novel → Epub.moe • Drama → Cinejoy.pk • Manga → Rawkuma • VN → VNDB • Game → Steam)
+          </span>
+        </div>
       </div>
 
       {/* Grid */}
@@ -242,6 +276,11 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
         >
           {visibleItems.map((item, idx) => {
             const meta = getCategoryMeta(item.category);
+            const destinations = getCatalogMediaDestinations({
+              title: item.title,
+              section: item.section,
+              category: item.category,
+            });
             const blurb =
               item.difficultyExplanation ||
               item.description ||
@@ -256,12 +295,26 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
               >
                 <div className="space-y-3">
                   <div className="flex items-start gap-3.5">
-                    <MediaCover
-                      title={item.title}
-                      category={item.category}
-                      coverImage={item.coverImage}
-                      className="w-16 h-22 rounded-xl"
-                    />
+                    <a
+                      href={destinations.primary.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() =>
+                        handleExternalLaunch(
+                          item.title,
+                          destinations.primary.siteName
+                        )
+                      }
+                      title={`${destinations.primary.label} (${item.title})`}
+                      className="shrink-0"
+                    >
+                      <MediaCover
+                        title={item.title}
+                        category={item.category}
+                        coverImage={item.coverImage}
+                        className="w-16 h-22 rounded-xl"
+                      />
+                    </a>
                     <div className="min-w-0 flex-1 space-y-1.5">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span
@@ -275,11 +328,27 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                           {item.section}
                         </span>
                       </div>
-                      <h3 className="font-bold text-sm text-slate-900 leading-snug line-clamp-2 group-hover:text-rose-700 transition-colors">
+                      <a
+                        href={destinations.primary.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() =>
+                          handleExternalLaunch(
+                            item.title,
+                            destinations.primary.siteName
+                          )
+                        }
+                        className="block font-bold text-sm text-slate-900 leading-snug line-clamp-2 group-hover:text-rose-700 hover:underline transition-colors"
+                      >
                         {item.title}
-                      </h3>
-                      <div className="text-[11px] font-mono text-slate-500">
-                        {meta.shortLabel} • ~{item.suggestedMinutes} mnt/sesi
+                      </a>
+                      <div className="text-[11px] font-mono text-slate-500 flex items-center gap-1.5 flex-wrap">
+                        <span>
+                          {meta.shortLabel} • ~{item.suggestedMinutes}m
+                        </span>
+                        <span className="text-rose-600 font-sans font-bold">
+                          • {destinations.primary.siteName}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -289,7 +358,23 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2 pt-1">
+                <div className="flex items-center gap-1.5 pt-1">
+                  <a
+                    href={destinations.primary.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() =>
+                      handleExternalLaunch(
+                        item.title,
+                        destinations.primary.siteName
+                      )
+                    }
+                    className="btn-crimson flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{destinations.primary.label}</span>
+                  </a>
+
                   <button
                     type="button"
                     onClick={() =>
@@ -299,24 +384,21 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                         item.suggestedMinutes
                       )
                     }
-                    className="btn-crimson flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                    title="Catat sesi immersion untuk judul ini"
+                    className="py-2 px-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer shrink-0"
                   >
-                    <Play className="w-3.5 h-3.5" />
-                    Mulai Immersion
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Log</span>
                   </button>
 
-                  {(item.description ||
-                    item.difficultyExplanation ||
-                    item.exampleVideo) && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedDetail(item)}
-                      title="Lihat detail & sinopsis"
-                      className="p-2 rounded-xl bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-300 text-slate-600 hover:text-rose-600 transition cursor-pointer"
-                    >
-                      <Info className="w-4 h-4" />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDetail(item)}
+                    title="Lihat detail, sinopsis, & link alternatif"
+                    className="p-2 rounded-xl bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-300 text-slate-600 hover:text-rose-600 transition cursor-pointer shrink-0"
+                  >
+                    <Info className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             );
@@ -418,6 +500,85 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
               </div>
             )}
 
+            {/* Direct & Alternative Media Links */}
+            {(() => {
+              const dest = getCatalogMediaDestinations({
+                title: selectedDetail.title,
+                section: selectedDetail.section,
+                category: selectedDetail.category,
+              });
+              return (
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                      Akses Langsung Media ({selectedDetail.section})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyTitle(selectedDetail.title)}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 hover:underline cursor-pointer"
+                    >
+                      <Copy className="w-3 h-3" />
+                      Salin Judul Jepang
+                    </button>
+                  </div>
+
+                  <a
+                    href={dest.primary.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() =>
+                      handleExternalLaunch(
+                        selectedDetail.title,
+                        dest.primary.siteName
+                      )
+                    }
+                    className="btn-crimson w-full py-2.5 px-3.5 rounded-xl text-xs font-bold flex items-center justify-between gap-2"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      {dest.primary.label} — 「{selectedDetail.title}」
+                    </span>
+                    <span className="text-[10px] font-mono bg-white/20 px-2 py-0.5 rounded-md">
+                      {dest.primary.siteName}
+                    </span>
+                  </a>
+
+                  <p className="text-[11px] text-slate-500">
+                    {dest.primary.description}
+                  </p>
+
+                  {dest.alternatives.length > 0 && (
+                    <div className="pt-1.5 border-t border-slate-200/80 space-y-1.5">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        Sumber & Portal Alternatif:
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {dest.alternatives.map((alt) => (
+                          <a
+                            key={alt.label}
+                            href={alt.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() =>
+                              handleExternalLaunch(
+                                selectedDetail.title,
+                                alt.siteName
+                              )
+                            }
+                            className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-300 text-[11px] font-bold text-slate-700 hover:text-rose-700 inline-flex items-center gap-1 transition"
+                          >
+                            <ExternalLink className="w-3 h-3 text-rose-600" />
+                            {alt.label}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
@@ -437,10 +598,10 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                     target.suggestedMinutes
                   );
                 }}
-                className="btn-crimson px-4 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition"
               >
-                <Play className="w-3.5 h-3.5" />
-                Mulai Immersion ({selectedDetail.suggestedMinutes}m)
+                <Plus className="w-3.5 h-3.5" />
+                Catat Sesi ({selectedDetail.suggestedMinutes}m)
               </button>
             </div>
           </div>
