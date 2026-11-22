@@ -30,7 +30,7 @@ export interface ProfileBannerTheme {
   name: string;
   gradientClass: string;
   accentText: string;
-  patternStyle: string;
+  backgroundStyle: string;
 }
 
 export const PROFILE_BANNER_THEMES: ProfileBannerTheme[] = [
@@ -39,48 +39,102 @@ export const PROFILE_BANNER_THEMES: ProfileBannerTheme[] = [
     name: 'Sakura Crimson',
     gradientClass: 'from-rose-600 via-rose-500 to-amber-500',
     accentText: 'text-rose-100',
-    patternStyle:
-      'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.22) 0%, transparent 45%), radial-gradient(circle at 80% 70%, rgba(254,205,211,0.25) 0%, transparent 50%)',
+    backgroundStyle:
+      'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.24) 0%, transparent 45%), radial-gradient(circle at 80% 70%, rgba(254,205,211,0.28) 0%, transparent 50%), linear-gradient(135deg, #e11d48 0%, #f43f5e 52%, #f59e0b 100%)',
   },
   {
     id: 'tokyo-neon',
     name: 'Tokyo Indigo',
     gradientClass: 'from-indigo-700 via-violet-600 to-rose-500',
     accentText: 'text-indigo-100',
-    patternStyle:
-      'radial-gradient(circle at 85% 20%, rgba(244,63,94,0.3) 0%, transparent 48%), radial-gradient(circle at 15% 80%, rgba(129,140,248,0.28) 0%, transparent 50%)',
+    backgroundStyle:
+      'radial-gradient(circle at 85% 20%, rgba(244,63,94,0.35) 0%, transparent 48%), radial-gradient(circle at 15% 80%, rgba(129,140,248,0.32) 0%, transparent 50%), linear-gradient(135deg, #4338ca 0%, #7c3aed 52%, #f43f5e 100%)',
   },
   {
     id: 'kyoto-matcha',
     name: 'Kyoto Matcha',
     gradientClass: 'from-emerald-700 via-teal-600 to-cyan-600',
     accentText: 'text-emerald-100',
-    patternStyle:
-      'radial-gradient(circle at 25% 25%, rgba(255,255,255,0.2) 0%, transparent 45%), radial-gradient(circle at 75% 75%, rgba(167,243,208,0.24) 0%, transparent 50%)',
+    backgroundStyle:
+      'radial-gradient(circle at 25% 25%, rgba(255,255,255,0.22) 0%, transparent 45%), radial-gradient(circle at 75% 75%, rgba(167,243,208,0.25) 0%, transparent 50%), linear-gradient(135deg, #047857 0%, #0d9488 54%, #0891b2 100%)',
   },
   {
     id: 'fuji-dawn',
     name: 'Fuji Sunrise',
     gradientClass: 'from-rose-700 via-orange-500 to-amber-400',
     accentText: 'text-amber-100',
-    patternStyle:
-      'radial-gradient(circle at 50% 15%, rgba(255,255,255,0.26) 0%, transparent 50%)',
+    backgroundStyle:
+      'radial-gradient(circle at 50% 15%, rgba(255,255,255,0.28) 0%, transparent 50%), linear-gradient(135deg, #be123c 0%, #f97316 55%, #fbbf24 100%)',
   },
   {
     id: 'kanagawa-wave',
     name: 'Kanagawa Ocean',
     gradientClass: 'from-sky-700 via-blue-600 to-indigo-700',
     accentText: 'text-sky-100',
-    patternStyle:
-      'radial-gradient(circle at 80% 25%, rgba(186,230,253,0.25) 0%, transparent 48%)',
+    backgroundStyle:
+      'radial-gradient(circle at 80% 25%, rgba(186,230,253,0.28) 0%, transparent 48%), linear-gradient(135deg, #0369a1 0%, #2563eb 54%, #4338ca 100%)',
   },
   {
     id: 'obsidian-gold',
     name: 'Obsidian Kuro',
     gradientClass: 'from-slate-900 via-slate-800 to-rose-900',
     accentText: 'text-rose-200',
-    patternStyle:
-      'radial-gradient(circle at 80% 20%, rgba(225,29,72,0.3) 0%, transparent 48%)',
+    backgroundStyle:
+      'radial-gradient(circle at 80% 20%, rgba(225,29,72,0.38) 0%, transparent 48%), linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #881337 100%)',
+  },
+];
+
+function makeSceneryBannerDataUrl(
+  c1: string,
+  c2: string,
+  c3: string,
+  sunColor: string,
+  kanji: string
+): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="${c1}"/>
+        <stop offset="55%" stop-color="${c2}"/>
+        <stop offset="100%" stop-color="${c3}"/>
+      </linearGradient>
+    </defs>
+    <rect width="1200" height="360" fill="url(#sky)"/>
+    <circle cx="920" cy="145" r="95" fill="${sunColor}" opacity="0.85"/>
+    <path d="M0 290 L220 190 L430 275 L680 150 L920 265 L1200 185 L1200 360 L0 360 Z" fill="rgba(15,23,42,0.42)"/>
+    <path d="M180 360 L540 135 L600 135 L960 360 Z" fill="rgba(15,23,42,0.62)"/>
+    <path d="M495 163 L540 135 L600 135 L645 163 L615 172 L570 155 L525 172 Z" fill="rgba(255,255,255,0.85)"/>
+    <text x="1140" y="315" text-anchor="end" fill="rgba(255,255,255,0.14)" font-family="sans-serif" font-weight="900" font-size="140">${kanji}</text>
+  </svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+export interface BannerImagePreset {
+  id: string;
+  label: string;
+  url: string;
+}
+
+export const BANNER_IMAGE_PRESETS: BannerImagePreset[] = [
+  {
+    id: 'fuji-crimson',
+    label: 'Mt. Fuji Dusk',
+    url: makeSceneryBannerDataUrl('#1e1b4b', '#be123c', '#f97316', '#fde047', '富士'),
+  },
+  {
+    id: 'tokyo-cyber',
+    label: 'Tokyo Night',
+    url: makeSceneryBannerDataUrl('#090d16', '#312e81', '#e11d48', '#38bdf8', '東京'),
+  },
+  {
+    id: 'kyoto-forest',
+    label: 'Kyoto Arashiyama',
+    url: makeSceneryBannerDataUrl('#022c22', '#0f766e', '#10b981', '#fef08a', '京都'),
+  },
+  {
+    id: 'sakura-dream',
+    label: 'Sakura Horizon',
+    url: makeSceneryBannerDataUrl('#881337', '#e11d48', '#fda4af', '#fff1f2', '桜花'),
   },
 ];
 
@@ -159,6 +213,7 @@ export interface ExtendedUserProfile {
   full_name: string;
   username: string;
   avatar_url: string | null;
+  banner_url?: string | null;
   banner_theme: ProfileBannerThemeId;
   bio: string;
   jlpt_target: 'N5' | 'N4' | 'N3' | 'N2' | 'N1';
@@ -261,9 +316,13 @@ export function loadExtendedProfileMeta(
     full_name: fullName,
     username,
     avatar_url:
-      baseProfile?.avatar_url ??
       cached.avatar_url ??
+      baseProfile?.avatar_url ??
       (typeof meta.avatar_url === 'string' ? meta.avatar_url : null) ??
+      null,
+    banner_url:
+      cached.banner_url ??
+      (typeof meta.banner_url === 'string' ? meta.banner_url : null) ??
       null,
     banner_theme:
       cached.banner_theme ||
@@ -280,7 +339,7 @@ export function loadExtendedProfileMeta(
     favorite_media:
       cached.favorite_media ??
       (typeof meta.favorite_media === 'string' ? meta.favorite_media : '') ??
-      '葬送のフリーレン (Frieren: Beyond Journey\'s End)',
+      "葬送のフリーレン (Frieren: Beyond Journey's End)",
     favorite_category:
       cached.favorite_category ||
       (meta.favorite_category as PrimaryMediaCategory | undefined) ||
@@ -359,24 +418,39 @@ export async function saveExtendedProfileMeta(
     })
     .eq('id', userId);
 
-  // 3. Persist extended profile fields in Supabase Auth user_metadata so they sync across devices
-  await supabase.auth.updateUser({
-    data: {
-      full_name: cleaned.full_name,
-      avatar_url: cleaned.avatar_url,
-      username: cleaned.username,
-      banner_theme: cleaned.banner_theme,
-      bio: cleaned.bio,
-      jlpt_target: cleaned.jlpt_target,
-      favorite_media: cleaned.favorite_media,
-      favorite_category: cleaned.favorite_category,
-      location: cleaned.location,
-      discord_handle: cleaned.discord_handle,
-      target_language: cleaned.target_language,
-      daily_goal_minutes: cleaned.daily_goal_minutes,
-      is_public: cleaned.is_public,
-    },
-  });
+  // 3. Persist lightweight extended profile fields in Supabase Auth user_metadata
+  // Avoid stuffing large base64 data URLs (>2000 chars) into JWT user_metadata
+  const safeJwtAvatar =
+    cleaned.avatar_url && cleaned.avatar_url.length <= 2000
+      ? cleaned.avatar_url
+      : undefined;
+  const safeJwtBanner =
+    cleaned.banner_url && cleaned.banner_url.length <= 2000
+      ? cleaned.banner_url
+      : undefined;
+
+  try {
+    await supabase.auth.updateUser({
+      data: {
+        full_name: cleaned.full_name,
+        ...(safeJwtAvatar !== undefined ? { avatar_url: safeJwtAvatar } : {}),
+        ...(safeJwtBanner !== undefined ? { banner_url: safeJwtBanner } : {}),
+        username: cleaned.username,
+        banner_theme: cleaned.banner_theme,
+        bio: cleaned.bio,
+        jlpt_target: cleaned.jlpt_target,
+        favorite_media: cleaned.favorite_media,
+        favorite_category: cleaned.favorite_category,
+        location: cleaned.location,
+        discord_handle: cleaned.discord_handle,
+        target_language: cleaned.target_language,
+        daily_goal_minutes: cleaned.daily_goal_minutes,
+        is_public: cleaned.is_public,
+      },
+    });
+  } catch {
+    // ignore JWT metadata size warnings
+  }
 
   if (profileErr) {
     return { ok: false, error: profileErr.message };
@@ -385,7 +459,11 @@ export async function saveExtendedProfileMeta(
 }
 
 export async function compressAvatarFile(file: File): Promise<string> {
-  return compressImageToDataUrl(file, 320);
+  return compressImageToDataUrl(file, 360);
+}
+
+export async function compressBannerFile(file: File): Promise<string> {
+  return compressImageToDataUrl(file, 1360);
 }
 
 export function buildPublicProfileSnapshot(
@@ -415,7 +493,6 @@ export function buildPublicProfileSnapshot(
       rarity: a.rarity,
     }));
 
-  // Keep avatar URL in share token only if it's not a huge raw photo data URL
   const shareableAvatar =
     extProfile.avatar_url &&
     extProfile.avatar_url.startsWith('data:image/') &&
@@ -424,11 +501,20 @@ export function buildPublicProfileSnapshot(
       ? null
       : extProfile.avatar_url;
 
+  const shareableBanner =
+    extProfile.banner_url &&
+    extProfile.banner_url.startsWith('data:image/') &&
+    !extProfile.banner_url.startsWith('data:image/svg+xml') &&
+    extProfile.banner_url.length > 1800
+      ? null
+      : extProfile.banner_url;
+
   return {
     v: 1,
     profile: {
       ...extProfile,
       avatar_url: shareableAvatar,
+      banner_url: shareableBanner,
     },
     stats: {
       totalHours,
@@ -560,7 +646,7 @@ export function buildCommunityMemberSnapshot(
         totalCards: 1120,
       },
       {
-        title: '葬送のフリーレン (Frieren: Beyond Journey\'s End)',
+        title: "葬送のフリーレン (Frieren: Beyond Journey's End)",
         category: 'anime',
         totalMinutes: 14600,
         sessions: 310,
@@ -569,7 +655,7 @@ export function buildCommunityMemberSnapshot(
     ],
     'comm-2': [
       {
-        title: '葬送のフリーレン (Frieren: Beyond Journey\'s End)',
+        title: "葬送のフリーレン (Frieren: Beyond Journey's End)",
         category: 'anime',
         totalMinutes: 22400,
         sessions: 460,
@@ -663,6 +749,8 @@ export function buildCommunityMemberSnapshot(
       full_name: member.name,
       username: sanitizeUsername(member.name),
       avatar_url: AVATAR_PRESETS[presetIndex].url,
+      banner_url:
+        BANNER_IMAGE_PRESETS[presetIndex % BANNER_IMAGE_PRESETS.length].url,
       banner_theme: PROFILE_BANNER_THEMES[themeIndex].id,
       bio: `Pelajar aktif ${member.targetLanguage} (${member.rankTitle}) • Fokus pada ${member.favoriteMedia}.`,
       jlpt_target: member.totalHours > 1000 ? 'N1' : 'N2',

@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Flame,
   Globe,
+  Image as ImageIcon,
   MapPin,
   MessageSquare,
   Palette,
@@ -18,6 +19,7 @@ import {
   Share2,
   Sparkles,
   Target,
+  Trash2,
   Trophy,
   Upload,
   Users,
@@ -25,10 +27,19 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import rawCatalog from '../data/immersionCatalog.json';
+import {
+  compressImageToDataUrl,
+  DEFAULT_APPEARANCE,
+  loadAppearanceSettings,
+  saveAppearanceSettings,
+  type AppearanceSettings,
+} from '../lib/appearance';
 import { getCatalogMediaDestinations } from '../lib/mediaLinks';
 import {
   AVATAR_PRESETS,
+  BANNER_IMAGE_PRESETS,
   compressAvatarFile,
+  compressBannerFile,
   getPublicProfileShareUrl,
   PROFILE_BANNER_THEMES,
   type ExtendedUserProfile,
@@ -78,12 +89,20 @@ export const ProfileDashboardSection: React.FC<
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<ExtendedUserProfile>(() => profile);
+  const [bannerUrlInput, setBannerUrlInput] = useState('');
   const [catalogSearch, setCatalogSearch] = useState('');
+  const [appearance, setAppearance] = useState<AppearanceSettings>(
+    loadAppearanceSettings
+  );
+
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const bannerInputRef = useRef<HTMLInputElement | null>(null);
+  const wallpaperInputRef = useRef<HTMLInputElement | null>(null);
 
   const bannerTheme =
-    PROFILE_BANNER_THEMES.find((t) => t.id === (isEditing ? form.banner_theme : profile.banner_theme)) ??
-    PROFILE_BANNER_THEMES[0];
+    PROFILE_BANNER_THEMES.find(
+      (t) => t.id === (isEditing ? form.banner_theme : profile.banner_theme)
+    ) ?? PROFILE_BANNER_THEMES[0];
 
   const shareUrl = useMemo(
     () => getPublicProfileShareUrl(snapshot),
@@ -100,6 +119,11 @@ export const ProfileDashboardSection: React.FC<
 
   const handleOpenEditor = () => {
     setForm(profile);
+    setBannerUrlInput(
+      profile.banner_url && !profile.banner_url.startsWith('data:')
+        ? profile.banner_url
+        : ''
+    );
     setCatalogSearch('');
     setIsEditing(true);
   };
@@ -130,6 +154,70 @@ export const ProfileDashboardSection: React.FC<
     }
   };
 
+  const handleBannerFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await compressBannerFile(file);
+      setForm((prev) => ({ ...prev, banner_url: dataUrl }));
+      if (!isEditing && onSaveProfile) {
+        const next = { ...profile, banner_url: dataUrl };
+        const res = await onSaveProfile(next);
+        if (res.ok) {
+          toast.success('Gambar sampul / banner dashboard berhasil dipasang!');
+        }
+      } else {
+        toast.success('Gambar banner dashboard siap disimpan!');
+      }
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : 'Gagal memuat gambar banner'
+      );
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleWallpaperFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await compressImageToDataUrl(file);
+      const next: AppearanceSettings = {
+        ...appearance,
+        preset: 'custom',
+        customImageUrl: dataUrl,
+      };
+      setAppearance(next);
+      saveAppearanceSettings(next);
+      toast.success(
+        'Gambar background seluruh halaman dashboard berhasil dipasang!'
+      );
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : 'Gagal memasang wallpaper dashboard'
+      );
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleApplyBannerUrl = () => {
+    const clean = bannerUrlInput.trim();
+    if (!clean.startsWith('https://') && !clean.startsWith('http://')) {
+      toast.error('Masukkan URL gambar yang valid (https://...)');
+      return;
+    }
+    setForm((prev) => ({ ...prev, banner_url: clean }));
+    toast.success('URL gambar banner diterapkan!');
+  };
+
   const handleSubmitEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!onSaveProfile) return;
@@ -140,7 +228,7 @@ export const ProfileDashboardSection: React.FC<
         toast.error(res.error || 'Gagal menyimpan profil');
         return;
       }
-      toast.success('Profil & dashboard publik berhasil diperbarui!');
+      toast.success('Profil & gambar dashboard publik berhasil disimpan!');
       setIsEditing(false);
     } finally {
       setSaving(false);
@@ -167,34 +255,75 @@ export const ProfileDashboardSection: React.FC<
       })
     : null;
 
+  const hasCustomBanner = Boolean(
+    activeProfile.banner_url && activeProfile.banner_url.trim()
+  );
+
   return (
     <div className="space-y-6">
-      {/* Hidden file input for quick avatar upload */}
+      {/* Hidden file inputs for quick avatar, banner, and full-page wallpaper upload */}
       {isOwnProfile && (
-        <input
-          ref={avatarInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleAvatarFileChange}
-          className="hidden"
-        />
+        <>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleAvatarFileChange}
+            className="hidden"
+          />
+          <input
+            ref={bannerInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleBannerFileChange}
+            className="hidden"
+          />
+          <input
+            ref={wallpaperInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleWallpaperFileChange}
+            className="hidden"
+          />
+        </>
       )}
 
       {/* Profile Hero Banner & Identity Card */}
       <div className="card-pro overflow-hidden">
         <div
-          className={`h-36 sm:h-44 bg-gradient-to-r ${bannerTheme.gradientClass} relative p-4 sm:p-6 flex flex-col justify-between`}
-          style={{ backgroundImage: bannerTheme.patternStyle }}
+          className="h-44 sm:h-56 relative p-4 sm:p-6 flex flex-col justify-between bg-cover bg-center transition-all"
+          style={
+            hasCustomBanner
+              ? {
+                  backgroundImage: `linear-gradient(to bottom, rgba(15, 23, 42, 0.35), rgba(15, 23, 42, 0.72)), url("${activeProfile.banner_url}")`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                }
+              : {
+                  background: bannerTheme.backgroundStyle,
+                }
+          }
         >
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/25 backdrop-blur-md border border-white/20 text-white text-xs font-bold">
+          <div className="flex items-center justify-between gap-2 flex-wrap relative z-10">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/25 text-white text-xs font-bold shadow-xs">
               <Globe className="w-3.5 h-3.5" />
               {activeProfile.is_public
                 ? 'Dashboard Profil Publik'
                 : 'Profil Privat'}
             </span>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {isOwnProfile && (
+                <button
+                  type="button"
+                  onClick={() => bannerInputRef.current?.click()}
+                  className="px-3 py-1.5 rounded-xl bg-black/55 hover:bg-black/75 backdrop-blur-md text-white border border-white/25 text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                >
+                  <Camera className="w-3.5 h-3.5 text-rose-400" />
+                  Ganti Gambar Dashboard
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={handleCopyShareLink}
@@ -208,7 +337,7 @@ export const ProfileDashboardSection: React.FC<
                 <button
                   type="button"
                   onClick={handleOpenEditor}
-                  className="px-3.5 py-1.5 rounded-xl bg-slate-900/85 hover:bg-slate-900 text-white border border-white/15 text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-900/85 hover:bg-slate-900 text-white border border-white/20 text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition cursor-pointer"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
                   Edit Profil
@@ -217,13 +346,15 @@ export const ProfileDashboardSection: React.FC<
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-white/90 text-xs font-mono">
-            <span className="px-2.5 py-0.5 rounded-md bg-black/25 backdrop-blur-xs border border-white/15">
-              Target JLPT {activeProfile.jlpt_target}
-            </span>
-            <span className="px-2.5 py-0.5 rounded-md bg-black/25 backdrop-blur-xs border border-white/15">
-              {stats.stageLabel} ({stats.stageCode})
-            </span>
+          <div className="flex items-center justify-between gap-2 flex-wrap relative z-10">
+            <div className="flex items-center gap-2 text-white text-xs font-mono">
+              <span className="px-2.5 py-0.5 rounded-md bg-black/40 backdrop-blur-xs border border-white/20 font-bold">
+                Target JLPT {activeProfile.jlpt_target}
+              </span>
+              <span className="px-2.5 py-0.5 rounded-md bg-black/40 backdrop-blur-xs border border-white/20 font-bold">
+                {stats.stageLabel} ({stats.stageCode})
+              </span>
+            </div>
           </div>
         </div>
 
@@ -373,7 +504,7 @@ export const ProfileDashboardSection: React.FC<
             <div className="flex items-center gap-2">
               <Edit3 className="w-4 h-4 text-rose-600" />
               <h3 className="font-extrabold text-base text-slate-900">
-                Ubah Profil & Kustomisasi Dashboard Publik
+                Ubah Profil & Kustomisasi Gambar Dashboard Publik
               </h3>
             </div>
             <button
@@ -444,7 +575,148 @@ export const ProfileDashboardSection: React.FC<
             />
           </div>
 
-          {/* Avatar Customization */}
+          {/* 1. GAMBAR SAMPUL / BANNER HEADER DASHBOARD PROFIL */}
+          <div className="p-4 rounded-xl bg-rose-50/50 border border-rose-200/80 space-y-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <ImageIcon className="w-4 h-4 text-rose-600" />
+                <div>
+                  <span className="text-xs font-extrabold text-slate-900 block">
+                    Gambar Sampul / Banner Dashboard Profil
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    Unggah gambar anime/pemandangan dari perangkat Anda atau
+                    pilih preset Jepang di bawah
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => bannerInputRef.current?.click()}
+                  className="btn-crimson px-3.5 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Unggah Gambar Banner dari Perangkat
+                </button>
+
+                {form.banner_url && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, banner_url: null }));
+                      setBannerUrlInput('');
+                    }}
+                    className="px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-rose-300 text-xs font-bold text-slate-600 hover:text-rose-600 inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Hapus Gambar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Paste Banner URL */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="url"
+                value={bannerUrlInput}
+                onChange={(e) => setBannerUrlInput(e.target.value)}
+                placeholder="Atau tempel URL gambar banner (https://...)"
+                className="flex-1 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium text-slate-900 focus:outline-none focus:border-rose-500"
+              />
+              <button
+                type="button"
+                onClick={handleApplyBannerUrl}
+                className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:border-rose-300 text-xs font-bold text-rose-600 cursor-pointer"
+              >
+                Pasang URL Gambar
+              </button>
+            </div>
+
+            {/* Scenery Image Presets */}
+            <div className="space-y-1.5">
+              <div className="text-[11px] font-bold text-slate-600">
+                Preset Gambar Pemandangan Jepang:
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {BANNER_IMAGE_PRESETS.map((preset) => {
+                  const selected = form.banner_url === preset.url;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() =>
+                        setForm((prev) => ({ ...prev, banner_url: preset.url }))
+                      }
+                      className={`p-1.5 rounded-xl border text-left transition cursor-pointer ${
+                        selected
+                          ? 'border-rose-600 bg-rose-50 ring-2 ring-rose-500/20'
+                          : 'border-slate-200 bg-white hover:border-rose-300'
+                      }`}
+                    >
+                      <div
+                        className="h-12 rounded-lg bg-cover bg-center"
+                        style={{ backgroundImage: `url("${preset.url}")` }}
+                      />
+                      <div className="text-[11px] font-bold text-slate-800 mt-1 flex items-center justify-between">
+                        <span className="truncate">{preset.label}</span>
+                        {selected && (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Color Gradient Themes */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600">
+                <Palette className="w-3.5 h-3.5 text-rose-600" />
+                Atau Pilih Tema Gradasi Warna Header:
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                {PROFILE_BANNER_THEMES.map((theme) => {
+                  const active =
+                    !form.banner_url && form.banner_theme === theme.id;
+                  return (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      onClick={() =>
+                        setForm((prev) => ({
+                          ...prev,
+                          banner_url: null,
+                          banner_theme: theme.id as ProfileBannerThemeId,
+                        }))
+                      }
+                      className={`p-2 rounded-xl border text-left transition cursor-pointer ${
+                        active
+                          ? 'border-rose-600 bg-rose-50/70 ring-2 ring-rose-500/20'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <div
+                        className="h-7 rounded-lg"
+                        style={{ background: theme.backgroundStyle }}
+                      />
+                      <div className="text-[11px] font-bold text-slate-800 mt-1.5 flex items-center justify-between">
+                        <span className="truncate">{theme.name}</span>
+                        {active && (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* 2. FOTO PROFIL / AVATAR */}
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-bold text-slate-800">
@@ -456,7 +728,7 @@ export const ProfileDashboardSection: React.FC<
                 className="btn-crimson px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
               >
                 <Upload className="w-3.5 h-3.5" />
-                Unggah Foto dari Perangkat
+                Unggah Foto Avatar dari Perangkat
               </button>
             </div>
 
@@ -490,43 +762,39 @@ export const ProfileDashboardSection: React.FC<
             </div>
           </div>
 
-          {/* Banner Theme Picker */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-              <Palette className="w-3.5 h-3.5 text-rose-600" />
-              Tema Header / Banner Profil
+          {/* 3. BACKGROUND / WALLPAPER SELURUH HALAMAN DASHBOARD */}
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-bold text-slate-800">
+                Wallpaper / Background Seluruh Halaman Dashboard
+              </div>
+              <div className="text-[11px] text-slate-500">
+                Ganti gambar latar belakang utama di seluruh halaman website
+                ImmersionTrack
+              </div>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-              {PROFILE_BANNER_THEMES.map((theme) => {
-                const active = form.banner_theme === theme.id;
-                return (
-                  <button
-                    key={theme.id}
-                    type="button"
-                    onClick={() =>
-                      setForm((prev) => ({
-                        ...prev,
-                        banner_theme: theme.id as ProfileBannerThemeId,
-                      }))
-                    }
-                    className={`p-2 rounded-xl border text-left transition cursor-pointer ${
-                      active
-                        ? 'border-rose-600 bg-rose-50/70 ring-2 ring-rose-500/20'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
-                    }`}
-                  >
-                    <div
-                      className={`h-7 rounded-lg bg-gradient-to-r ${theme.gradientClass}`}
-                    />
-                    <div className="text-[11px] font-bold text-slate-800 mt-1.5 flex items-center justify-between">
-                      <span className="truncate">{theme.name}</span>
-                      {active && (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => wallpaperInputRef.current?.click()}
+                className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Unggah Wallpaper Seluruh Dashboard
+              </button>
+              {appearance.preset === 'custom' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAppearance(DEFAULT_APPEARANCE);
+                    saveAppearanceSettings(DEFAULT_APPEARANCE);
+                    toast.success('Wallpaper dashboard direset ke default.');
+                  }}
+                  className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:text-rose-600 cursor-pointer"
+                >
+                  Reset Wallpaper
+                </button>
+              )}
             </div>
           </div>
 
@@ -958,8 +1226,7 @@ export const ProfileDashboardSection: React.FC<
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {COMMUNITY_LEADERBOARD.map((member, idx) => {
-            const avatarUrl =
-              AVATAR_PRESETS[idx % AVATAR_PRESETS.length].url;
+            const avatarUrl = AVATAR_PRESETS[idx % AVATAR_PRESETS.length].url;
             return (
               <div
                 key={member.id}
