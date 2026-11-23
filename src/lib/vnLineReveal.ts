@@ -45,6 +45,7 @@ interface RawRect {
 }
 
 function clearElementRevealStyles(el: HTMLElement): void {
+  el.style.visibility = '';
   el.style.opacity = '';
   el.style.clipPath = '';
   el.style.transform = '';
@@ -274,141 +275,142 @@ function buildVerticalStaircasePolygon(
   return `polygon(${cx1}px 0px, ${W}px 0px, ${W}px ${H}px, ${cx2}px ${H}px, ${cx2}px ${cy}px, ${cx1}px ${cy}px)`;
 }
 
-function buildLineKeyframes(
+function buildStepAnimationSpec(
   plan: ElementRevealPlan,
+  lineIndex: number,
   style: Exclude<VnAnimationStyle, 'none'>,
   writingMode: 'horizontal' | 'vertical'
-): Keyframe[] {
+): { keyframes: [Keyframe, Keyframe]; easing: string } {
   const { boxWidth, boxHeight, lines } = plan;
-  const count = lines.length;
+  const line = lines[lineIndex];
+  const isLastLine = lineIndex === lines.length - 1;
   const W = Math.max(2, Math.ceil(boxWidth) + 2);
   const H = Math.max(2, Math.ceil(boxHeight) + 2);
 
   if (style === 'fade-up') {
-    const keyframes: Keyframe[] = [];
+    let startClip: string;
+    let endClip: string;
     if (writingMode === 'horizontal') {
-      keyframes.push({
-        offset: 0,
-        clipPath: `inset(0px 0px ${H}px 0px)`,
-        opacity: 0.35,
-        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-      });
-      for (let i = 0; i < count; i += 1) {
-        const bottomClip =
-          i === count - 1
-            ? 0
-            : Math.max(0, Math.ceil(H - lines[i].sliceEnd));
-        keyframes.push({
-          offset: i === count - 1 ? 1 : (i + 1) / count,
-          clipPath: `inset(0px 0px ${bottomClip}px 0px)`,
-          opacity: 1,
-          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-        });
-      }
+      const prevBottom =
+        lineIndex === 0 ? H : Math.max(0, Math.ceil(H - line.sliceStart));
+      const nextBottom = isLastLine
+        ? 0
+        : Math.max(0, Math.ceil(H - line.sliceEnd));
+      startClip = `inset(0px 0px ${prevBottom}px 0px)`;
+      endClip = `inset(0px 0px ${nextBottom}px 0px)`;
     } else {
-      keyframes.push({
-        offset: 0,
-        clipPath: `inset(0px 0px 0px ${W}px)`,
-        opacity: 0.35,
-        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-      });
-      for (let i = 0; i < count; i += 1) {
-        const leftClip =
-          i === count - 1 ? 0 : Math.max(0, Math.floor(lines[i].sliceStart));
-        keyframes.push({
-          offset: i === count - 1 ? 1 : (i + 1) / count,
-          clipPath: `inset(0px 0px 0px ${leftClip}px)`,
-          opacity: 1,
-          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-        });
-      }
+      const prevLeft =
+        lineIndex === 0 ? W : Math.max(0, Math.floor(line.sliceEnd));
+      const nextLeft = isLastLine ? 0 : Math.max(0, Math.floor(line.sliceStart));
+      startClip = `inset(0px 0px 0px ${prevLeft}px)`;
+      endClip = `inset(0px 0px 0px ${nextLeft}px)`;
     }
-    return keyframes;
+
+    const startFrame: Keyframe = { clipPath: startClip };
+    const endFrame: Keyframe = { clipPath: endClip };
+
+    if (lineIndex === 0) {
+      startFrame.opacity = 0.35;
+      endFrame.opacity = 1;
+      startFrame.transform =
+        writingMode === 'horizontal'
+          ? 'translate3d(0, 6px, 0)'
+          : 'translate3d(-6px, 0, 0)';
+      endFrame.transform = 'translate3d(0, 0, 0)';
+    }
+
+    return {
+      keyframes: [startFrame, endFrame],
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    };
   }
 
-  const lineEasing =
+  let startClip: string;
+  let endClip: string;
+
+  if (writingMode === 'horizontal') {
+    if (lineIndex === 0) {
+      const bottomClip = isLastLine
+        ? 0
+        : Math.max(0, Math.ceil(H - line.sliceEnd));
+      const rightStart = Math.max(0, Math.ceil(W - line.crossStart));
+      const rightEnd = isLastLine
+        ? 0
+        : Math.max(0, Math.ceil(W - Math.min(W, line.crossEnd)));
+      startClip = `inset(0px ${rightStart}px ${bottomClip}px 0px)`;
+      endClip = `inset(0px ${rightEnd}px ${bottomClip}px 0px)`;
+    } else {
+      const y2 = isLastLine ? H : line.sliceEnd;
+      startClip = buildHorizontalStaircasePolygon(
+        W,
+        line.sliceStart,
+        y2,
+        line.crossStart
+      );
+      endClip = buildHorizontalStaircasePolygon(
+        W,
+        line.sliceStart,
+        y2,
+        isLastLine ? W : Math.min(W, line.crossEnd)
+      );
+    }
+  } else if (lineIndex === 0) {
+    const leftClip = isLastLine ? 0 : Math.max(0, Math.floor(line.sliceStart));
+    const bottomStart = Math.max(0, Math.ceil(H - line.crossStart));
+    const bottomEnd = isLastLine
+      ? 0
+      : Math.max(0, Math.ceil(H - Math.min(H, line.crossEnd)));
+    startClip = `inset(0px 0px ${bottomStart}px ${leftClip}px)`;
+    endClip = `inset(0px 0px ${bottomEnd}px ${leftClip}px)`;
+  } else {
+    const x1 = isLastLine ? 0 : line.sliceStart;
+    startClip = buildVerticalStaircasePolygon(
+      W,
+      H,
+      x1,
+      line.sliceEnd,
+      line.crossStart
+    );
+    endClip = buildVerticalStaircasePolygon(
+      W,
+      H,
+      x1,
+      line.sliceEnd,
+      isLastLine ? H : Math.min(H, line.crossEnd)
+    );
+  }
+
+  const startFrame: Keyframe = { clipPath: startClip };
+  const endFrame: Keyframe = { clipPath: endClip };
+
+  if (lineIndex === 0) {
+    if (style === 'blur-in') {
+      startFrame.opacity = 0.15;
+      endFrame.opacity = 1;
+    } else if (style === 'slide') {
+      startFrame.transform =
+        writingMode === 'horizontal'
+          ? 'translate3d(12px, 0, 0)'
+          : 'translate3d(0, -12px, 0)';
+      endFrame.transform = 'translate3d(0, 0, 0)';
+    }
+  }
+
+  const easing =
     style === 'typewriter'
       ? 'linear'
       : style === 'slide'
         ? 'cubic-bezier(0.22, 1, 0.36, 1)'
         : 'cubic-bezier(0.37, 0, 0.63, 1)';
 
-  const keyframes: Keyframe[] = [];
-  for (let i = 0; i < count; i += 1) {
-    const line = lines[i];
-    const startOffset = i === 0 ? 0 : i / count;
-    const endOffset = i === count - 1 ? 1 : (i + 1) / count;
-    const crossMax = writingMode === 'horizontal' ? W : H;
-    const startCross = line.crossStart;
-    const endCross =
-      i === count - 1 ? crossMax : Math.min(crossMax, line.crossEnd);
-
-    const startPoly =
-      writingMode === 'horizontal'
-        ? buildHorizontalStaircasePolygon(
-            W,
-            line.sliceStart,
-            i === count - 1 ? H : line.sliceEnd,
-            startCross
-          )
-        : buildVerticalStaircasePolygon(
-            W,
-            H,
-            i === count - 1 ? 0 : line.sliceStart,
-            line.sliceEnd,
-            startCross
-          );
-
-    const endPoly =
-      writingMode === 'horizontal'
-        ? buildHorizontalStaircasePolygon(
-            W,
-            line.sliceStart,
-            i === count - 1 ? H : line.sliceEnd,
-            endCross
-          )
-        : buildVerticalStaircasePolygon(
-            W,
-            H,
-            i === count - 1 ? 0 : line.sliceStart,
-            line.sliceEnd,
-            endCross
-          );
-
-    const startFrame: Keyframe = {
-      offset: startOffset,
-      clipPath: startPoly,
-      easing: lineEasing,
-    };
-    const endFrame: Keyframe = {
-      offset: endOffset,
-      clipPath: endPoly,
-    };
-
-    if (style === 'blur-in') {
-      startFrame.opacity = i === 0 ? 0.2 : 1;
-      endFrame.opacity = 1;
-    } else if (style === 'slide') {
-      startFrame.transform =
-        i === 0
-          ? writingMode === 'horizontal'
-            ? 'translate3d(10px, 0, 0)'
-            : 'translate3d(0, -10px, 0)'
-          : 'translate3d(0, 0, 0)';
-      endFrame.transform = 'translate3d(0, 0, 0)';
-    }
-
-    keyframes.push(startFrame, endFrame);
-  }
-
-  return keyframes;
+  return { keyframes: [startFrame, endFrame], easing };
 }
 
 /**
  * Reveals one or more Japanese text elements strictly line-by-line (top-to-bottom for
- * horizontal writing mode, right-to-left for vertical writing mode) using GPU-composited
- * Web Animations API clip-path with zero per-frame JS work and zero wrapper spans so
- * Yomitan popup lookups stay 100% intact.
+ * horizontal writing mode, right-to-left for vertical writing mode) using chained
+ * 2-keyframe GPU-composited Web Animations API animations with zero wrapper spans
+ * so Yomitan popup lookups remain 100% intact.
  */
 export function startLineByLineReveal(
   elements: HTMLElement[],
@@ -416,16 +418,10 @@ export function startLineByLineReveal(
 ): VnRevealController {
   const { style, writingMode, durationPerLineMs, onComplete } = options;
 
-  const prefersReducedMotion =
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
   if (
     elements.length === 0 ||
     style === 'none' ||
     durationPerLineMs <= 0 ||
-    prefersReducedMotion ||
     typeof elements[0]?.animate !== 'function'
   ) {
     elements.forEach(clearElementRevealStyles);
@@ -459,72 +455,126 @@ export function startLineByLineReveal(
     };
   }
 
+  const steps: Array<{ planIndex: number; lineIndex: number }> = [];
+  activePlans.forEach((plan, planIndex) => {
+    plan.lines.forEach((_, lineIndex) => {
+      steps.push({ planIndex, lineIndex });
+    });
+  });
+
+  // Hide subsequent paragraphs until their first line begins revealing
+  const firstPlanIndex = steps[0].planIndex;
+  activePlans.forEach((plan, planIndex) => {
+    if (planIndex > firstPlanIndex) {
+      plan.el.style.visibility = 'hidden';
+    }
+  });
+
   const stepMs = Math.max(40, durationPerLineMs);
-  const animations: Animation[] = [];
-  let cursorMs = 0;
+  let activeAnim: Animation | null = null;
   let running = true;
 
-  const cancelAllAnimations = () => {
-    for (const anim of animations) {
+  const cleanup = () => {
+    running = false;
+    if (activeAnim) {
       try {
-        anim.onfinish = null;
-        anim.cancel();
+        activeAnim.onfinish = null;
+        activeAnim.cancel();
       } catch {
         // ignore Web Animations cleanup errors
       }
+      activeAnim = null;
     }
-    animations.length = 0;
     elements.forEach(clearElementRevealStyles);
-    running = false;
   };
 
-  activePlans.forEach((plan, idx) => {
-    const planDurationMs = plan.lines.length * stepMs;
-    const planDelayMs = cursorMs;
-    cursorMs += planDurationMs;
+  const runStep = (stepIdx: number, prevSameElAnim: Animation | null) => {
+    if (!running) return;
+    const step = steps[stepIdx];
+    const plan = activePlans[step.planIndex];
+    const isLastLineOfPlan = step.lineIndex === plan.lines.length - 1;
 
-    const keyframes = buildLineKeyframes(plan, style, writingMode);
+    plan.el.style.visibility = '';
     plan.el.style.willChange = 'clip-path, opacity, transform';
-    plan.el.style.contain = 'paint';
 
-    const anim = plan.el.animate(keyframes, {
-      duration: planDurationMs,
-      delay: planDelayMs,
-      fill: 'both',
-    });
+    const { keyframes, easing } = buildStepAnimationSpec(
+      plan,
+      step.lineIndex,
+      style,
+      writingMode
+    );
 
-    const isLastPlan = idx === activePlans.length - 1;
-    anim.onfinish = () => {
+    let nextAnim: Animation;
+    try {
+      nextAnim = plan.el.animate(keyframes, {
+        duration: stepMs,
+        easing,
+        fill: 'forwards',
+      });
+    } catch {
+      if (prevSameElAnim) {
+        try {
+          prevSameElAnim.onfinish = null;
+          prevSameElAnim.cancel();
+        } catch {
+          // ignore
+        }
+      }
+      cleanup();
+      onComplete?.();
+      return;
+    }
+
+    activeAnim = nextAnim;
+
+    // Cancel previous line animation AFTER starting nextAnim so there is zero flash between lines
+    if (prevSameElAnim && prevSameElAnim !== nextAnim) {
       try {
-        anim.onfinish = null;
-        anim.cancel();
+        prevSameElAnim.onfinish = null;
+        prevSameElAnim.cancel();
       } catch {
         // ignore
       }
-      clearElementRevealStyles(plan.el);
-      if (isLastPlan && running) {
+    }
+
+    nextAnim.onfinish = () => {
+      if (!running || activeAnim !== nextAnim) return;
+
+      if (isLastLineOfPlan) {
+        try {
+          nextAnim.onfinish = null;
+          nextAnim.cancel();
+        } catch {
+          // ignore
+        }
+        if (activeAnim === nextAnim) {
+          activeAnim = null;
+        }
+        clearElementRevealStyles(plan.el);
+      }
+
+      if (stepIdx + 1 < steps.length) {
+        runStep(stepIdx + 1, isLastLineOfPlan ? null : nextAnim);
+      } else {
         running = false;
+        activeAnim = null;
         onComplete?.();
       }
     };
-
-    animations.push(anim);
-  });
-
-  const finishNow = () => {
-    if (!running) return;
-    cancelAllAnimations();
-    onComplete?.();
   };
 
-  const cancel = () => {
-    if (!running) return;
-    cancelAllAnimations();
-  };
+  runStep(0, null);
 
   return {
-    finishNow,
-    cancel,
+    finishNow: () => {
+      if (!running) return;
+      cleanup();
+      onComplete?.();
+    },
+    cancel: () => {
+      if (!running) return;
+      cleanup();
+    },
     isRunning: () => running,
   };
 }

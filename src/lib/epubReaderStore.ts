@@ -134,7 +134,7 @@ export const DEFAULT_READER_PREFS: ReaderPreferences = {
   bgPanelOpacity: 72,
   bgPosition: 'center',
   bgVideoMuted: true,
-  bgVideoVolume: 40,
+  bgVideoVolume: 100,
 };
 
 const READER_PREFS_STORAGE_KEY = 'immersiontrack_reader_prefs_v1';
@@ -243,7 +243,7 @@ export function loadReaderPrefs(): ReaderPreferences {
       const bgVideoVolume =
         typeof parsed.bgVideoVolume === 'number' &&
         Number.isFinite(parsed.bgVideoVolume)
-          ? Math.min(100, Math.max(0, Math.round(parsed.bgVideoVolume)))
+          ? Math.min(300, Math.max(0, Math.round(parsed.bgVideoVolume)))
           : DEFAULT_READER_PREFS.bgVideoVolume;
       return {
         readingMode,
@@ -361,6 +361,13 @@ export function buildYouTubeBgEmbedUrl(
     fs: '0',
     enablejsapi: '1',
   });
+  if (
+    typeof window !== 'undefined' &&
+    window.location?.origin &&
+    window.location.origin !== 'null'
+  ) {
+    params.set('origin', window.location.origin);
+  }
   return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
 }
 

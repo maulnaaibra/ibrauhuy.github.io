@@ -279,6 +279,10 @@ export const JapaneseNovelReaderModal: React.FC<
   const fontFileInputRef = useRef<HTMLInputElement | null>(null);
   const bgVideoRef = useRef<HTMLVideoElement | null>(null);
   const bgYtIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const bgAudioCtxRef = useRef<AudioContext | null>(null);
+  const bgGainNodeRef = useRef<GainNode | null>(null);
+  const bgAudioSourceVideoRef = useRef<HTMLVideoElement | null>(null);
+  const ytRetryTimersRef = useRef<number[]>([]);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const vnVerticalViewportRef = useRef<HTMLDivElement | null>(null);
   const vnStreamEndRef = useRef<HTMLDivElement | null>(null);
@@ -1767,53 +1771,229 @@ export const JapaneseNovelReaderModal: React.FC<
     (func: string, args: unknown[] = []) => {
       const win = bgYtIframeRef.current?.contentWindow;
       if (!win) return;
-      win.postMessage(
-        JSON.stringify({ event: 'command', func, args }),
-        'https://www.youtube-nocookie.com'
-      );
+      win.postMessage(JSON.stringify({ event: 'command', func, args }), '*');
+    },
+    []
+  );
+
+  const registerYtListening = useCallback(() => {
+    const win = bgYtIframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage(
+      JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }),
+      '*'
+    );
+  }, []);
+
+  const syncYouTubeAudio = useCallback(
+    (muted: boolean, volumePct: number) => {
+      const ytVol = Math.min(100, Math.max(0, Math.round(volumePct)));
+      if (muted || ytVol <= 0) {
+        sendYtPlayerCommand('mute');
+        return;
+      }
+      sendYtPlayerCommand('unMute');
+      sendYtPlayerCommand('setVolume', [ytVol]);
+      sendYtPlayerCommand('playVideo');
+    },
+    [sendYtPlayerCommand]
+  );
+
+  const applyLocalVideoAudio = useCallback(
+    (
+      vid: HTMLVideoElement,
+      muted: boolean,
+      volumePct: number,
+      isLocalBlob: boolean
+    ) => {
+      const effectiveMuted = muted || volumePct <= 0;
+      vid.muted = effectiveMuted;
+
+      const clampedGain = Math.min(3, Math.max(0, volumePct / 100));
+      const shouldUseBoost =
+        isLocalBlob && !effectiveMuted && volumePct > 100;
+
+      if (shouldUseBoost && bgAudioSourceVideoRef.current !== vid) {
+        const Ctx =
+          window.AudioContext ||
+          (
+            window as unknown as {
+              webkitAudioContext?: typeof AudioContext;
+            }
+          ).webkitAudioContext;
+        if (Ctx) {
+          try {
+            if (bgAudioCtxRef.current) {
+              void bgAudioCtxRef.current.close().catch(() => {});
+            }
+            const ctx = new Ctx();
+            const source = ctx.createMediaElementSource(vid);
+            const gain = ctx.createGain();
+            const limiter = ctx.createDynamicsCompressor();
+            limiter.threshold.value = -6;
+            limiter.knee.value = 18;
+            limiter.ratio.value = 6;
+            limiter.attack.value = 0.003;
+            limiter.release.value = 0.2;
+
+            gain.gain.value = clampedGain;
+            source.connect(gain);
+            gain.connect(limiter);
+            limiter.connect(ctx.destination);
+
+            bgAudioCtxRef.current = ctx;
+            bgGainNodeRef.current = gain;
+            bgAudioSourceVideoRef.current = vid;
+          } catch {
+            // Fall back cleanly to native HTMLVideoElement volume
+          }
+        }
+      }
+
+      if (bgAudioSourceVideoRef.current === vid && bgGainNodeRef.current) {
+        vid.volume = 1;
+        bgGainNodeRef.current.gain.value = effectiveMuted ? 0 : clampedGain;
+        if (
+          !effectiveMuted &&
+          bgAudioCtxRef.current?.state === 'suspended'
+        ) {
+          void bgAudioCtxRef.current.resume().catch(() => {});
+        }
+      } else {
+        vid.volume = effectiveMuted ? 0 : Math.min(1, clampedGain);
+      }
     },
     []
   );
 
   useEffect(() => {
+    return () => {
+      ytRetryTimersRef.current.forEach((id) => window.clearTimeout(id));
+      ytRetryTimersRef.current = [];
+      if (bgAudioCtxRef.current) {
+        void bgAudioCtxRef.current.close().catch(() => {});
+        bgAudioCtxRef.current = null;
+        bgGainNodeRef.current = null;
+        bgAudioSourceVideoRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (bgMedia.kind !== 'youtube') return;
+    const onYtMessage = (event: MessageEvent) => {
+      if (
+        typeof event.origin === 'string' &&
+        !event.origin.includes('youtube')
+      ) {
+        return;
+      }
+      let parsed: { event?: string } | null = null;
+      if (typeof event.data === 'string') {
+        try {
+          parsed = JSON.parse(event.data) as { event?: string };
+        } catch {
+          return;
+        }
+      } else if (event.data && typeof event.data === 'object') {
+        parsed = event.data as { event?: string };
+      }
+      if (!parsed) return;
+      if (parsed.event === 'onReady' || parsed.event === 'initialDelivery') {
+        syncYouTubeAudio(
+          prefsRef.current.bgVideoMuted,
+          prefsRef.current.bgVideoVolume
+        );
+      }
+    };
+    window.addEventListener('message', onYtMessage);
+    return () => window.removeEventListener('message', onYtMessage);
+  }, [bgMedia.kind, syncYouTubeAudio]);
+
+  useEffect(() => {
     const vid = bgVideoRef.current;
-    if (vid) {
-      vid.muted = prefs.bgVideoMuted;
-      vid.volume = prefs.bgVideoVolume / 100;
+    if (vid && activeVideoSrc) {
+      applyLocalVideoAudio(
+        vid,
+        prefs.bgVideoMuted,
+        prefs.bgVideoVolume,
+        activeVideoSrc.startsWith('blob:')
+      );
     }
     if (bgMedia.kind === 'youtube') {
-      sendYtPlayerCommand('setVolume', [prefs.bgVideoVolume]);
-      sendYtPlayerCommand(prefs.bgVideoMuted ? 'mute' : 'unMute');
-      if (!prefs.bgVideoMuted) {
-        sendYtPlayerCommand('playVideo');
-      }
+      syncYouTubeAudio(prefs.bgVideoMuted, prefs.bgVideoVolume);
     }
   }, [
     bgMedia.kind,
     activeVideoSrc,
     prefs.bgVideoMuted,
     prefs.bgVideoVolume,
-    sendYtPlayerCommand,
+    applyLocalVideoAudio,
+    syncYouTubeAudio,
   ]);
 
   const handleToggleVideoMute = useCallback(() => {
     const nextMuted = !prefsRef.current.bgVideoMuted;
-    updatePrefs({ bgVideoMuted: nextMuted });
-    if (bgVideoRef.current) {
-      bgVideoRef.current.muted = nextMuted;
-      bgVideoRef.current.volume = prefsRef.current.bgVideoVolume / 100;
+    const nextVolume =
+      !nextMuted && prefsRef.current.bgVideoVolume <= 0
+        ? 100
+        : prefsRef.current.bgVideoVolume;
+    updatePrefs({ bgVideoMuted: nextMuted, bgVideoVolume: nextVolume });
+    if (bgVideoRef.current && activeVideoSrc) {
+      applyLocalVideoAudio(
+        bgVideoRef.current,
+        nextMuted,
+        nextVolume,
+        activeVideoSrc.startsWith('blob:')
+      );
       if (!nextMuted && bgVideoRef.current.paused) {
         void bgVideoRef.current.play().catch(() => {});
       }
     }
     if (bgMedia.kind === 'youtube') {
-      sendYtPlayerCommand('setVolume', [prefsRef.current.bgVideoVolume]);
-      sendYtPlayerCommand(nextMuted ? 'mute' : 'unMute');
-      if (!nextMuted) {
-        sendYtPlayerCommand('playVideo');
-      }
+      syncYouTubeAudio(nextMuted, nextVolume);
     }
-  }, [bgMedia.kind, sendYtPlayerCommand, updatePrefs]);
+  }, [
+    bgMedia.kind,
+    activeVideoSrc,
+    updatePrefs,
+    applyLocalVideoAudio,
+    syncYouTubeAudio,
+  ]);
+
+  const handleChangeBgVideoVolume = useCallback(
+    (rawVol: number) => {
+      const isLocalBlob = bgMedia.kind === 'local-video';
+      const maxVol = isLocalBlob ? 300 : 100;
+      const clampedVol = Math.min(maxVol, Math.max(0, Math.round(rawVol)));
+      const nextMuted = clampedVol <= 0;
+      updatePrefs({
+        bgVideoVolume: clampedVol,
+        bgVideoMuted: nextMuted,
+      });
+      if (bgVideoRef.current && activeVideoSrc) {
+        applyLocalVideoAudio(
+          bgVideoRef.current,
+          nextMuted,
+          clampedVol,
+          activeVideoSrc.startsWith('blob:')
+        );
+        if (!nextMuted && bgVideoRef.current.paused) {
+          void bgVideoRef.current.play().catch(() => {});
+        }
+      }
+      if (bgMedia.kind === 'youtube') {
+        syncYouTubeAudio(nextMuted, clampedVol);
+      }
+    },
+    [
+      bgMedia.kind,
+      activeVideoSrc,
+      updatePrefs,
+      applyLocalVideoAudio,
+      syncYouTubeAudio,
+    ]
+  );
 
   const bgPositionCss =
     prefs.bgPosition === 'top'
@@ -1960,10 +2140,29 @@ export const JapaneseNovelReaderModal: React.FC<
                 title="Background Video Reader"
                 allow="autoplay; encrypted-media; picture-in-picture"
                 onLoad={() => {
-                  sendYtPlayerCommand('setVolume', [prefsRef.current.bgVideoVolume]);
-                  sendYtPlayerCommand(
-                    prefsRef.current.bgVideoMuted ? 'mute' : 'unMute'
+                  registerYtListening();
+                  syncYouTubeAudio(
+                    prefsRef.current.bgVideoMuted,
+                    prefsRef.current.bgVideoVolume
                   );
+                  ytRetryTimersRef.current.forEach((id) =>
+                    window.clearTimeout(id)
+                  );
+                  ytRetryTimersRef.current = [
+                    window.setTimeout(() => {
+                      registerYtListening();
+                      syncYouTubeAudio(
+                        prefsRef.current.bgVideoMuted,
+                        prefsRef.current.bgVideoVolume
+                      );
+                    }, 600),
+                    window.setTimeout(() => {
+                      syncYouTubeAudio(
+                        prefsRef.current.bgVideoMuted,
+                        prefsRef.current.bgVideoVolume
+                      );
+                    }, 1600),
+                  ];
                 }}
                 className="jp-reader-yt-cover"
                 style={{ top: ytPositionTop }}
@@ -3467,34 +3666,76 @@ export const JapaneseNovelReaderModal: React.FC<
                         </button>
                       </div>
 
-                      <label className="block space-y-1">
+                      <label className="block space-y-1.5">
                         <div className="flex items-center justify-between text-[11px]">
                           <span className={`font-bold ${themeStyle.mutedText}`}>
                             Volume Suara Video
                           </span>
                           <span className={`font-mono font-bold ${themeStyle.accentText}`}>
                             {prefs.bgVideoVolume}%
+                            {bgMedia.kind === 'local-video' &&
+                              prefs.bgVideoVolume > 100 && (
+                                <span className="ml-1 text-emerald-300">
+                                  (Boost)
+                                </span>
+                              )}
                           </span>
                         </div>
                         <input
                           type="range"
                           min={0}
-                          max={100}
+                          max={bgMedia.kind === 'local-video' ? 300 : 100}
                           step={5}
-                          value={prefs.bgVideoVolume}
+                          value={Math.min(
+                            bgMedia.kind === 'local-video' ? 300 : 100,
+                            prefs.bgVideoVolume
+                          )}
                           onChange={(e) =>
-                            updatePrefs({ bgVideoVolume: Number(e.target.value) })
+                            handleChangeBgVideoVolume(Number(e.target.value))
                           }
                           className="w-full h-2 accent-sky-400 cursor-pointer"
                         />
                       </label>
 
-                      {bgMedia.kind === 'youtube' && (
+                      <div
+                        className={`grid gap-1 ${
+                          bgMedia.kind === 'local-video'
+                            ? 'grid-cols-5'
+                            : 'grid-cols-3'
+                        }`}
+                      >
+                        {(bgMedia.kind === 'local-video'
+                          ? [50, 100, 175, 250, 300]
+                          : [50, 75, 100]
+                        ).map((presetVol) => (
+                          <button
+                            key={presetVol}
+                            type="button"
+                            onClick={() => handleChangeBgVideoVolume(presetVol)}
+                            className={`py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                              prefs.bgVideoVolume === presetVol &&
+                              !prefs.bgVideoMuted
+                                ? 'bg-sky-500 text-slate-950 border-sky-400'
+                                : themeStyle.subtleBtn
+                            }`}
+                          >
+                            {presetVol}%
+                          </button>
+                        ))}
+                      </div>
+
+                      {bgMedia.kind === 'youtube' ? (
                         <p className={`text-[10px] leading-snug ${themeStyle.mutedText}`}>
-                          Jika video YouTube tidak berputar atau hitam, pemilik video
-                          membatasi embed — gunakan link YouTube lain atau file .mp4.
+                          Suara YouTube maksimal 100%. Untuk Boost suara hingga
+                          300%, gunakan unggah file video lokal (.mp4/.webm). Jika
+                          YouTube hitam, pemilik membatasi embed.
                         </p>
-                      )}
+                      ) : bgMedia.kind === 'video' ? (
+                        <p className={`text-[10px] leading-snug ${themeStyle.mutedText}`}>
+                          Geser volume atau pilih preset hingga 100%. Untuk
+                          Boost suara hingga 300%, unggah file video lokal.
+                        </p>
+                      ) : null}
                     </div>
                   )}
 
