@@ -555,8 +555,8 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
               </div>
               <p className="text-xs text-slate-500 mt-1">
                 Otomatis mendeteksi aplikasi & jendela immersion di Windows
-                (Fushi, Anki, MPV, VLC, Bettermelon, Epub.moe, Cinejoy,
-                YouTube, MangaDex, Visual Novel) di foreground maupun
+                (Fushi, Anki, MPV, VLC, Bettermelon, Yatsu Reader, Epub.moe,
+                Cinejoy, YouTube, MangaDex, Visual Novel) di foreground maupun
                 background.
               </p>
             </div>
@@ -1149,7 +1149,8 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                 3. Agent v2.0 sudah otomatis mendeteksi aplikasi seperti{' '}
                 <strong>Fushi</strong>, <strong>Anki</strong>,{' '}
                 <strong>MPV / VLC</strong>, <strong>Bettermelon</strong>,{' '}
-                <strong>Epub.moe</strong>, <strong>Cinejoy</strong>,{' '}
+                <strong>Yatsu Reader</strong>, <strong>Epub.moe</strong>,{' '}
+                <strong>Cinejoy</strong>,{' '}
                 <strong>MangaDex</strong>, dan <strong>YouTube</strong> baik di
                 jendela depan maupun saat sedang dibuka di background.
               </p>

@@ -43,10 +43,10 @@ const DEFAULT_RULES = [
   },
   {
     id: 'rule-ln',
-    name: 'Light Novel & Web Novel (Epub.moe / Ttsu / Syosetsu / Kakuyomu / BookWalker)',
+    name: 'Light Novel & Web Novel (Yatsu Reader / Epub.moe / Ttsu / Syosetsu / Kakuyomu)',
     enabled: true,
     matchType: 'title',
-    pattern: 'epub\\.moe|reader\\.epub|ttsu|📘|syosetu|syosetsu|小説家になろう|カクヨム|kakuyomu|青空文庫|aozora|bookwalker|honto|kindle|calibre|koodo|thorium|foliate|hoshi reader|light novel|web novel',
+    pattern: 'yatsu\\.moe|app\\.yatsu|yatsu|epub\\.moe|reader\\.epub|ttsu|📘|syosetu|syosetsu|小説家になろう|カクヨム|kakuyomu|青空文庫|aozora|bookwalker|honto|kindle|calibre|koodo|thorium|foliate|hoshi reader|light novel|web novel',
     category: 'light_novel',
   },
   {

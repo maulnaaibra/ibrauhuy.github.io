@@ -133,14 +133,15 @@ export function getCatalogMediaDestinations(
     };
   }
 
-  // 2. Novels -> Epub.moe direct reader.epub.moe/?md5=<md5> & download /books/<md5>/download
+  // 2. Novels -> Direct Yatsu Reader Library (app.yatsu.moe/library) + optional Epub.moe download
   if (
     section === 'Novels' ||
     category === 'light_novel' ||
     category === 'book'
   ) {
+    const YATSU_LIBRARY_URL = 'https://app.yatsu.moe/library';
+
     if (params.epubMoeMd5) {
-      const readerUrl = `https://reader.epub.moe/?md5=${params.epubMoeMd5}`;
       const downloadUrl =
         params.downloadUrl ||
         `https://epub.moe/books/${params.epubMoeMd5}/download`;
@@ -151,7 +152,8 @@ export function getCatalogMediaDestinations(
           shortLabel: 'Unduh EPUB',
           siteName: 'Epub.moe',
           url: downloadUrl,
-          description: 'Unduh file .epub bahasa Jepang langsung dari Epub.moe.',
+          description:
+            'Unduh file .epub bahasa Jepang untuk dimasukkan ke Yatsu Reader.',
         },
         {
           label: 'Buka Portal Pencarian Epub.moe',
@@ -182,19 +184,20 @@ export function getCatalogMediaDestinations(
 
       return {
         primary: {
-          label: 'Baca di Epub.moe',
-          shortLabel: 'Baca Novel',
-          siteName: 'reader.epub.moe',
-          url: readerUrl,
+          label: 'Baca di Yatsu Reader',
+          shortLabel: 'Baca di Yatsu',
+          siteName: 'Yatsu Reader',
+          url: YATSU_LIBRARY_URL,
           description:
-            'Langsung membuka novel ini di pembaca web Epub.moe (reader.epub.moe).',
+            'Langsung membuka Yatsu Reader Library (app.yatsu.moe/library) untuk membaca novel ini (judul otomatis disalin).',
         },
         quickSecondary: {
           label: 'Unduh EPUB',
           shortLabel: 'EPUB',
           siteName: 'Epub.moe',
           url: downloadUrl,
-          description: 'Unduh file EPUB langsung dari Epub.moe.',
+          description:
+            'Unduh file .epub untuk dimasukkan ke Yatsu Reader.',
         },
         alternatives,
         volumes: params.epubMoeVolumes,
@@ -202,18 +205,26 @@ export function getCatalogMediaDestinations(
     }
 
     const isAozora = Boolean(params.sourceUrl?.includes('aozora.gr.jp'));
-    const primaryUrl = isAozora
-      ? params.sourceUrl!
-      : params.directUrl || `https://bookwalker.jp/search/?word=${q}`;
 
-    const alternatives: ExternalMediaLink[] = [
+    const alternatives: ExternalMediaLink[] = [];
+    if (isAozora && params.sourceUrl) {
+      alternatives.push({
+        label: 'Baca di Aozora Bunko',
+        shortLabel: 'Aozora Bunko',
+        siteName: 'Aozora.gr.jp',
+        url: params.sourceUrl,
+        description:
+          'Langsung membuka teks lengkap sastra Jepang di Aozora Bunko.',
+      });
+    }
+    alternatives.push(
       {
         label: 'Cari EPUB di Epub.moe (Judul Otomatis Disalin)',
         shortLabel: 'Epub.moe',
         siteName: 'Epub.moe',
         url: 'https://epub.moe/',
         description:
-          'Buka Epub.moe dan tempel (Ctrl+V) judul yang sudah disalin otomatis.',
+          'Buka Epub.moe untuk mengunduh EPUB (judul otomatis disalin).',
       },
       {
         label: 'Cari di BookWalker JP',
@@ -221,8 +232,8 @@ export function getCatalogMediaDestinations(
         siteName: 'BookWalker.jp',
         url: `https://bookwalker.jp/search/?word=${q}`,
         description: 'Langsung cari judul novel ini di BookWalker JP.',
-      },
-    ];
+      }
+    );
     if (params.sourceUrl && !isAozora) {
       alternatives.push({
         label: 'Halaman Info Buku (AniList / Bookmeter)',
@@ -237,21 +248,29 @@ export function getCatalogMediaDestinations(
 
     return {
       primary: {
-        label: isAozora ? 'Baca di Aozora Bunko' : 'Buka Novel Langsung',
-        shortLabel: 'Baca Novel',
-        siteName: isAozora ? 'Aozora.gr.jp' : 'BookWalker JP',
-        url: primaryUrl,
-        description: isAozora
-          ? 'Langsung membuka teks lengkap sastra Jepang di Aozora Bunko.'
-          : 'Langsung menuju halaman pencarian judul novel ini.',
+        label: 'Baca di Yatsu Reader',
+        shortLabel: 'Baca di Yatsu',
+        siteName: 'Yatsu Reader',
+        url: YATSU_LIBRARY_URL,
+        description:
+          'Langsung membuka Yatsu Reader Library (app.yatsu.moe/library) untuk membaca novel ini (judul otomatis disalin).',
       },
-      quickSecondary: {
-        label: 'Epub.moe',
-        shortLabel: 'Epub.moe',
-        siteName: 'Epub.moe',
-        url: 'https://epub.moe/',
-        description: 'Buka Epub.moe (judul otomatis disalin ke clipboard).',
-      },
+      quickSecondary: isAozora
+        ? {
+            label: 'Aozora Bunko',
+            shortLabel: 'Aozora Bunko',
+            siteName: 'Aozora.gr.jp',
+            url: params.sourceUrl!,
+            description: 'Buka teks sastra Jepang di Aozora Bunko.',
+          }
+        : {
+            label: 'Unduh / Cari EPUB',
+            shortLabel: 'Cari EPUB',
+            siteName: 'Epub.moe',
+            url: 'https://epub.moe/',
+            description:
+              'Cari file EPUB di Epub.moe (judul otomatis disalin ke clipboard).',
+          },
       alternatives,
     };
   }

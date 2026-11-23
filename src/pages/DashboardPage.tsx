@@ -1463,8 +1463,8 @@ export const DashboardPage: React.FC = () => {
                   Katalog 1.130+ Media & Live Search Semua Judul
                 </h2>
                 <p className="text-xs font-medium text-slate-500 app-canvas-subtitle mt-0.5">
-                  Anime Bettermelon lengkap dengan level bahasa JLPT, Novel
-                  Epub.moe, Manga, Visual Novel, Game, Drama Cinejoy, YouTube, &
+                  Anime Bettermelon lengkap dengan level bahasa JLPT, Novel Yatsu
+                  Reader, Manga, Visual Novel, Game, Drama Cinejoy, YouTube, &
                   Podcast — ketik judul apa saja untuk langsung buka.
                 </p>
               </div>

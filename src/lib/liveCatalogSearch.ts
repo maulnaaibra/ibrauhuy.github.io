@@ -97,11 +97,11 @@ export function getUniversalDirectSearchPortals(
       badgeColor: 'bg-rose-600 text-white border-rose-600',
     },
     {
-      id: 'epub-novel',
+      id: 'yatsu-novel',
       section: 'Novels',
-      label: `Baca Novel "${clean}" (Epub.moe)`,
-      siteName: 'Epub.moe',
-      url: `https://epub.moe/?q=${q}`,
+      label: `Baca Novel "${clean}" di Yatsu Reader`,
+      siteName: 'Yatsu Reader',
+      url: 'https://app.yatsu.moe/library',
       badgeColor: 'bg-amber-600 text-white border-amber-600',
     },
     {

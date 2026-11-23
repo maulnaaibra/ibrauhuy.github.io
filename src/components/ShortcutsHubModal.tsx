@@ -54,6 +54,16 @@ export const BUILTIN_WEB_SHORTCUTS: WebShortcutItem[] = [
     description: 'Nonton anime dengan subtitle Jepang interaktif & metrik JLPT',
   },
   {
+    id: 'sc-yatsu',
+    label: 'Yatsu Reader',
+    url: 'https://app.yatsu.moe/library',
+    badge: 'Light Novel',
+    group: 'media',
+    category: 'light_novel',
+    description:
+      'Baca Light Novel & EPUB bahasa Jepang di Yatsu Library (kompatibel Yomitan)',
+  },
+  {
     id: 'sc-epubmoe',
     label: 'Epub.moe',
     url: 'https://epub.moe/',
@@ -488,7 +498,7 @@ export const ShortcutsHubModal: React.FC<ShortcutsHubModalProps> = ({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Cari shortcut website (Bettermelon, Jisho, Epub.moe), fitur, atau judul anime/novel..."
+            placeholder="Cari shortcut website (Bettermelon, Jisho, Yatsu, Epub.moe), fitur, atau judul anime/novel..."
             className="flex-1 bg-transparent text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none"
           />
           <kbd className="px-2 py-0.5 rounded bg-white border border-slate-200 text-[10px] font-mono text-slate-500">

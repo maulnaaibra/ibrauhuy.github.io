@@ -782,7 +782,10 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                 >
                   <Play className="w-4 h-4 fill-slate-950 text-slate-950" />
                   <span>
-                    Play{' '}
+                    {selectedDetail.section === 'Novels' ||
+                    selectedDetail.section === 'Manga'
+                      ? 'Baca'
+                      : 'Play'}{' '}
                     {selectedDetail.section === 'Anime' && watchedEps.length > 0
                       ? `Ep ${Math.min(
                           totalEpisodes || 99,
@@ -935,7 +938,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                   selectedDetail.section === 'Drama & TV'
                     ? `Timeline Episode (${watchedEps.length}/${totalEpisodes || 12} Selesai)`
                     : dest.volumes && dest.volumes.length > 0
-                      ? `Timeline Volume Novel di Epub.moe (${dest.volumes.length} Volume)`
+                      ? `Timeline Volume Novel — Yatsu Reader (${dest.volumes.length} Volume)`
                       : 'Timeline & Sumber Immersion Langsung'}
                 </h2>
                 <p className="text-xs text-white/55 mt-0.5">
@@ -1029,7 +1032,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
               </div>
             )}
 
-            {/* Novel Epub.moe Volumes Timeline */}
+            {/* Novel Yatsu Reader Volumes Timeline */}
             {dest.volumes && dest.volumes.length > 0 && (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {dest.volumes.map((vol, idx) => (
@@ -1047,15 +1050,15 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <a
-                        href={`https://reader.epub.moe/?md5=${vol.md5}`}
+                        href="https://app.yatsu.moe/library"
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={() =>
                           handleExternalLaunch(
                             vol.title,
-                            'Epub.moe Reader',
+                            'Yatsu Reader',
                             selectedDetail.category,
-                            `https://reader.epub.moe/?md5=${vol.md5}`
+                            'https://app.yatsu.moe/library'
                           )
                         }
                         className="px-3 py-1.5 rounded-xl bg-white text-slate-950 text-xs font-extrabold hover:bg-slate-200 inline-flex items-center gap-1"
