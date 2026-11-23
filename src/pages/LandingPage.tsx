@@ -37,13 +37,58 @@ import {
   COMMUNITY_LEADERBOARD,
   JLPT_MILESTONES,
 } from '../lib/publicShowcase';
-import type { ImmersionCategory } from '../types';
+import rawCatalog from '../data/immersionCatalog.json';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
-import { MediaCatalogBrowser } from '../components/MediaCatalogBrowser';
 import { MediaCover } from '../components/MediaCover';
 import { Reveal } from '../components/Reveal';
 import { useAuth } from '../context/AuthContext';
+
+interface CatalogPreviewItem {
+  id: string;
+  section: string;
+  category: string;
+  difficultyTier: string;
+  title: string;
+  romajiTitle?: string;
+  description: string;
+  coverImage?: string;
+  isNsfw?: boolean;
+}
+
+const PREVIEW_SHOWCASE_IDS = [
+  '2065345633-3',
+  '1019246469-3',
+  '1293737411-2',
+  '1514303440-1',
+  '1215607333-3',
+  '304582628-1',
+] as const;
+
+const LANDING_CATALOG_PREVIEW: CatalogPreviewItem[] = (() => {
+  const all = rawCatalog as CatalogPreviewItem[];
+  const byId = new Map(all.map((item) => [item.id, item]));
+  const picked: CatalogPreviewItem[] = [];
+  const usedIds = new Set<string>();
+
+  for (const id of PREVIEW_SHOWCASE_IDS) {
+    const match = byId.get(id);
+    if (match && !match.isNsfw) {
+      picked.push(match);
+      usedIds.add(match.id);
+    }
+  }
+
+  for (const item of all) {
+    if (picked.length >= 6) break;
+    if (!item.isNsfw && !usedIds.has(item.id)) {
+      picked.push(item);
+      usedIds.add(item.id);
+    }
+  }
+
+  return picked.slice(0, 6);
+})();
 
 export const LandingPage: React.FC = () => {
   const { user, signOut } = useAuth();
@@ -124,23 +169,15 @@ export const LandingPage: React.FC = () => {
     navigate(`/dashboard?goal=${calcMinutes}`);
   };
 
-  const handleStartMediaFromCatalog = (
-    title: string,
-    category: ImmersionCategory,
-    minutes: number
-  ) => {
-    const params = new URLSearchParams({
-      logTitle: title,
-      logCategory: category,
-      logDuration: String(minutes),
-    });
-    const target = `/dashboard?${params.toString()}`;
+  const handleOpenCatalog = () => {
     if (!user) {
-      toast('Silakan masuk atau daftar terlebih dahulu untuk mencatat sesi.');
-      navigate('/login', { state: { from: target } });
+      toast(
+        'Silakan masuk atau daftar terlebih dahulu untuk mengakses katalog lengkap.'
+      );
+      navigate('/login', { state: { from: '/dashboard?tab=catalog' } });
       return;
     }
-    navigate(target);
+    navigate('/dashboard?tab=catalog');
   };
 
   const handleSaveSupabase = async (e: React.FormEvent) => {
@@ -258,7 +295,7 @@ export const LandingPage: React.FC = () => {
               Kalkulator JLPT
             </a>
             <a href="#katalog" className="hover:text-rose-600 transition-colors">
-              Katalog 660 Media
+              Katalog Media
             </a>
             <a href="#fitur" className="hover:text-rose-600 transition-colors">
               Fitur
@@ -377,7 +414,7 @@ export const LandingPage: React.FC = () => {
           <p className="text-slate-600 app-canvas-subtitle text-base sm:text-lg font-medium leading-relaxed max-w-2xl mx-auto">
             Catat setiap sesi menonton anime, membaca novel, manga, visual novel,
             podcast, hingga review Anki dalam satu dashboard modern — lengkap
-            dengan 660+ katalog media bergambar dan pelacakan otomatis Windows.
+            dengan 1.130+ katalog media bergambar dan pelacakan otomatis Windows.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2 animate-fade-up delay-1">
@@ -405,7 +442,7 @@ export const LandingPage: React.FC = () => {
 
           <div className="flex flex-wrap items-center justify-center gap-2 pt-3 text-xs font-semibold text-slate-600 animate-fade-up delay-2">
             {[
-              '660+ Katalog Media Bergambar',
+              '1.130+ Katalog Media Bergambar',
               'Analitik & Tahap JLPT N5–N1',
               'Desktop Tracker + AnkiConnect',
               'Tema & Background Kustom',
@@ -422,7 +459,7 @@ export const LandingPage: React.FC = () => {
 
         {/* Dashboard Preview */}
         <section id="preview" className="animate-fade-up delay-2">
-          <div className="rounded-2xl bg-white/95 border border-slate-200 shadow-xl shadow-slate-200/70 overflow-hidden">
+          <div className="rounded-2xl card-pro overflow-hidden shadow-2xl">
             <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
@@ -441,7 +478,7 @@ export const LandingPage: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-5 sm:p-7 space-y-5 bg-slate-50/40">
+            <div className="p-5 sm:p-7 space-y-5 landing-surface-subtle">
               <div className="grid md:grid-cols-3 gap-4">
                 <div className="card-pro p-4 space-y-3">
                   <div className="flex items-center justify-between">
@@ -643,7 +680,7 @@ export const LandingPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="lg:col-span-6 p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-rose-50/80 via-white to-slate-50 border border-rose-100 space-y-5">
+              <div className="lg:col-span-6 p-5 sm:p-6 rounded-2xl landing-accent-panel space-y-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
@@ -728,29 +765,99 @@ export const LandingPage: React.FC = () => {
           </section>
         </Reveal>
 
-        {/* Full 660+ Media Catalog from Spreadsheet */}
+        {/* Display-Only 6-Card Catalog Showcase */}
         <Reveal>
           <section id="katalog" className="space-y-6">
-            <div className="space-y-1.5">
-              <div className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-600 app-canvas-subtitle">
-                <Compass className="w-3.5 h-3.5" />
-                DATABASE REKOMENDASI MEDIA LENGKAP
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+              <div className="space-y-1.5">
+                <div className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-600 app-canvas-subtitle">
+                  <Compass className="w-3.5 h-3.5" />
+                  PREVIEW KATALOG MEDIA
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 app-canvas-title">
+                  Cuplikan 1.130+ Katalog Media Immersion
+                </h2>
+                <p className="text-sm font-medium text-slate-600 app-canvas-subtitle">
+                  Berikut 6 contoh tampilan media dari Novel, Anime, Manga,
+                  Visual Novel, Drama TV hingga Podcast. Masuk ke akun untuk
+                  mencari, membaca dengan Yomitan, dan mencatat progres.
+                </p>
               </div>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 app-canvas-title">
-                Katalog 660+ Media Immersion Bergambar
-              </h2>
-              <p className="text-sm font-medium text-slate-600 app-canvas-subtitle">
-                Lengkap dari Novels, Anime, Manga, Visual Novels, Video Games,
-                Drama, YouTube, VTubers hingga Podcasts — lengkap dengan sampul,
-                penjelasan kesulitan, dan tombol mulai.
-              </p>
+              <span className="self-start sm:self-auto px-3 py-1 rounded-full bg-white/95 border border-slate-200 text-[11px] font-bold text-slate-500 inline-flex items-center gap-1.5 shrink-0">
+                <Lock className="w-3 h-3 text-rose-600" />
+                Hanya Tampilan Preview (6 Item)
+              </span>
             </div>
 
-            <MediaCatalogBrowser
-              defaultSection="Novels"
-              pageSize={9}
-              onStartMedia={handleStartMediaFromCatalog}
-            />
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {LANDING_CATALOG_PREVIEW.map((item) => (
+                <article
+                  key={item.id}
+                  aria-label={`Preview ${item.title}`}
+                  className="card-pro p-4 flex items-start gap-3.5 select-none pointer-events-none cursor-default"
+                >
+                  <MediaCover
+                    title={item.title}
+                    category={item.category}
+                    coverImage={item.coverImage}
+                    className="w-20 h-28 rounded-xl shrink-0"
+                  />
+                  <div className="min-w-0 flex-1 flex flex-col gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-200 text-[10px] font-extrabold text-rose-700">
+                        {item.section}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-600">
+                        {item.difficultyTier}
+                      </span>
+                    </div>
+
+                    <h3 className="text-sm font-extrabold text-slate-900 leading-snug line-clamp-2">
+                      {item.title}
+                    </h3>
+
+                    {item.romajiTitle && (
+                      <p className="text-[11px] font-medium text-slate-500 truncate">
+                        {item.romajiTitle}
+                      </p>
+                    )}
+
+                    <p className="text-xs text-slate-600 leading-relaxed line-clamp-2">
+                      {item.description}
+                    </p>
+
+                    <div className="pt-1 flex items-center gap-1 text-[11px] font-semibold text-slate-400">
+                      <Lock className="w-3 h-3 shrink-0" />
+                      <span>Tampilan preview</span>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <div className="card-pro landing-accent-panel p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="text-sm font-extrabold text-slate-900">
+                  Ingin membuka seluruh 1.130+ katalog &amp; Reader Novel Yomitan?
+                </div>
+                <p className="text-xs font-medium text-slate-600">
+                  Pencarian penuh, filter JLPT, simpan ke Daftar Saya, dan tombol
+                  baca langsung tersedia eksklusif di dalam Dashboard setelah login.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleOpenCatalog}
+                className="btn-crimson px-4 py-2.5 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
+              >
+                <span>
+                  {isCloudLoggedIn
+                    ? 'Buka Katalog di Dashboard'
+                    : 'Masuk untuk Buka Katalog Lengkap'}
+                </span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           </section>
         </Reveal>
 
@@ -918,7 +1025,7 @@ export const LandingPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="card-pro p-5 bg-gradient-to-br from-rose-50/90 via-white to-slate-50 border-rose-200 space-y-3">
+                <div className="card-pro landing-accent-panel p-5 space-y-3">
                   <h3 className="font-extrabold text-slate-900 text-sm">
                     Siap mencatatkan perjalanan bahasamu sendiri?
                   </h3>
@@ -964,7 +1071,7 @@ export const LandingPage: React.FC = () => {
               Kalkulator JLPT
             </a>
             <a href="#katalog" className="hover:text-rose-600 transition">
-              Katalog 660 Media
+              Katalog Media
             </a>
             <Link to="/login" className="hover:text-rose-600 transition">
               Masuk / Daftar
