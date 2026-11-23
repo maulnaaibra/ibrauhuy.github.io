@@ -318,13 +318,15 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={openManualFallback}
-        className="mt-2 w-full text-[11px] font-semibold text-slate-400 hover:text-slate-600 cursor-pointer"
-      >
-        Masuk manual tanpa Google
-      </button>
+      {providerMissing && (
+        <button
+          type="button"
+          onClick={openManualFallback}
+          className="mt-2 w-full text-[11px] font-semibold text-slate-400 hover:text-slate-600 cursor-pointer"
+        >
+          Masuk manual tanpa Google
+        </button>
+      )}
 
       {chooserOpen && (
         <div

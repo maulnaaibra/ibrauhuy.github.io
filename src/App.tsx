@@ -27,14 +27,7 @@ export function App() {
           }}
         />
         <Routes>
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <Navigate to="/dashboard" replace />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<AuthPage />} />
           <Route path="/privacy" element={<LegalPage />} />
           <Route path="/terms" element={<LegalPage />} />
@@ -57,14 +50,7 @@ export function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/showcase"
-            element={
-              <ProtectedRoute>
-                <LandingPage />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/showcase" element={<LandingPage />} />
           <Route
             path="/settings"
             element={
@@ -73,7 +59,7 @@ export function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

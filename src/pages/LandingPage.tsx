@@ -10,11 +10,15 @@ import {
   Database,
   Flame,
   Lock,
+  LogIn,
+  LogOut,
   Mail,
   MonitorSmartphone,
+  Settings,
   Sparkles,
   Target,
   Trophy,
+  User as UserIcon,
   Users,
   Zap,
 } from 'lucide-react';
@@ -40,13 +44,14 @@ import { Reveal } from '../components/Reveal';
 import { useAuth } from '../context/AuthContext';
 
 export const LandingPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const navigate = useNavigate();
 
   const isCloudLoggedIn = Boolean(user);
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
@@ -94,16 +99,24 @@ export const LandingPage: React.FC = () => {
   }, [calcMinutes, selectedMilestoneCode]);
 
   const handleOpenDashboard = () => {
+    if (!user) {
+      toast('Silakan masuk atau daftar terlebih dahulu untuk membuka Dashboard.');
+      navigate('/login', { state: { from: '/dashboard' } });
+      return;
+    }
     navigate('/dashboard');
   };
 
   const handleApplyCalculatorGoal = async () => {
-    if (user) {
-      await supabase
-        .from('profiles')
-        .update({ daily_goal_minutes: calcMinutes })
-        .eq('id', user.id);
+    if (!user) {
+      toast('Silakan masuk atau daftar terlebih dahulu untuk menyimpan target.');
+      navigate('/login', { state: { from: `/dashboard?goal=${calcMinutes}` } });
+      return;
     }
+    await supabase
+      .from('profiles')
+      .update({ daily_goal_minutes: calcMinutes })
+      .eq('id', user.id);
     toast.success(`Target harian ${calcMinutes} mnt/hari diterapkan!`);
     navigate(`/dashboard?goal=${calcMinutes}`);
   };
@@ -118,7 +131,13 @@ export const LandingPage: React.FC = () => {
       logCategory: category,
       logDuration: String(minutes),
     });
-    navigate(`/dashboard?${params.toString()}`);
+    const target = `/dashboard?${params.toString()}`;
+    if (!user) {
+      toast('Silakan masuk atau daftar terlebih dahulu untuk mencatat sesi.');
+      navigate('/login', { state: { from: target } });
+      return;
+    }
+    navigate(target);
   };
 
   const handleSaveSupabase = async (e: React.FormEvent) => {
@@ -157,7 +176,7 @@ export const LandingPage: React.FC = () => {
           options: {
             emailRedirectTo: `${window.location.origin}${import.meta.env.BASE_URL}auth/callback`,
             data: {
-              full_name: email.split('@')[0],
+              full_name: fullName.trim() || email.split('@')[0],
             },
           },
         });
@@ -237,37 +256,24 @@ export const LandingPage: React.FC = () => {
             </a>
           </nav>
 
-          <div className="flex items-center gap-2">
-            {isCloudLoggedIn ? (
-              <button
-                type="button"
-                onClick={handleOpenDashboard}
-                className="btn-crimson px-4 py-2 rounded-xl text-sm font-bold inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                Ke Dashboard Anda
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSignUp(false);
-                    setShowAuthModal(true);
-                  }}
-                  className="px-3.5 py-2 rounded-xl text-sm font-bold text-slate-700 hover:text-rose-600 hover:bg-rose-50/70 transition cursor-pointer"
-                >
-                  Masuk Akun
-                </button>
-                <button
-                  type="button"
-                  onClick={handleOpenDashboard}
-                  className="btn-crimson px-4 py-2 rounded-xl text-sm font-bold cursor-pointer"
-                >
-                  Buka Dashboard
-                </button>
-              </>
-            )}
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              to="/settings"
+              className="px-3 sm:px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-rose-50 border border-slate-200 hover:border-rose-300 text-xs sm:text-sm font-bold text-slate-700 hover:text-rose-700 inline-flex items-center gap-1.5 transition"
+            >
+              <Settings className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+              <span className="hidden sm:inline">Pengaturan &amp; Background</span>
+              <span className="sm:hidden">Pengaturan</span>
+            </Link>
+
+            <button
+              type="button"
+              onClick={handleOpenDashboard}
+              className="btn-crimson px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>Ke Dashboard Anda</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </header>
@@ -299,31 +305,21 @@ export const LandingPage: React.FC = () => {
               onClick={handleOpenDashboard}
               className="btn-crimson w-full sm:w-auto px-6 py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 cursor-pointer"
             >
-              {isCloudLoggedIn
-                ? 'Lanjutkan Progres Saya'
-                : 'Mulai Tracking Sekarang'}
+              <span>Lanjutkan Progres Saya</span>
               <ArrowRight className="w-4 h-4" />
             </button>
 
-            {isCloudLoggedIn ? (
-              <Link
-                to="/settings"
-                className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 font-bold text-sm transition shadow-xs text-center"
-              >
-                Pengaturan & Background
-              </Link>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSignUp(true);
-                  setShowAuthModal(true);
-                }}
-                className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 font-bold text-sm transition cursor-pointer shadow-xs"
-              >
-                Daftar & Sinkron Cloud
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                setIsSignUp(false);
+                setShowAuthModal(true);
+              }}
+              className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 font-bold text-sm inline-flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
+            >
+              <LogIn className="w-4 h-4 text-rose-600" />
+              <span>{isCloudLoggedIn ? 'Akun & Ganti Login' : 'Login / Daftar'}</span>
+            </button>
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-2 pt-3 text-xs font-semibold text-slate-600 animate-fade-up delay-2">
@@ -905,7 +901,7 @@ export const LandingPage: React.FC = () => {
 
       {showAuthModal && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fade-in"
+          className="fixed inset-0 z-50 bg-slate-950/65 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fade-in"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowAuthModal(false);
           }}
@@ -913,9 +909,9 @@ export const LandingPage: React.FC = () => {
           <div
             role="dialog"
             aria-modal="true"
-            className="w-full max-w-md rounded-2xl bg-white border border-slate-200 p-6 shadow-2xl space-y-5 my-auto animate-scale-in"
+            className="w-full max-w-md rounded-2xl card-pro p-6 shadow-2xl space-y-5 my-auto animate-scale-in"
           >
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-extrabold text-slate-900">
                   {isSignUp ? 'Buat Akun ImmersionTrack' : 'Masuk ke Akun'}
@@ -933,6 +929,55 @@ export const LandingPage: React.FC = () => {
               </button>
             </div>
 
+            {isCloudLoggedIn && user && (
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-2 text-xs">
+                <div className="min-w-0">
+                  <span className="font-bold text-emerald-800 block">
+                    Akun Aktif Saat Ini
+                  </span>
+                  <span className="font-mono text-emerald-700 truncate block">
+                    {user.email}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await signOut();
+                    toast.success('Berhasil keluar dari akun.');
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-white border border-emerald-200 text-rose-600 font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer"
+                >
+                  <LogOut className="w-3 h-3" />
+                  Keluar
+                </button>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 p-1 rounded-xl bg-slate-100 border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setIsSignUp(false)}
+                className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  !isSignUp
+                    ? 'bg-gradient-to-r from-rose-600 to-rose-700 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Masuk Akun
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsSignUp(true)}
+                className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  isSignUp
+                    ? 'bg-gradient-to-r from-rose-600 to-rose-700 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Daftar Baru
+              </button>
+            </div>
+
             {!sbReady && !isSupabaseConfigured && (
               <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-medium text-rose-900 space-y-2">
                 <div>
@@ -942,7 +987,7 @@ export const LandingPage: React.FC = () => {
                     onClick={() => setShowSupabaseSetup(!showSupabaseSetup)}
                     className="underline font-bold text-rose-700 cursor-pointer"
                   >
-                    atur URL & Anon Key Supabase sekarang
+                    atur URL &amp; Anon Key Supabase sekarang
                   </button>{' '}
                   untuk menyambungkan akun Anda.
                 </div>
@@ -985,6 +1030,18 @@ export const LandingPage: React.FC = () => {
             )}
 
             <form onSubmit={handleEmailAuth} className="space-y-3">
+              {isSignUp && (
+                <div className="relative">
+                  <UserIcon className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    placeholder="Nama Tampilan (misal: Maulana)"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white"
+                  />
+                </div>
+              )}
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 <input
@@ -1011,10 +1068,14 @@ export const LandingPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={authLoading}
-                className="btn-crimson w-full py-2.5 rounded-xl font-bold text-sm cursor-pointer flex items-center justify-center gap-1.5"
+                className="btn-crimson w-full py-2.5 rounded-xl font-bold text-sm cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-60"
               >
                 <Zap className="w-4 h-4" />
-                {isSignUp ? 'Daftar Akun' : 'Masuk dengan Email'}
+                {authLoading
+                  ? 'Memproses...'
+                  : isSignUp
+                    ? 'Daftar & Langsung Masuk'
+                    : 'Masuk dengan Email'}
               </button>
               <div className="flex items-center justify-between text-xs font-medium text-slate-500 pt-1">
                 <button
@@ -1022,7 +1083,9 @@ export const LandingPage: React.FC = () => {
                   onClick={() => setIsSignUp(!isSignUp)}
                   className="text-rose-600 font-bold hover:underline cursor-pointer"
                 >
-                  {isSignUp ? 'Sudah punya akun? Masuk' : 'Belum punya akun? Daftar'}
+                  {isSignUp
+                    ? 'Sudah punya akun? Masuk'
+                    : 'Belum punya akun? Daftar'}
                 </button>
                 <Link
                   to="/login?mode=forgot"
@@ -1035,7 +1098,7 @@ export const LandingPage: React.FC = () => {
 
             <div className="flex items-center gap-3 text-xs font-semibold text-slate-400">
               <div className="h-px flex-1 bg-slate-200" />
-              <span>opsi lain</span>
+              <span>atau masuk dengan Google</span>
               <div className="h-px flex-1 bg-slate-200" />
             </div>
 

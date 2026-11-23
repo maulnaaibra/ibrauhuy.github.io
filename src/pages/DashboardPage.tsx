@@ -1031,7 +1031,7 @@ export const DashboardPage: React.FC = () => {
     <div className="min-h-screen app-bg-canvas text-slate-900">
       <header className="sticky top-0 z-30 pt-[env(safe-area-inset-top)] bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-2xs">
         <div className="px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4">
-          <Link to="/showcase" className="flex items-center gap-2.5 sm:gap-3 min-w-0 group">
+          <Link to="/" className="flex items-center gap-2.5 sm:gap-3 min-w-0 group">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-rose-500 to-rose-700 flex items-center justify-center font-extrabold text-white shadow-sm shadow-rose-500/25 shrink-0">
               I
             </div>

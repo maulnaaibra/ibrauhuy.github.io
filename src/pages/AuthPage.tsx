@@ -286,9 +286,18 @@ export const AuthPage: React.FC = () => {
             Kembali ke Dashboard
           </Link>
         ) : (
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/85 backdrop-blur border border-rose-200 text-xs font-bold text-rose-700 shadow-xs">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Akses Terproteksi • Silakan Masuk untuk Melanjutkan
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <Link
+              to="/"
+              className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-600 hover:text-rose-600 app-canvas-subtitle transition"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Kembali ke Beranda
+            </Link>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/85 backdrop-blur border border-rose-200 text-[11px] font-bold text-rose-700 shadow-xs">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Wajib Masuk untuk Lanjut
+            </div>
           </div>
         )}
 
