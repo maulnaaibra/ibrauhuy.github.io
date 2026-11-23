@@ -31,6 +31,7 @@ export interface StoredNovelBook {
   title: string;
   author?: string;
   fileName: string;
+  coverDataUrl?: string;
   chapters: StoredNovelChapter[];
   totalChars: number;
   currentChapter: number;
@@ -42,7 +43,23 @@ export interface StoredNovelBook {
 
 export type StoredNovelSummary = Omit<StoredNovelBook, 'chapters'> & {
   chapterCount: number;
+  bookmarkCount: number;
 };
+
+export interface NovelProgressSnapshot {
+  storageKey: string;
+  catalogItemId?: string;
+  title: string;
+  author?: string;
+  fileName: string;
+  totalChars: number;
+  chapterCount: number;
+  currentChapter: number;
+  scrollRatio: number;
+  vnIndex: number;
+  bookmarks: NovelBookmark[];
+  updatedAt: number;
+}
 
 export type ReaderMode = 'scroll' | 'paginated' | 'vn';
 export type VnAnimationStyle =
@@ -103,6 +120,8 @@ export const DEFAULT_READER_PREFS: ReaderPreferences = {
 
 const READER_PREFS_STORAGE_KEY = 'immersiontrack_reader_prefs_v1';
 const YATSU_LINKS_STORAGE_KEY = 'immersiontrack_yatsu_links_v1';
+const NOVEL_PROGRESS_MIRROR_KEY = 'immersiontrack_novel_progress_mirror_v1';
+const LAST_OPENED_NOVEL_KEY = 'immersiontrack_last_novel_key_v1';
 const YATSU_DEFAULT_LIBRARY_URL = 'https://app.yatsu.moe/library';
 
 const DB_NAME = 'immersiontrack_novel_reader_db';
@@ -310,6 +329,313 @@ export function resolveYatsuUrl(
   return links[key] || YATSU_DEFAULT_LIBRARY_URL;
 }
 
+export function saveAllYatsuBookLinks(
+  links: Record<string, string>
+): Record<string, string> {
+  const clean: Record<string, string> = {};
+  for (const [k, v] of Object.entries(links)) {
+    if (typeof v === 'string' && v.trim()) {
+      clean[k] = v.trim();
+    }
+  }
+  try {
+    localStorage.setItem(YATSU_LINKS_STORAGE_KEY, JSON.stringify(clean));
+  } catch {
+    // ignore quota errors
+  }
+  return clean;
+}
+
+export function makeLibraryStorageKey(fileName: string, title?: string): string {
+  const source = (fileName || title || 'novel').trim().toLowerCase();
+  let hash = 2166136261;
+  for (let i = 0; i < source.length; i++) {
+    hash ^= source.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const slug = source
+    .replace(/\.(epub|txt|html?|xhtml)$/i, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 28);
+  const hex = (hash >>> 0).toString(36);
+  return `library:${slug ? `${slug}-` : ''}${hex}`;
+}
+
+export function getLastOpenedNovelKey(): string {
+  try {
+    return localStorage.getItem(LAST_OPENED_NOVEL_KEY)?.trim() ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function setLastOpenedNovelKey(storageKey: string): void {
+  try {
+    if (storageKey.trim()) {
+      localStorage.setItem(LAST_OPENED_NOVEL_KEY, storageKey.trim());
+    } else {
+      localStorage.removeItem(LAST_OPENED_NOVEL_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+let persistRequestInFlight: Promise<boolean> | null = null;
+
+export async function requestPersistentLibraryStorage(): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !navigator.storage) {
+    return false;
+  }
+  try {
+    if (navigator.storage.persisted) {
+      const already = await navigator.storage.persisted();
+      if (already) return true;
+    }
+    if (navigator.storage.persist) {
+      if (!persistRequestInFlight) {
+        persistRequestInFlight = navigator.storage
+          .persist()
+          .catch(() => false);
+      }
+      return await persistRequestInFlight;
+    }
+  } catch {
+    // ignore browser restrictions
+  }
+  return false;
+}
+
+export async function getLibraryStorageInfo(): Promise<{
+  persisted: boolean;
+  usageMb: number | null;
+  quotaMb: number | null;
+}> {
+  let persisted = false;
+  let usageMb: number | null = null;
+  let quotaMb: number | null = null;
+  if (typeof navigator !== 'undefined' && navigator.storage) {
+    try {
+      if (navigator.storage.persisted) {
+        persisted = await navigator.storage.persisted();
+      }
+      if (navigator.storage.estimate) {
+        const est = await navigator.storage.estimate();
+        if (typeof est.usage === 'number') {
+          usageMb = Number((est.usage / (1024 * 1024)).toFixed(1));
+        }
+        if (typeof est.quota === 'number') {
+          quotaMb = Number((est.quota / (1024 * 1024)).toFixed(0));
+        }
+      }
+    } catch {
+      // ignore estimate errors
+    }
+  }
+  return { persisted, usageMb, quotaMb };
+}
+
+function sanitizeMirrorBookmarks(raw: unknown): NovelBookmark[] {
+  if (!Array.isArray(raw)) return [];
+  const clean: NovelBookmark[] = [];
+  for (const item of raw.slice(0, 80)) {
+    if (!item || typeof item !== 'object') continue;
+    const b = item as Partial<NovelBookmark>;
+    if (typeof b.id !== 'string' || typeof b.chapterIndex !== 'number') continue;
+    clean.push({
+      id: b.id,
+      chapterIndex: Math.max(0, Math.round(b.chapterIndex)),
+      chapterTitle:
+        typeof b.chapterTitle === 'string' ? b.chapterTitle.slice(0, 120) : '',
+      scrollRatio:
+        typeof b.scrollRatio === 'number' && Number.isFinite(b.scrollRatio)
+          ? Math.min(1, Math.max(0, b.scrollRatio))
+          : 0,
+      vnIndex:
+        typeof b.vnIndex === 'number' && Number.isFinite(b.vnIndex)
+          ? Math.max(0, Math.round(b.vnIndex))
+          : 0,
+      excerpt: typeof b.excerpt === 'string' ? b.excerpt.slice(0, 140) : '',
+      createdAt:
+        typeof b.createdAt === 'number' && Number.isFinite(b.createdAt)
+          ? b.createdAt
+          : Date.now(),
+    });
+  }
+  return clean;
+}
+
+export function loadNovelProgressMirror(): Record<string, NovelProgressSnapshot> {
+  try {
+    const raw = localStorage.getItem(NOVEL_PROGRESS_MIRROR_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+    const clean: Record<string, NovelProgressSnapshot> = {};
+    for (const [key, val] of Object.entries(parsed)) {
+      if (!val || typeof val !== 'object') continue;
+      const snap = val as Partial<NovelProgressSnapshot>;
+      if (typeof snap.title !== 'string') continue;
+      clean[key] = {
+        storageKey:
+          typeof snap.storageKey === 'string' && snap.storageKey
+            ? snap.storageKey
+            : key,
+        catalogItemId:
+          typeof snap.catalogItemId === 'string'
+            ? snap.catalogItemId
+            : undefined,
+        title: snap.title,
+        author: typeof snap.author === 'string' ? snap.author : undefined,
+        fileName: typeof snap.fileName === 'string' ? snap.fileName : '',
+        totalChars:
+          typeof snap.totalChars === 'number' && Number.isFinite(snap.totalChars)
+            ? Math.max(0, Math.round(snap.totalChars))
+            : 0,
+        chapterCount:
+          typeof snap.chapterCount === 'number' &&
+          Number.isFinite(snap.chapterCount)
+            ? Math.max(0, Math.round(snap.chapterCount))
+            : 0,
+        currentChapter:
+          typeof snap.currentChapter === 'number' &&
+          Number.isFinite(snap.currentChapter)
+            ? Math.max(0, Math.round(snap.currentChapter))
+            : 0,
+        scrollRatio:
+          typeof snap.scrollRatio === 'number' &&
+          Number.isFinite(snap.scrollRatio)
+            ? Math.min(1, Math.max(0, snap.scrollRatio))
+            : 0,
+        vnIndex:
+          typeof snap.vnIndex === 'number' && Number.isFinite(snap.vnIndex)
+            ? Math.max(0, Math.round(snap.vnIndex))
+            : 0,
+        bookmarks: sanitizeMirrorBookmarks(snap.bookmarks),
+        updatedAt:
+          typeof snap.updatedAt === 'number' && Number.isFinite(snap.updatedAt)
+            ? snap.updatedAt
+            : 0,
+      };
+    }
+    return clean;
+  } catch {
+    return {};
+  }
+}
+
+function writeNovelProgressMirror(
+  mirror: Record<string, NovelProgressSnapshot>
+): void {
+  try {
+    localStorage.setItem(NOVEL_PROGRESS_MIRROR_KEY, JSON.stringify(mirror));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+export function saveNovelProgressSync(snapshot: NovelProgressSnapshot): void {
+  const mirror = loadNovelProgressMirror();
+  mirror[snapshot.storageKey] = snapshot;
+  writeNovelProgressMirror(mirror);
+}
+
+export function removeNovelProgressMirror(storageKey: string): void {
+  const mirror = loadNovelProgressMirror();
+  if (storageKey in mirror) {
+    delete mirror[storageKey];
+    writeNovelProgressMirror(mirror);
+  }
+}
+
+export function mergeNovelProgressSnapshots(
+  incoming: Record<string, NovelProgressSnapshot>
+): Record<string, NovelProgressSnapshot> {
+  const current = loadNovelProgressMirror();
+  let changed = false;
+  for (const [key, inc] of Object.entries(incoming)) {
+    if (!inc || typeof inc !== 'object' || typeof inc.title !== 'string') {
+      continue;
+    }
+    const existing = current[key];
+    if (!existing) {
+      current[key] = inc;
+      changed = true;
+      continue;
+    }
+    const useIncoming = (inc.updatedAt ?? 0) > (existing.updatedAt ?? 0);
+    const mergedBookmarksMap = new Map<string, NovelBookmark>();
+    for (const bm of existing.bookmarks ?? []) {
+      mergedBookmarksMap.set(bm.id, bm);
+    }
+    for (const bm of inc.bookmarks ?? []) {
+      if (!mergedBookmarksMap.has(bm.id)) {
+        mergedBookmarksMap.set(bm.id, bm);
+      }
+    }
+    const mergedBookmarks = Array.from(mergedBookmarksMap.values())
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 80);
+
+    if (
+      useIncoming ||
+      mergedBookmarks.length !== (existing.bookmarks ?? []).length
+    ) {
+      const winner = useIncoming ? inc : existing;
+      current[key] = {
+        ...winner,
+        bookmarks: mergedBookmarks,
+        updatedAt: Math.max(inc.updatedAt ?? 0, existing.updatedAt ?? 0),
+      };
+      changed = true;
+    }
+  }
+  if (changed) {
+    writeNovelProgressMirror(current);
+  }
+  return current;
+}
+
+export function findExistingProgressForBook(
+  storageKey: string,
+  fileName: string,
+  title: string
+): NovelProgressSnapshot | null {
+  const mirror = loadNovelProgressMirror();
+  if (mirror[storageKey]) return mirror[storageKey];
+  const normFile = fileName.trim().toLowerCase();
+  const normTitle = title.trim().toLowerCase();
+  for (const snap of Object.values(mirror)) {
+    if (normFile && snap.fileName.trim().toLowerCase() === normFile) {
+      return snap;
+    }
+    if (normTitle && snap.title.trim().toLowerCase() === normTitle) {
+      return snap;
+    }
+  }
+  return null;
+}
+
+function bookToProgressSnapshot(book: StoredNovelBook): NovelProgressSnapshot {
+  return {
+    storageKey: book.storageKey,
+    catalogItemId: book.catalogItemId,
+    title: book.title,
+    author: book.author,
+    fileName: book.fileName,
+    totalChars: book.totalChars,
+    chapterCount: book.chapters?.length ?? 0,
+    currentChapter: book.currentChapter,
+    scrollRatio: book.scrollRatio,
+    vnIndex: book.vnIndex ?? 0,
+    bookmarks: book.bookmarks ?? [],
+    updatedAt: book.updatedAt,
+  };
+}
+
 function openNovelDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') {
@@ -329,7 +655,7 @@ function openNovelDb(): Promise<IDBDatabase> {
   });
 }
 
-export async function saveStoredNovelBook(book: StoredNovelBook): Promise<void> {
+async function putBookRecordOnly(book: StoredNovelBook): Promise<void> {
   const db = await openNovelDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -345,59 +671,117 @@ export async function saveStoredNovelBook(book: StoredNovelBook): Promise<void> 
   });
 }
 
+export async function saveStoredNovelBook(book: StoredNovelBook): Promise<void> {
+  saveNovelProgressSync(bookToProgressSnapshot(book));
+  void requestPersistentLibraryStorage();
+  await putBookRecordOnly(book);
+}
+
+function reconcileBookWithMirror(
+  book: StoredNovelBook,
+  mirror: Record<string, NovelProgressSnapshot>
+): { book: StoredNovelBook; updatedFromMirror: boolean } {
+  const snap = mirror[book.storageKey];
+  if (!snap || snap.updatedAt <= book.updatedAt) {
+    return { book, updatedFromMirror: false };
+  }
+  const maxChapter = Math.max(0, (book.chapters?.length ?? 1) - 1);
+  return {
+    book: {
+      ...book,
+      currentChapter: Math.min(maxChapter, Math.max(0, snap.currentChapter)),
+      scrollRatio: Math.min(1, Math.max(0, snap.scrollRatio)),
+      vnIndex: Math.max(0, snap.vnIndex),
+      bookmarks:
+        snap.bookmarks.length >= (book.bookmarks?.length ?? 0)
+          ? snap.bookmarks
+          : book.bookmarks,
+      updatedAt: snap.updatedAt,
+    },
+    updatedFromMirror: true,
+  };
+}
+
 export async function getStoredNovelBook(
   storageKey: string
 ): Promise<StoredNovelBook | null> {
   try {
     const db = await openNovelDb();
-    return await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readonly');
-      const req = tx.objectStore(STORE_NAME).get(storageKey);
-      req.onsuccess = () => {
-        db.close();
-        resolve((req.result as StoredNovelBook | undefined) ?? null);
-      };
-      req.onerror = () => {
-        db.close();
-        reject(req.error ?? new Error('Gagal membaca novel tersimpan.'));
-      };
-    });
+    const rawBook = await new Promise<StoredNovelBook | null>(
+      (resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const req = tx.objectStore(STORE_NAME).get(storageKey);
+        req.onsuccess = () => {
+          db.close();
+          resolve((req.result as StoredNovelBook | undefined) ?? null);
+        };
+        req.onerror = () => {
+          db.close();
+          reject(req.error ?? new Error('Gagal membaca novel tersimpan.'));
+        };
+      }
+    );
+    if (!rawBook) return null;
+    const mirror = loadNovelProgressMirror();
+    const { book, updatedFromMirror } = reconcileBookWithMirror(rawBook, mirror);
+    if (updatedFromMirror) {
+      void putBookRecordOnly(book);
+    } else if (!mirror[book.storageKey]) {
+      saveNovelProgressSync(bookToProgressSnapshot(book));
+    }
+    return book;
   } catch {
     return null;
   }
 }
 
-export async function listStoredNovelBooks(): Promise<StoredNovelSummary[]> {
+export async function listAllStoredNovelBooksFull(): Promise<StoredNovelBook[]> {
   try {
     const db = await openNovelDb();
-    return await new Promise((resolve, reject) => {
+    const rawList = await new Promise<StoredNovelBook[]>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readonly');
       const req = tx.objectStore(STORE_NAME).getAll();
       req.onsuccess = () => {
         db.close();
-        const items = ((req.result as StoredNovelBook[]) ?? []).map((b) => ({
-          storageKey: b.storageKey,
-          catalogItemId: b.catalogItemId,
-          title: b.title,
-          author: b.author,
-          fileName: b.fileName,
-          totalChars: b.totalChars,
-          currentChapter: b.currentChapter,
-          scrollRatio: b.scrollRatio,
-          updatedAt: b.updatedAt,
-          chapterCount: b.chapters?.length ?? 0,
-        }));
-        items.sort((a, b) => b.updatedAt - a.updatedAt);
-        resolve(items);
+        resolve((req.result as StoredNovelBook[]) ?? []);
       };
       req.onerror = () => {
         db.close();
         reject(req.error ?? new Error('Gagal memuat daftar buku tersimpan.'));
       };
     });
+    const mirror = loadNovelProgressMirror();
+    return rawList.map((b) => reconcileBookWithMirror(b, mirror).book);
   } catch {
     return [];
   }
+}
+
+export async function listStoredNovelBooks(): Promise<StoredNovelSummary[]> {
+  const fullBooks = await listAllStoredNovelBooksFull();
+  const mirror = loadNovelProgressMirror();
+  const items: StoredNovelSummary[] = fullBooks.map((b) => {
+    if (!mirror[b.storageKey]) {
+      saveNovelProgressSync(bookToProgressSnapshot(b));
+    }
+    return {
+      storageKey: b.storageKey,
+      catalogItemId: b.catalogItemId,
+      title: b.title,
+      author: b.author,
+      fileName: b.fileName,
+      coverDataUrl: b.coverDataUrl,
+      totalChars: b.totalChars,
+      currentChapter: b.currentChapter,
+      scrollRatio: b.scrollRatio,
+      vnIndex: b.vnIndex ?? 0,
+      bookmarkCount: b.bookmarks?.length ?? 0,
+      updatedAt: b.updatedAt,
+      chapterCount: b.chapters?.length ?? 0,
+    };
+  });
+  items.sort((a, b) => b.updatedAt - a.updatedAt);
+  return items;
 }
 
 export async function updateStoredNovelProgress(
@@ -407,6 +791,18 @@ export async function updateStoredNovelProgress(
   vnIndex?: number
 ): Promise<void> {
   try {
+    const now = Date.now();
+    const mirror = loadNovelProgressMirror();
+    const snap = mirror[storageKey];
+    if (snap) {
+      saveNovelProgressSync({
+        ...snap,
+        currentChapter,
+        scrollRatio,
+        ...(typeof vnIndex === 'number' ? { vnIndex } : {}),
+        updatedAt: now,
+      });
+    }
     const existing = await getStoredNovelBook(storageKey);
     if (!existing) return;
     await saveStoredNovelBook({
@@ -414,7 +810,7 @@ export async function updateStoredNovelProgress(
       currentChapter,
       scrollRatio,
       ...(typeof vnIndex === 'number' ? { vnIndex } : {}),
-      updatedAt: Date.now(),
+      updatedAt: now,
     });
   } catch {
     // ignore background progress persistence errors
@@ -452,6 +848,10 @@ export async function deleteStoredNovelBookmark(
 }
 
 export async function deleteStoredNovelBook(storageKey: string): Promise<void> {
+  removeNovelProgressMirror(storageKey);
+  if (getLastOpenedNovelKey() === storageKey) {
+    setLastOpenedNovelKey('');
+  }
   const db = await openNovelDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -741,6 +1141,70 @@ function decodeTextBuffer(buffer: ArrayBuffer): string {
   }
 }
 
+async function compressCoverDataUrl(
+  rawDataUrl: string,
+  maxWidth = 280
+): Promise<string | undefined> {
+  if (!rawDataUrl || rawDataUrl.length < 40) return undefined;
+  if (rawDataUrl.startsWith('data:image/svg+xml')) {
+    return rawDataUrl.length <= 65000 ? rawDataUrl : undefined;
+  }
+  return await new Promise<string | undefined>((resolve) => {
+    const img = new Image();
+    img.onerror = () =>
+      resolve(rawDataUrl.length <= 80000 ? rawDataUrl : undefined);
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxWidth / Math.max(1, img.width));
+        const width = Math.max(1, Math.round(img.width * scale));
+        const height = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(rawDataUrl.length <= 80000 ? rawDataUrl : undefined);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.78));
+      } catch {
+        resolve(rawDataUrl.length <= 80000 ? rawDataUrl : undefined);
+      }
+    };
+    img.src = rawDataUrl;
+  });
+}
+
+async function resolvePreservedProgress(
+  storageKey: string,
+  fileName: string,
+  title: string,
+  chapterCount: number
+): Promise<{
+  currentChapter: number;
+  scrollRatio: number;
+  vnIndex: number;
+  bookmarks: NovelBookmark[];
+}> {
+  const existingIdb = await getStoredNovelBook(storageKey);
+  const mirrorSnap = findExistingProgressForBook(storageKey, fileName, title);
+  const source =
+    existingIdb && (!mirrorSnap || existingIdb.updatedAt >= mirrorSnap.updatedAt)
+      ? existingIdb
+      : mirrorSnap;
+  if (!source) {
+    return { currentChapter: 0, scrollRatio: 0, vnIndex: 0, bookmarks: [] };
+  }
+  const maxChapter = Math.max(0, chapterCount - 1);
+  return {
+    currentChapter: Math.min(maxChapter, Math.max(0, source.currentChapter)),
+    scrollRatio: Math.min(1, Math.max(0, source.scrollRatio)),
+    vnIndex: Math.max(0, source.vnIndex ?? 0),
+    bookmarks: source.bookmarks ?? [],
+  };
+}
+
 export async function parseNovelFile(
   file: File,
   options: { storageKey: string; catalogItemId?: string; fallbackTitle?: string }
@@ -786,15 +1250,24 @@ export async function parseNovelFile(
     }
 
     const totalChars = chapters.reduce((acc, ch) => acc + ch.charCount, 0);
+    const resolvedTitle = options.fallbackTitle || baseFileNameTitle;
+    const preserved = await resolvePreservedProgress(
+      options.storageKey,
+      file.name,
+      resolvedTitle,
+      chapters.length
+    );
     return {
       storageKey: options.storageKey,
       catalogItemId: options.catalogItemId,
-      title: options.fallbackTitle || baseFileNameTitle,
+      title: resolvedTitle,
       fileName: file.name,
       chapters,
       totalChars,
-      currentChapter: 0,
-      scrollRatio: 0,
+      currentChapter: preserved.currentChapter,
+      scrollRatio: preserved.scrollRatio,
+      vnIndex: preserved.vnIndex,
+      bookmarks: preserved.bookmarks,
       updatedAt: Date.now(),
     };
   }
@@ -815,10 +1288,17 @@ export async function parseNovelFile(
       new Map()
     );
     const docTitle = doc.querySelector('title')?.textContent?.trim();
+    const resolvedTitle = docTitle || options.fallbackTitle || baseFileNameTitle;
+    const preserved = await resolvePreservedProgress(
+      options.storageKey,
+      file.name,
+      resolvedTitle,
+      1
+    );
     return {
       storageKey: options.storageKey,
       catalogItemId: options.catalogItemId,
-      title: docTitle || options.fallbackTitle || baseFileNameTitle,
+      title: resolvedTitle,
       fileName: file.name,
       chapters: [
         {
@@ -829,8 +1309,10 @@ export async function parseNovelFile(
         },
       ],
       totalChars: cleaned.charCount,
-      currentChapter: 0,
-      scrollRatio: 0,
+      currentChapter: preserved.currentChapter,
+      scrollRatio: preserved.scrollRatio,
+      vnIndex: preserved.vnIndex,
+      bookmarks: preserved.bookmarks,
       updatedAt: Date.now(),
     };
   }
@@ -913,6 +1395,50 @@ export async function parseNovelFile(
       }
     }
   });
+
+  // Extract cover image thumbnail for persistent Library Shelf display
+  const metaCoverId =
+    opfDoc
+      .querySelector('metadata > meta[name="cover"]')
+      ?.getAttribute('content')
+      ?.trim() ?? '';
+  let coverHref = metaCoverId ? manifest.get(metaCoverId)?.href ?? '' : '';
+  if (!coverHref) {
+    for (const [, item] of manifest) {
+      if (item.properties.split(/\s+/).includes('cover-image')) {
+        coverHref = item.href;
+        break;
+      }
+    }
+  }
+  if (!coverHref) {
+    for (const [id, item] of manifest) {
+      if (
+        item.mediaType.startsWith('image/') &&
+        (id.toLowerCase().includes('cover') ||
+          item.href.toLowerCase().includes('cover'))
+      ) {
+        coverHref = item.href;
+        break;
+      }
+    }
+  }
+
+  let coverDataUrl: string | undefined;
+  if (coverHref) {
+    const coverPath = resolveZipRelative(opfDir, coverHref);
+    const coverEntry =
+      zipLookup.get(coverPath) ?? zipLookup.get(coverPath.toLowerCase());
+    if (coverEntry) {
+      try {
+        const b64 = await coverEntry.async('base64');
+        const rawCover = `data:${getMimeFromPath(coverPath)};base64,${b64}`;
+        coverDataUrl = await compressCoverDataUrl(rawCover, 280);
+      } catch {
+        // ignore broken cover images
+      }
+    }
+  }
 
   const spineEl = opfDoc.querySelector('spine');
   if (!ncxId) {
@@ -1027,17 +1553,27 @@ export async function parseNovelFile(
   }
 
   const totalChars = chapters.reduce((acc, ch) => acc + ch.charCount, 0);
+  const resolvedTitle = metaTitle || options.fallbackTitle || baseFileNameTitle;
+  const preserved = await resolvePreservedProgress(
+    options.storageKey,
+    file.name,
+    resolvedTitle,
+    chapters.length
+  );
 
   return {
     storageKey: options.storageKey,
     catalogItemId: options.catalogItemId,
-    title: metaTitle || options.fallbackTitle || baseFileNameTitle,
+    title: resolvedTitle,
     author: metaAuthor || undefined,
     fileName: file.name,
+    coverDataUrl,
     chapters,
     totalChars,
-    currentChapter: 0,
-    scrollRatio: 0,
+    currentChapter: preserved.currentChapter,
+    scrollRatio: preserved.scrollRatio,
+    vnIndex: preserved.vnIndex,
+    bookmarks: preserved.bookmarks,
     updatedAt: Date.now(),
   };
 }

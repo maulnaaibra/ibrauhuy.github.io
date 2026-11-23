@@ -99,3 +99,43 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- Library & Progres Reader Permanen (Daftar Saya, EPUB Progress, Bookmark, Yatsu Links)
+create table if not exists public.user_library_state (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  watchlist jsonb not null default '[]'::jsonb,
+  watched_episodes jsonb not null default '{}'::jsonb,
+  yatsu_links jsonb not null default '{}'::jsonb,
+  novel_progress jsonb not null default '{}'::jsonb,
+  reader_prefs jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+grant select, insert, update, delete on table public.user_library_state to authenticated;
+
+alter table public.user_library_state enable row level security;
+
+drop policy if exists "Users can view own library state" on public.user_library_state;
+create policy "Users can view own library state"
+  on public.user_library_state for select
+  to authenticated
+  using ((select auth.uid()) = user_id);
+
+drop policy if exists "Users can insert own library state" on public.user_library_state;
+create policy "Users can insert own library state"
+  on public.user_library_state for insert
+  to authenticated
+  with check ((select auth.uid()) = user_id);
+
+drop policy if exists "Users can update own library state" on public.user_library_state;
+create policy "Users can update own library state"
+  on public.user_library_state for update
+  to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+drop policy if exists "Users can delete own library state" on public.user_library_state;
+create policy "Users can delete own library state"
+  on public.user_library_state for delete
+  to authenticated
+  using ((select auth.uid()) = user_id);

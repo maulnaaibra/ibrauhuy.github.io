@@ -34,6 +34,15 @@ const DETAILS_CACHE = new Map<string, EnrichedCinematicMedia>();
 const WATCHLIST_STORAGE_KEY = 'immersiontrack_user_watchlist_v1';
 const WATCHED_EPISODES_KEY = 'immersiontrack_watched_episodes_v1';
 
+export const LIBRARY_DATA_CHANGED_EVENT =
+  'immersiontrack:library-data-changed';
+
+function dispatchLibraryChanged(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(LIBRARY_DATA_CHANGED_EVENT));
+  }
+}
+
 export function loadUserWatchlist(): string[] {
   try {
     const raw = localStorage.getItem(WATCHLIST_STORAGE_KEY);
@@ -47,6 +56,19 @@ export function loadUserWatchlist(): string[] {
   return [];
 }
 
+export function saveUserWatchlist(ids: string[]): string[] {
+  const deduped = Array.from(
+    new Set(ids.map((id) => String(id).trim()).filter(Boolean))
+  );
+  try {
+    localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(deduped));
+  } catch {
+    // ignore
+  }
+  dispatchLibraryChanged();
+  return deduped;
+}
+
 export function toggleUserWatchlistItem(itemId: string): {
   list: string[];
   added: boolean;
@@ -56,12 +78,8 @@ export function toggleUserWatchlistItem(itemId: string): {
   const next = exists
     ? current.filter((id) => id !== itemId)
     : [itemId, ...current];
-  try {
-    localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // ignore
-  }
-  return { list: next, added: !exists };
+  const saved = saveUserWatchlist(next);
+  return { list: saved, added: !exists };
 }
 
 export function loadWatchedEpisodesMap(): Record<string, number[]> {
@@ -77,6 +95,29 @@ export function loadWatchedEpisodesMap(): Record<string, number[]> {
   return {};
 }
 
+export function saveWatchedEpisodesMap(
+  map: Record<string, number[]>
+): Record<string, number[]> {
+  const clean: Record<string, number[]> = {};
+  for (const [k, v] of Object.entries(map)) {
+    if (Array.isArray(v)) {
+      const nums = Array.from(
+        new Set(
+          v.filter((n) => typeof n === 'number' && Number.isFinite(n))
+        )
+      ).sort((a, b) => a - b);
+      if (nums.length > 0) clean[k] = nums;
+    }
+  }
+  try {
+    localStorage.setItem(WATCHED_EPISODES_KEY, JSON.stringify(clean));
+  } catch {
+    // ignore
+  }
+  dispatchLibraryChanged();
+  return clean;
+}
+
 export function toggleWatchedEpisode(
   itemId: string,
   episodeNumber: number
@@ -87,13 +128,13 @@ export function toggleWatchedEpisode(
   const next = exists
     ? current.filter((ep) => ep !== episodeNumber)
     : [...current, episodeNumber].sort((a, b) => a - b);
-  map[itemId] = next;
-  try {
-    localStorage.setItem(WATCHED_EPISODES_KEY, JSON.stringify(map));
-  } catch {
-    // ignore
+  if (next.length > 0) {
+    map[itemId] = next;
+  } else {
+    delete map[itemId];
   }
-  return next;
+  const savedMap = saveWatchedEpisodesMap(map);
+  return savedMap[itemId] ?? [];
 }
 
 function stripHtmlTags(raw?: string | null): string {

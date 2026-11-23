@@ -12,9 +12,12 @@ import {
   Download,
   ExternalLink,
   FileUp,
+  FolderInput,
+  HardDrive,
   History,
   Image as ImageIcon,
   Keyboard,
+  Library,
   List,
   Loader2,
   Maximize2,
@@ -44,16 +47,22 @@ import {
   deleteStoredNovelBook,
   deleteStoredNovelBookmark,
   extractChapterParagraphs,
+  getLastOpenedNovelKey,
+  getLibraryStorageInfo,
   getStoredNovelBook,
   listStoredNovelBooks,
   loadReaderPrefs,
   loadYatsuBookLinks,
+  makeLibraryStorageKey,
   normalizeYatsuUrl,
   parseNovelFile,
+  requestPersistentLibraryStorage,
   resolveYatsuUrl,
+  saveNovelProgressSync,
   saveReaderPrefs,
   saveStoredNovelBook,
   saveYatsuBookLink,
+  setLastOpenedNovelKey,
   updateStoredNovelProgress,
   type NovelBookmark,
   type ReaderBgMode,
@@ -64,6 +73,11 @@ import {
   type StoredNovelSummary,
   type VnAnimationStyle,
 } from '../lib/epubReaderStore';
+import {
+  exportFullLibraryBackup,
+  importFullLibraryBackup,
+  scheduleCloudLibraryPush,
+} from '../lib/libraryCloudSync';
 
 export interface NovelReaderTarget {
   storageKey: string;
@@ -75,6 +89,7 @@ export interface NovelReaderTarget {
 
 interface JapaneseNovelReaderModalProps {
   target: NovelReaderTarget;
+  userId?: string;
   onClose: () => void;
   onLogReadingSession: (title: string, minutes: number) => void;
   onBookLibraryChanged?: () => void;
@@ -184,9 +199,11 @@ const READER_SHORTCUTS: Array<{ keys: string[]; desc: string }> = [
 
 export const JapaneseNovelReaderModal: React.FC<
   JapaneseNovelReaderModalProps
-> = ({ target, onClose, onLogReadingSession, onBookLibraryChanged }) => {
+> = ({ target, userId, onClose, onLogReadingSession, onBookLibraryChanged }) => {
   const readerRootRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const addBookInputRef = useRef<HTMLInputElement | null>(null);
+  const backupInputRef = useRef<HTMLInputElement | null>(null);
   const bgFileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const vnVerticalViewportRef = useRef<HTMLDivElement | null>(null);
@@ -202,14 +219,22 @@ export const JapaneseNovelReaderModal: React.FC<
   const [book, setBook] = useState<StoredNovelBook | null>(null);
   const [loadingBook, setLoadingBook] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [restoringBackup, setRestoringBackup] = useState(false);
   const [draggingOver, setDraggingOver] = useState(false);
 
   const [savedBooks, setSavedBooks] = useState<StoredNovelSummary[]>([]);
+  const [storageInfo, setStorageInfo] = useState<{
+    persisted: boolean;
+    usageMb: number | null;
+    quotaMb: number | null;
+  }>({ persisted: false, usageMb: null, quotaMb: null });
   const [prefs, setPrefs] = useState<ReaderPreferences>(loadReaderPrefs);
   const prefsRef = useRef<ReaderPreferences>(prefs);
   prefsRef.current = prefs;
   const [showToc, setShowToc] = useState(false);
-  const [tocTab, setTocTab] = useState<'chapters' | 'bookmarks'>('chapters');
+  const [tocTab, setTocTab] = useState<'chapters' | 'bookmarks' | 'library'>(
+    'chapters'
+  );
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'reading' | 'vn' | 'background'>(
     'reading'
@@ -257,23 +282,56 @@ export const JapaneseNovelReaderModal: React.FC<
     [activeChapter]
   );
 
-  const loadBookByKey = useCallback(async (key: string) => {
-    setLoadingBook(true);
-    const [loaded, allSaved] = await Promise.all([
-      getStoredNovelBook(key),
-      listStoredNovelBooks(),
-    ]);
-    setBook(loaded);
-    setVnIndex(loaded?.vnIndex ?? 0);
-    setSavedBooks(allSaved);
-    setLoadingBook(false);
+  const bookRef = useRef<StoredNovelBook | null>(book);
+  bookRef.current = book;
+  const vnIndexRef = useRef(vnIndex);
+  vnIndexRef.current = vnIndex;
+  const scrollPctRef = useRef(scrollPct);
+  scrollPctRef.current = scrollPct;
+  const chapterParaLenRef = useRef(chapterParagraphs.length);
+  chapterParaLenRef.current = chapterParagraphs.length;
+  const userIdRef = useRef(userId);
+  userIdRef.current = userId;
+
+  const refreshStorageStatus = useCallback(async () => {
+    await requestPersistentLibraryStorage();
+    const info = await getLibraryStorageInfo();
+    setStorageInfo(info);
   }, []);
 
+  const loadBookByKey = useCallback(
+    async (key: string) => {
+      setLoadingBook(true);
+      const allSaved = await listStoredNovelBooks();
+      let resolvedKey = key;
+
+      if (key === 'local:quick-reader' || key === 'local:library') {
+        const lastKey = getLastOpenedNovelKey();
+        if (lastKey && allSaved.some((b) => b.storageKey === lastKey)) {
+          resolvedKey = lastKey;
+        } else if (allSaved.length > 0) {
+          resolvedKey = allSaved[0].storageKey;
+        }
+      }
+
+      const loaded = await getStoredNovelBook(resolvedKey);
+      setActiveKey(loaded?.storageKey ?? resolvedKey);
+      setYatsuInput(yatsuLinks[loaded?.storageKey ?? resolvedKey] ?? '');
+      setBook(loaded);
+      setVnIndex(loaded?.vnIndex ?? 0);
+      setSavedBooks(allSaved);
+      if (loaded) {
+        setLastOpenedNovelKey(loaded.storageKey);
+      }
+      setLoadingBook(false);
+      void refreshStorageStatus();
+    },
+    [refreshStorageStatus] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   useEffect(() => {
-    setActiveKey(target.storageKey);
-    setYatsuInput(yatsuLinks[target.storageKey] ?? '');
     void loadBookByKey(target.storageKey);
-  }, [target.storageKey, loadBookByKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [target.storageKey, loadBookByKey]);
 
   useEffect(() => {
     if (!book) return;
@@ -294,6 +352,7 @@ export const JapaneseNovelReaderModal: React.FC<
     const saved = saveReaderPrefs(next);
     prefsRef.current = next;
     setPrefs(next);
+    scheduleCloudLibraryPush(userIdRef.current);
     return saved;
   }, []);
 
@@ -375,6 +434,39 @@ export const JapaneseNovelReaderModal: React.FC<
     return { ratio, current, total };
   }, [prefs.writingMode]);
 
+  const flushProgressSyncNow = useCallback(
+    (explicitRatio?: number, explicitVnIdx?: number) => {
+      const currentBook = bookRef.current;
+      if (!currentBook) return;
+      const metrics = computeScrollMetrics();
+      const vnIdx = explicitVnIdx ?? vnIndexRef.current;
+      const paraLen = chapterParaLenRef.current;
+      const ratio =
+        explicitRatio ??
+        (prefsRef.current.readingMode === 'vn'
+          ? paraLen > 0
+            ? Math.min(1, vnIdx / Math.max(1, paraLen - 1))
+            : 0
+          : metrics.ratio);
+      saveNovelProgressSync({
+        storageKey: currentBook.storageKey,
+        catalogItemId: currentBook.catalogItemId,
+        title: currentBook.title,
+        author: currentBook.author,
+        fileName: currentBook.fileName,
+        totalChars: currentBook.totalChars,
+        chapterCount: currentBook.chapters.length,
+        currentChapter: currentBook.currentChapter,
+        scrollRatio: ratio,
+        vnIndex: vnIdx,
+        bookmarks: currentBook.bookmarks ?? [],
+        updatedAt: Date.now(),
+      });
+      scheduleCloudLibraryPush(userIdRef.current);
+    },
+    [computeScrollMetrics]
+  );
+
   const persistCurrentProgress = useCallback(
     async (explicitRatio?: number, explicitVnIdx?: number) => {
       if (!book) return;
@@ -390,6 +482,7 @@ export const JapaneseNovelReaderModal: React.FC<
               )
             : 0
           : metrics.ratio);
+      flushProgressSyncNow(ratio, explicitVnIdx ?? vnIndex);
       await updateStoredNovelProgress(
         book.storageKey,
         book.currentChapter,
@@ -400,14 +493,37 @@ export const JapaneseNovelReaderModal: React.FC<
     [
       book,
       computeScrollMetrics,
+      flushProgressSyncNow,
       prefs.readingMode,
       chapterParagraphs.length,
       vnIndex,
     ]
   );
 
+  useEffect(() => {
+    const onHideOrUnload = () => {
+      flushProgressSyncNow();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushProgressSyncNow();
+      }
+    };
+    window.addEventListener('pagehide', onHideOrUnload);
+    window.addEventListener('beforeunload', onHideOrUnload);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      flushProgressSyncNow();
+      window.removeEventListener('pagehide', onHideOrUnload);
+      window.removeEventListener('beforeunload', onHideOrUnload);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [flushProgressSyncNow]);
+
   const handleCloseReader = useCallback(async () => {
+    flushProgressSyncNow();
     await persistCurrentProgress();
+    onBookLibraryChanged?.();
     if (document.fullscreenElement) {
       try {
         await document.exitFullscreen();
@@ -416,7 +532,7 @@ export const JapaneseNovelReaderModal: React.FC<
       }
     }
     onClose();
-  }, [persistCurrentProgress, onClose]);
+  }, [flushProgressSyncNow, persistCurrentProgress, onBookLibraryChanged, onClose]);
 
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
@@ -493,6 +609,7 @@ export const JapaneseNovelReaderModal: React.FC<
       setShowBacklog(false);
       setSelectedSentence('');
       void saveStoredNovelBook(updated);
+      scheduleCloudLibraryPush(userIdRef.current);
 
       const el = scrollContainerRef.current;
       if (el && !opts?.jumpToEnd && !opts?.targetScrollRatio) {
@@ -596,6 +713,7 @@ export const JapaneseNovelReaderModal: React.FC<
           ? Math.min(1, nextVn / (chapterParagraphs.length - 1))
           : 0;
       setScrollPct(Math.round(ratio * 100));
+      flushProgressSyncNow(ratio, nextVn);
       if (progressTimerRef.current) window.clearTimeout(progressTimerRef.current);
       progressTimerRef.current = window.setTimeout(() => {
         void updateStoredNovelProgress(
@@ -645,6 +763,7 @@ export const JapaneseNovelReaderModal: React.FC<
     prefs.writingMode,
     vnIndex,
     chapterParagraphs.length,
+    flushProgressSyncNow,
     handleSwitchChapter,
   ]);
 
@@ -668,6 +787,7 @@ export const JapaneseNovelReaderModal: React.FC<
           ? Math.min(1, prevVn / (chapterParagraphs.length - 1))
           : 0;
       setScrollPct(Math.round(ratio * 100));
+      flushProgressSyncNow(ratio, prevVn);
       if (progressTimerRef.current) window.clearTimeout(progressTimerRef.current);
       progressTimerRef.current = window.setTimeout(() => {
         void updateStoredNovelProgress(
@@ -711,6 +831,7 @@ export const JapaneseNovelReaderModal: React.FC<
     prefs.writingMode,
     vnIndex,
     chapterParagraphs.length,
+    flushProgressSyncNow,
     handleSwitchChapter,
   ]);
 
@@ -743,6 +864,7 @@ export const JapaneseNovelReaderModal: React.FC<
     };
     const nextBookmarks = await addStoredNovelBookmark(book.storageKey, bookmark);
     setBook((prev) => (prev ? { ...prev, bookmarks: nextBookmarks } : prev));
+    scheduleCloudLibraryPush(userIdRef.current);
     toast.success(`Bookmark disimpan di Bab ${book.currentChapter + 1}!`);
   }, [
     book,
@@ -760,6 +882,7 @@ export const JapaneseNovelReaderModal: React.FC<
       bookmarkId
     );
     setBook((prev) => (prev ? { ...prev, bookmarks: nextBookmarks } : prev));
+    scheduleCloudLibraryPush(userIdRef.current);
     toast.success('Bookmark dihapus.');
   };
 
@@ -927,30 +1050,160 @@ export const JapaneseNovelReaderModal: React.FC<
     updatePrefs,
   ]);
 
-  const handleImportFile = async (file: File) => {
+  const handleSelectLibraryBook = useCallback(
+    async (targetKey: string) => {
+      if (bookRef.current && bookRef.current.storageKey !== targetKey) {
+        flushProgressSyncNow();
+        await persistCurrentProgress();
+      }
+      setLastOpenedNovelKey(targetKey);
+      await loadBookByKey(targetKey);
+      setShowToc(false);
+    },
+    [flushProgressSyncNow, persistCurrentProgress, loadBookByKey]
+  );
+
+  const handleImportFiles = async (
+    files: FileList | File[],
+    mode: 'context' | 'add' = 'add'
+  ) => {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+
+    if (bookRef.current) {
+      flushProgressSyncNow();
+      await persistCurrentProgress();
+    }
+
     setImporting(true);
+    let lastParsed: StoredNovelBook | null = null;
+    let importedCount = 0;
+
     try {
-      const parsed = await parseNovelFile(file, {
-        storageKey: activeKey,
-        catalogItemId: target.catalogItemId,
-        fallbackTitle: target.title,
-      });
-      await saveStoredNovelBook(parsed);
-      setBook(parsed);
-      setVnIndex(0);
-      setElapsedSec(0);
+      for (const file of fileArray) {
+        const useContextKey =
+          mode === 'context' &&
+          fileArray.length === 1 &&
+          activeKey !== 'local:quick-reader' &&
+          activeKey !== 'local:library';
+
+        const targetStorageKey = useContextKey
+          ? activeKey
+          : makeLibraryStorageKey(
+              file.name,
+              fileArray.length === 1 && mode === 'context'
+                ? target.title
+                : undefined
+            );
+
+        const parsed = await parseNovelFile(file, {
+          storageKey: targetStorageKey,
+          catalogItemId: useContextKey ? target.catalogItemId : undefined,
+          fallbackTitle:
+            fileArray.length === 1 && mode === 'context'
+              ? target.title
+              : undefined,
+        });
+
+        await saveStoredNovelBook(parsed);
+        lastParsed = parsed;
+        importedCount += 1;
+      }
+
+      if (lastParsed) {
+        setActiveKey(lastParsed.storageKey);
+        setLastOpenedNovelKey(lastParsed.storageKey);
+        setBook(lastParsed);
+        setVnIndex(lastParsed.vnIndex ?? 0);
+        setElapsedSec(0);
+      }
+
       const list = await listStoredNovelBooks();
       setSavedBooks(list);
+      void refreshStorageStatus();
       onBookLibraryChanged?.();
-      toast.success(
-        `「${parsed.title}」 (${parsed.chapters.length} bab) siap dibaca & support Yomitan!`
-      );
+      scheduleCloudLibraryPush(userIdRef.current);
+
+      if (importedCount === 1 && lastParsed) {
+        toast.success(
+          `「${lastParsed.title}」 (${lastParsed.chapters.length} bab) tersimpan di Library permanen!`
+        );
+      } else if (importedCount > 1) {
+        toast.success(
+          `${importedCount} buku baru ditambahkan ke Library permanen!`
+        );
+      }
     } catch (err: unknown) {
       toast.error(
         err instanceof Error ? err.message : 'Gagal membuka file EPUB/TXT.'
       );
     } finally {
       setImporting(false);
+    }
+  };
+
+  const handleDeleteLibraryBook = async (storageKey: string) => {
+    await deleteStoredNovelBook(storageKey);
+    const remaining = await listStoredNovelBooks();
+    setSavedBooks(remaining);
+    if (bookRef.current?.storageKey === storageKey) {
+      if (remaining.length > 0) {
+        await loadBookByKey(remaining[0].storageKey);
+      } else {
+        setBook(null);
+      }
+    }
+    void refreshStorageStatus();
+    onBookLibraryChanged?.();
+    scheduleCloudLibraryPush(userIdRef.current);
+    toast.success('Buku dihapus dari Library.');
+  };
+
+  const handleExportLibraryBackup = async () => {
+    try {
+      const backup = await exportFullLibraryBackup();
+      const blob = new Blob([backup.json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = backup.fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(
+        `Backup (${backup.bookCount} buku, ${backup.watchlistCount} Daftar Saya) berhasil diunduh!`
+      );
+    } catch {
+      toast.error('Gagal membuat file backup library.');
+    }
+  };
+
+  const handleRestoreLibraryBackup = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setRestoringBackup(true);
+    try {
+      const raw = await file.text();
+      const res = await importFullLibraryBackup(raw, userIdRef.current);
+      const list = await listStoredNovelBooks();
+      setSavedBooks(list);
+      if (!bookRef.current && list.length > 0) {
+        await loadBookByKey(list[0].storageKey);
+      }
+      onBookLibraryChanged?.();
+      toast.success(
+        `Dipulihkan: ${res.booksImported} buku & ${res.watchlistCount} Daftar Saya!`
+      );
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : 'Gagal memulihkan file backup.'
+      );
+    } finally {
+      setRestoringBackup(false);
+      e.target.value = '';
     }
   };
 
@@ -1042,13 +1295,8 @@ export const JapaneseNovelReaderModal: React.FC<
 
   const handleDeleteCurrentBook = async () => {
     if (!book) return;
-    await deleteStoredNovelBook(book.storageKey);
-    const remaining = await listStoredNovelBooks();
-    setSavedBooks(remaining);
-    setBook(null);
+    await handleDeleteLibraryBook(book.storageKey);
     setShowSettings(false);
-    onBookLibraryChanged?.();
-    toast.success('Buku dihapus dari penyimpanan browser.');
   };
 
   const handleOpenEpubPortal = (copyTitle: string) => {
@@ -1074,6 +1322,7 @@ export const JapaneseNovelReaderModal: React.FC<
     const updated = saveYatsuBookLink(activeKey, normalized);
     setYatsuLinks(updated);
     setYatsuInput(normalized);
+    scheduleCloudLibraryPush(userIdRef.current);
     toast.success('Link buku Yatsu disimpan!');
   };
 
@@ -1260,8 +1509,12 @@ export const JapaneseNovelReaderModal: React.FC<
       onDrop={(e) => {
         e.preventDefault();
         setDraggingOver(false);
-        const f = e.dataTransfer.files?.[0];
-        if (f) void handleImportFile(f);
+        if (e.dataTransfer.files?.length) {
+          void handleImportFiles(
+            e.dataTransfer.files,
+            bookRef.current ? 'add' : 'context'
+          );
+        }
       }}
     >
       {/* FULL-BLEED RESPONSIVE READER BACKGROUND LAYER (Yomitan-safe, non-blocking) */}
@@ -1286,12 +1539,37 @@ export const JapaneseNovelReaderModal: React.FC<
       <input
         ref={fileInputRef}
         type="file"
+        multiple
         accept=".epub,.txt,.html,.htm,.xhtml"
         onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void handleImportFile(f);
+          if (e.target.files?.length) {
+            void handleImportFiles(
+              e.target.files,
+              bookRef.current ? 'add' : 'context'
+            );
+          }
           e.target.value = '';
         }}
+        className="hidden"
+      />
+      <input
+        ref={addBookInputRef}
+        type="file"
+        multiple
+        accept=".epub,.txt,.html,.htm,.xhtml"
+        onChange={(e) => {
+          if (e.target.files?.length) {
+            void handleImportFiles(e.target.files, 'add');
+          }
+          e.target.value = '';
+        }}
+        className="hidden"
+      />
+      <input
+        ref={backupInputRef}
+        type="file"
+        accept=".json,application/json"
+        onChange={handleRestoreLibraryBackup}
         className="hidden"
       />
       <input
@@ -1476,12 +1754,21 @@ export const JapaneseNovelReaderModal: React.FC<
                   <button
                     type="button"
                     onClick={() => {
-                      setShowToc((prev) => !prev);
+                      if (showToc && tocTab !== 'library') {
+                        setShowToc(false);
+                      } else {
+                        setTocTab('chapters');
+                        setShowToc(true);
+                      }
                       setShowSettings(false);
                       setShowBacklog(false);
                     }}
                     title="Daftar Bab & Bookmark (C)"
-                    className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer ${themeStyle.subtleBtn}`}
+                    className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer ${
+                      showToc && tocTab !== 'library'
+                        ? 'bg-sky-500 text-slate-950 border-sky-400'
+                        : themeStyle.subtleBtn
+                    }`}
                   >
                     <List className="w-3.5 h-3.5" />
                     <span className="hidden lg:inline">Bab</span>
@@ -1503,9 +1790,37 @@ export const JapaneseNovelReaderModal: React.FC<
 
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => {
+                  if (showToc && tocTab === 'library') {
+                    setShowToc(false);
+                  } else {
+                    setTocTab('library');
+                    setShowToc(true);
+                  }
+                  setShowSettings(false);
+                  setShowBacklog(false);
+                }}
+                title="Library Buku Permanen & Backup"
+                className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer ${
+                  showToc && tocTab === 'library'
+                    ? 'bg-sky-500 text-slate-950 border-sky-400'
+                    : themeStyle.subtleBtn
+                }`}
+              >
+                <Library className="w-3.5 h-3.5 text-sky-400" />
+                <span className="hidden sm:inline">Library</span>
+                {savedBooks.length > 0 && (
+                  <span className="font-mono text-[10px] opacity-80">
+                    ({savedBooks.length})
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => addBookInputRef.current?.click()}
                 disabled={importing}
-                title="Pilih / Ganti file EPUB atau TXT"
+                title="Tambah buku EPUB/TXT ke Library (tanpa menimpa buku lain)"
                 className={`hidden md:inline-flex p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold items-center gap-1 transition cursor-pointer ${themeStyle.subtleBtn}`}
               >
                 {importing ? (
@@ -1513,9 +1828,7 @@ export const JapaneseNovelReaderModal: React.FC<
                 ) : (
                   <Upload className="w-3.5 h-3.5" />
                 )}
-                <span className="hidden xl:inline">
-                  {book ? 'Ganti EPUB' : 'Pilih EPUB'}
-                </span>
+                <span className="hidden xl:inline">+ EPUB</span>
               </button>
 
               <button
@@ -1642,12 +1955,12 @@ export const JapaneseNovelReaderModal: React.FC<
 
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => addBookInputRef.current?.click()}
                 disabled={importing}
                 className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${themeStyle.subtleBtn}`}
               >
                 <Upload className="w-3 h-3" />
-                <span>EPUB</span>
+                <span>+ EPUB</span>
               </button>
 
               <button
@@ -2592,24 +2905,31 @@ export const JapaneseNovelReaderModal: React.FC<
         </>
       )}
 
-      {/* TOC & BOOKMARKS DRAWER */}
-      {showToc && book && (
+      {/* TOC, BOOKMARKS & PERMANENT LIBRARY DRAWER */}
+      {showToc && (book || tocTab === 'library') && (
         <>
           <div
             className="fixed inset-0 z-[105] bg-black/50"
             onClick={() => setShowToc(false)}
           />
           <aside
-            className={`fixed inset-y-0 left-0 z-[110] w-80 max-w-[88vw] border-r p-4 pt-[max(1rem,env(safe-area-inset-top))] flex flex-col gap-3 shadow-2xl ${themeStyle.panel}`}
+            className={`fixed inset-y-0 left-0 z-[110] w-84 max-w-[90vw] border-r p-4 pt-[max(1rem,env(safe-area-inset-top))] flex flex-col gap-3 shadow-2xl ${themeStyle.panel}`}
           >
-            <div className="flex items-center justify-between gap-2 pb-2 border-b border-white/10">
+            <div className="flex items-center justify-between gap-2 pb-2 border-b border-current/10">
               <div className="min-w-0">
                 <div className="text-xs font-extrabold uppercase tracking-wider truncate">
-                  {book.title}
+                  {tocTab === 'library'
+                    ? `Library Novel (${savedBooks.length})`
+                    : book?.title || target.title}
                 </div>
                 <div className={`text-[11px] ${themeStyle.mutedText}`}>
-                  {book.chapters.length} bab •{' '}
-                  {book.bookmarks?.length ?? 0} bookmark
+                  {tocTab === 'library'
+                    ? storageInfo.persisted
+                      ? 'Penyimpanan Permanen Aktif'
+                      : 'Tersimpan di IndexedDB Browser'
+                    : book
+                      ? `${book.chapters.length} bab • ${book.bookmarks?.length ?? 0} bookmark`
+                      : 'Belum ada buku terbuka'}
                 </div>
               </div>
               <button
@@ -2621,32 +2941,45 @@ export const JapaneseNovelReaderModal: React.FC<
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className="grid grid-cols-3 gap-1">
               <button
                 type="button"
+                disabled={!book}
                 onClick={() => setTocTab('chapters')}
-                className={`py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                className={`py-1.5 px-1.5 rounded-xl text-[11px] font-bold border transition cursor-pointer disabled:opacity-40 ${
                   tocTab === 'chapters'
                     ? 'bg-sky-500 text-slate-950 border-sky-400'
                     : themeStyle.subtleBtn
                 }`}
               >
-                Daftar Bab ({book.chapters.length})
+                Bab {book ? `(${book.chapters.length})` : ''}
               </button>
               <button
                 type="button"
+                disabled={!book}
                 onClick={() => setTocTab('bookmarks')}
-                className={`py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                className={`py-1.5 px-1.5 rounded-xl text-[11px] font-bold border transition cursor-pointer disabled:opacity-40 ${
                   tocTab === 'bookmarks'
                     ? 'bg-sky-500 text-slate-950 border-sky-400'
                     : themeStyle.subtleBtn
                 }`}
               >
-                Bookmark ({book.bookmarks?.length ?? 0})
+                Mark {book ? `(${book.bookmarks?.length ?? 0})` : ''}
+              </button>
+              <button
+                type="button"
+                onClick={() => setTocTab('library')}
+                className={`py-1.5 px-1.5 rounded-xl text-[11px] font-bold border transition cursor-pointer ${
+                  tocTab === 'library'
+                    ? 'bg-sky-500 text-slate-950 border-sky-400'
+                    : themeStyle.subtleBtn
+                }`}
+              >
+                Library ({savedBooks.length})
               </button>
             </div>
 
-            {tocTab === 'chapters' ? (
+            {tocTab === 'chapters' && book ? (
               <div className="flex-1 overflow-y-auto space-y-1 pr-1">
                 {book.chapters.map((ch, idx) => {
                   const active = idx === book.currentChapter;
@@ -2671,7 +3004,7 @@ export const JapaneseNovelReaderModal: React.FC<
                   );
                 })}
               </div>
-            ) : (
+            ) : tocTab === 'bookmarks' && book ? (
               <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                 {(book.bookmarks ?? []).length === 0 ? (
                   <div className={`text-xs text-center py-8 ${themeStyle.mutedText}`}>
@@ -2693,7 +3026,7 @@ export const JapaneseNovelReaderModal: React.FC<
                         }
                         className="flex-1 min-w-0 text-left space-y-1 cursor-pointer"
                       >
-                        <div className="text-[11px] font-extrabold text-sky-300 truncate">
+                        <div className={`text-[11px] font-extrabold truncate ${themeStyle.accentText}`}>
                           Bab {bm.chapterIndex + 1}: {bm.chapterTitle}
                         </div>
                         <div className="text-xs line-clamp-2 opacity-90">
@@ -2711,6 +3044,141 @@ export const JapaneseNovelReaderModal: React.FC<
                     </div>
                   ))
                 )}
+              </div>
+            ) : (
+              /* PERMANENT LIBRARY TAB */
+              <div className="flex-1 flex flex-col min-h-0 gap-2.5">
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-400/25 flex items-center justify-between gap-2 text-[11px]">
+                  <span className="inline-flex items-center gap-1.5 font-bold text-emerald-400 min-w-0">
+                    <HardDrive className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">
+                      {storageInfo.persisted
+                        ? 'Anti-Reset Permanen Aktif'
+                        : 'Penyimpanan IndexedDB Aman'}
+                    </span>
+                  </span>
+                  {storageInfo.usageMb !== null && (
+                    <span className={`font-mono shrink-0 ${themeStyle.mutedText}`}>
+                      {storageInfo.usageMb} MB
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => addBookInputRef.current?.click()}
+                    disabled={importing}
+                    className="col-span-3 btn-crimson py-2 px-3 rounded-xl text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    {importing ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
+                    <span>Tambah Buku Baru (.EPUB / .TXT)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleExportLibraryBackup()}
+                    className={`col-span-1 py-1.5 px-2 rounded-xl border text-[11px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer ${themeStyle.subtleBtn}`}
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>Backup</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={restoringBackup}
+                    onClick={() => backupInputRef.current?.click()}
+                    className={`col-span-2 py-1.5 px-2 rounded-xl border text-[11px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer ${themeStyle.subtleBtn}`}
+                  >
+                    <FolderInput className="w-3 h-3" />
+                    <span>
+                      {restoringBackup ? 'Memulihkan...' : 'Pulihkan Backup (.json)'}
+                    </span>
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                  {savedBooks.length === 0 ? (
+                    <div className={`text-xs text-center py-8 space-y-2 ${themeStyle.mutedText}`}>
+                      <p>Library Anda masih kosong.</p>
+                      <p className="text-[11px]">
+                        Klik <strong>Tambah Buku Baru</strong> untuk menyimpan
+                        banyak novel sekaligus tanpa menimpa progres satu sama lain.
+                      </p>
+                    </div>
+                  ) : (
+                    savedBooks.map((sb) => {
+                      const isCurrent = book?.storageKey === sb.storageKey;
+                      const chapterPct =
+                        sb.chapterCount > 0
+                          ? Math.min(
+                              100,
+                              Math.round(
+                                ((sb.currentChapter + sb.scrollRatio) /
+                                  sb.chapterCount) *
+                                  100
+                              )
+                            )
+                          : 0;
+                      return (
+                        <div
+                          key={sb.storageKey}
+                          className={`p-2.5 rounded-xl border flex items-start gap-2.5 transition ${
+                            isCurrent
+                              ? 'bg-sky-500/15 border-sky-400/45'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => void handleSelectLibraryBook(sb.storageKey)}
+                            className="flex items-start gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
+                          >
+                            {sb.coverDataUrl ? (
+                              <img
+                                src={sb.coverDataUrl}
+                                alt={sb.title}
+                                className="w-10 h-14 rounded-lg object-cover shrink-0 border border-white/10"
+                              />
+                            ) : (
+                              <div className="w-10 h-14 rounded-lg bg-sky-500/15 border border-sky-400/25 flex items-center justify-center shrink-0">
+                                <BookOpen className="w-4 h-4 text-sky-400" />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <div className="text-xs font-extrabold line-clamp-2 leading-snug">
+                                {sb.title}
+                              </div>
+                              <div className={`text-[10px] font-mono ${themeStyle.mutedText}`}>
+                                Bab {sb.currentChapter + 1}/{sb.chapterCount} •{' '}
+                                {chapterPct}%
+                                {sb.bookmarkCount > 0
+                                  ? ` • ${sb.bookmarkCount} mark`
+                                  : ''}
+                              </div>
+                              <div className="h-1 rounded-full bg-black/25 overflow-hidden">
+                                <div
+                                  className="h-full bg-sky-400 rounded-full"
+                                  style={{ width: `${Math.max(4, chapterPct)}%` }}
+                                />
+                              </div>
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteLibraryBook(sb.storageKey)}
+                            title="Hapus buku dari Library"
+                            className="p-1 rounded-lg opacity-60 hover:opacity-100 hover:text-red-400 cursor-pointer shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             )}
           </aside>
@@ -3339,22 +3807,43 @@ export const JapaneseNovelReaderModal: React.FC<
               </div>
 
               {savedBooks.length > 0 && (
-                <div className={`rounded-2xl border p-4 space-y-2.5 ${themeStyle.panel}`}>
-                  <div className="text-xs font-extrabold uppercase tracking-wider">
-                    Novel Tersimpan di Browser Anda ({savedBooks.length})
+                <div className={`rounded-2xl border p-4 space-y-3 ${themeStyle.panel}`}>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5">
+                      <Library className="w-3.5 h-3.5 text-sky-400" />
+                      <span>
+                        Library Novel Tersimpan Permanen ({savedBooks.length})
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleExportLibraryBackup()}
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer ${themeStyle.subtleBtn}`}
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>Backup (.json)</span>
+                    </button>
                   </div>
                   <div className="grid sm:grid-cols-2 gap-2">
                     {savedBooks.map((sb) => (
                       <button
                         key={sb.storageKey}
                         type="button"
-                        onClick={() => {
-                          setActiveKey(sb.storageKey);
-                          void loadBookByKey(sb.storageKey);
-                        }}
-                        className={`p-2.5 rounded-xl border text-left transition flex items-center justify-between gap-2 cursor-pointer ${themeStyle.subtleBtn}`}
+                        onClick={() => void handleSelectLibraryBook(sb.storageKey)}
+                        className={`p-2.5 rounded-xl border text-left transition flex items-center gap-2.5 cursor-pointer ${themeStyle.subtleBtn}`}
                       >
-                        <div className="min-w-0">
+                        {sb.coverDataUrl ? (
+                          <img
+                            src={sb.coverDataUrl}
+                            alt={sb.title}
+                            className="w-9 h-12 rounded-lg object-cover shrink-0 border border-white/10"
+                          />
+                        ) : (
+                          <div className="w-9 h-12 rounded-lg bg-sky-500/15 border border-sky-400/25 flex items-center justify-center shrink-0">
+                            <BookOpen className="w-4 h-4 text-sky-400" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
                           <div className="text-xs font-bold truncate">
                             {sb.title}
                           </div>
