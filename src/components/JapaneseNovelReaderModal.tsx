@@ -13,22 +13,31 @@ import {
   ExternalLink,
   FileUp,
   History,
+  Image as ImageIcon,
   Keyboard,
   List,
   Loader2,
   Maximize2,
   Minimize2,
   Minus,
+  Play,
   Plus,
+  RotateCcw,
   Save,
   Search,
   Settings2,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   Upload,
   X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import {
+  compressImageToDataUrl,
+  loadAppearanceSettings,
+  subscribeAppearanceChanges,
+} from '../lib/appearance';
 import {
   addStoredNovelBookmark,
   DEFAULT_READER_PREFS,
@@ -47,6 +56,8 @@ import {
   saveYatsuBookLink,
   updateStoredNovelProgress,
   type NovelBookmark,
+  type ReaderBgMode,
+  type ReaderBgPosition,
   type ReaderMode,
   type ReaderPreferences,
   type StoredNovelBook,
@@ -74,16 +85,22 @@ const READER_THEME_STYLES: Record<
   {
     shell: string;
     toolbar: string;
+    toolbarGlass: string;
     panel: string;
     subtleBtn: string;
     mutedText: string;
     articleBg: string;
     vnCard: string;
+    cardRgb: string;
+    surfaceRgb: string;
+    cardBorder: string;
+    accentText: string;
   }
 > = {
   navy: {
     shell: 'bg-[#0b121c] text-[#eef4fb]',
     toolbar: 'bg-[#0f1826]/95 border-[#1e2d42] text-[#f3f7fc]',
+    toolbarGlass: 'bg-[#0f1826]/78 border-white/15 text-[#f3f7fc]',
     panel: 'bg-[#121e30] border-[#253751] text-[#f3f7fc]',
     subtleBtn:
       'bg-[#172438] hover:bg-[#1f314c] border-[#293d5a] text-[#dce7f5]',
@@ -91,36 +108,55 @@ const READER_THEME_STYLES: Record<
     articleBg: 'bg-[#0b121c] text-[#e8eff8]',
     vnCard:
       'bg-[#111c2d]/95 border-[#253852] shadow-[0_24px_60px_-15px_rgba(4,9,17,0.75)]',
+    cardRgb: '17, 28, 45',
+    surfaceRgb: '11, 18, 28',
+    cardBorder: 'rgba(148, 179, 214, 0.24)',
+    accentText: 'text-sky-300',
   },
   amoled: {
     shell: 'bg-black text-[#e5e7eb]',
     toolbar: 'bg-[#09090b]/95 border-white/15 text-white',
+    toolbarGlass: 'bg-[#09090b]/78 border-white/15 text-white',
     panel: 'bg-[#121216] border-white/15 text-white',
     subtleBtn:
       'bg-white/10 hover:bg-white/15 border-white/15 text-neutral-200',
     mutedText: 'text-neutral-400',
     articleBg: 'bg-black text-[#e5e7eb]',
     vnCard: 'bg-[#0b0b0f]/95 border-white/15 shadow-2xl',
+    cardRgb: '11, 11, 15',
+    surfaceRgb: '0, 0, 0',
+    cardBorder: 'rgba(255, 255, 255, 0.16)',
+    accentText: 'text-sky-300',
   },
   sepia: {
     shell: 'bg-[#f4ecd8] text-[#3b2f1e]',
     toolbar: 'bg-[#ebe0c6]/95 border-[#d6c6a5] text-[#2e2315]',
+    toolbarGlass: 'bg-[#ebe0c6]/82 border-[#c8b691]/70 text-[#2e2315]',
     panel: 'bg-[#f8f2e4] border-[#d6c6a5] text-[#2e2315]',
     subtleBtn:
       'bg-[#e6d9bb] hover:bg-[#dccba7] border-[#cbb892] text-[#3b2f1e]',
     mutedText: 'text-[#756248]',
     articleBg: 'bg-[#f4ecd8] text-[#3b2f1e]',
     vnCard: 'bg-[#fbf6ea] border-[#d6c6a5] shadow-xl',
+    cardRgb: '251, 246, 234',
+    surfaceRgb: '244, 236, 216',
+    cardBorder: 'rgba(180, 158, 116, 0.45)',
+    accentText: 'text-sky-700',
   },
   light: {
     shell: 'bg-[#f8fafc] text-[#0f172a]',
     toolbar: 'bg-white/95 border-slate-200 text-slate-900',
+    toolbarGlass: 'bg-white/80 border-slate-300/75 text-slate-900',
     panel: 'bg-white border-slate-200 text-slate-900',
     subtleBtn:
       'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700',
     mutedText: 'text-slate-500',
     articleBg: 'bg-white text-[#0f172a]',
     vnCard: 'bg-white border-slate-200 shadow-xl',
+    cardRgb: '255, 255, 255',
+    surfaceRgb: '255, 255, 255',
+    cardBorder: 'rgba(148, 163, 184, 0.35)',
+    accentText: 'text-sky-600',
   },
 };
 
@@ -151,6 +187,7 @@ export const JapaneseNovelReaderModal: React.FC<
 > = ({ target, onClose, onLogReadingSession, onBookLibraryChanged }) => {
   const readerRootRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const bgFileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const vnVerticalViewportRef = useRef<HTMLDivElement | null>(null);
   const vnStreamEndRef = useRef<HTMLDivElement | null>(null);
@@ -169,9 +206,22 @@ export const JapaneseNovelReaderModal: React.FC<
 
   const [savedBooks, setSavedBooks] = useState<StoredNovelSummary[]>([]);
   const [prefs, setPrefs] = useState<ReaderPreferences>(loadReaderPrefs);
+  const prefsRef = useRef<ReaderPreferences>(prefs);
+  prefsRef.current = prefs;
   const [showToc, setShowToc] = useState(false);
   const [tocTab, setTocTab] = useState<'chapters' | 'bookmarks'>('chapters');
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'reading' | 'vn' | 'background'>(
+    'reading'
+  );
+  const [bgUrlDraft, setBgUrlDraft] = useState<string>(() => {
+    const saved = loadReaderPrefs().bgImageUrl;
+    return saved.startsWith('data:') ? '' : saved;
+  });
+  const [appWallpaperUrl, setAppWallpaperUrl] = useState<string>(
+    () => loadAppearanceSettings().customImageUrl
+  );
+  const [animPreviewTick, setAnimPreviewTick] = useState(0);
   const [showBacklog, setShowBacklog] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [zenMode, setZenMode] = useState(false);
@@ -233,13 +283,63 @@ export const JapaneseNovelReaderModal: React.FC<
     return () => window.clearInterval(id);
   }, [book]);
 
-  const updatePrefs = useCallback((patch: Partial<ReaderPreferences>) => {
-    setPrefs((prev) => {
-      const next = { ...prev, ...patch };
-      saveReaderPrefs(next);
-      return next;
+  useEffect(() => {
+    return subscribeAppearanceChanges((next) => {
+      setAppWallpaperUrl(next.customImageUrl);
     });
   }, []);
+
+  const updatePrefs = useCallback((patch: Partial<ReaderPreferences>): boolean => {
+    const next = { ...prefsRef.current, ...patch };
+    const saved = saveReaderPrefs(next);
+    prefsRef.current = next;
+    setPrefs(next);
+    return saved;
+  }, []);
+
+  const handleUploadReaderBg = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      let dataUrl = await compressImageToDataUrl(file, 1440);
+      let saved = updatePrefs({ bgMode: 'custom', bgImageUrl: dataUrl });
+      if (!saved) {
+        dataUrl = await compressImageToDataUrl(file, 960);
+        saved = updatePrefs({ bgMode: 'custom', bgImageUrl: dataUrl });
+      }
+      setBgUrlDraft('');
+      if (saved) {
+        toast.success('Background reader kustom diterapkan!');
+      } else {
+        toast.error(
+          'Background diterapkan sementara (penyimpanan browser penuh).'
+        );
+      }
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : 'Gagal memasang gambar background reader.'
+      );
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleApplyBgUrl = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = bgUrlDraft.trim();
+    if (!clean.startsWith('https://') && !clean.startsWith('http://')) {
+      toast.error(
+        'Masukkan URL gambar yang valid (https://... atau http://...).'
+      );
+      return;
+    }
+    updatePrefs({ bgMode: 'custom', bgImageUrl: clean });
+    toast.success('URL background reader diterapkan!');
+  };
 
   const computeScrollMetrics = useCallback(() => {
     const el = scrollContainerRef.current;
@@ -1031,6 +1131,92 @@ export const JapaneseNovelReaderModal: React.FC<
 
   const vnAnimClass =
     prefs.vnAnimation === 'none' ? '' : `jp-vn-anim-${prefs.vnAnimation}`;
+  const vnStaggerMs = Math.min(
+    240,
+    Math.round(prefs.vnAnimationDurationMs * 0.18)
+  );
+
+  const resolvedRawBgUrl = useMemo(() => {
+    if (prefs.bgMode === 'app') return appWallpaperUrl.trim();
+    if (prefs.bgMode === 'custom') return prefs.bgImageUrl.trim();
+    return '';
+  }, [prefs.bgMode, appWallpaperUrl, prefs.bgImageUrl]);
+
+  const safeBgUrl = useMemo(() => {
+    const raw = resolvedRawBgUrl.trim();
+    if (
+      !raw ||
+      (!raw.startsWith('https://') &&
+        !raw.startsWith('http://') &&
+        !raw.startsWith('data:image/'))
+    ) {
+      return '';
+    }
+    return raw.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  }, [resolvedRawBgUrl]);
+
+  const hasActiveBg = Boolean(safeBgUrl);
+  const bgPositionCss =
+    prefs.bgPosition === 'top'
+      ? 'center top'
+      : prefs.bgPosition === 'bottom'
+        ? 'center bottom'
+        : 'center center';
+
+  const articleGlassStyle: React.CSSProperties = useMemo(() => {
+    if (!hasActiveBg) return {};
+    if (prefs.bgPanelOpacity > 0) {
+      return {
+        backgroundColor: `rgba(${themeStyle.surfaceRgb}, ${(prefs.bgPanelOpacity / 100).toFixed(2)})`,
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        border: `1px solid ${themeStyle.cardBorder}`,
+        borderRadius: '1.25rem',
+      };
+    }
+    return {
+      backgroundColor: 'transparent',
+      textShadow:
+        prefs.theme === 'navy' || prefs.theme === 'amoled'
+          ? '0 1px 10px rgba(0, 0, 0, 0.85)'
+          : 'none',
+    };
+  }, [
+    hasActiveBg,
+    prefs.bgPanelOpacity,
+    prefs.theme,
+    themeStyle.surfaceRgb,
+    themeStyle.cardBorder,
+  ]);
+
+  const vnCardStyle: React.CSSProperties | undefined = useMemo(() => {
+    if (!hasActiveBg) return undefined;
+    if (prefs.bgPanelOpacity > 0) {
+      return {
+        backgroundColor: `rgba(${themeStyle.cardRgb}, ${(prefs.bgPanelOpacity / 100).toFixed(2)})`,
+        backdropFilter: 'blur(14px)',
+        WebkitBackdropFilter: 'blur(14px)',
+        borderColor: themeStyle.cardBorder,
+      };
+    }
+    return {
+      backgroundColor: 'transparent',
+      backdropFilter: 'none',
+      WebkitBackdropFilter: 'none',
+      borderColor: 'transparent',
+      boxShadow: 'none',
+      textShadow:
+        prefs.theme === 'navy' || prefs.theme === 'amoled'
+          ? '0 1px 10px rgba(0, 0, 0, 0.85)'
+          : 'none',
+    };
+  }, [
+    hasActiveBg,
+    prefs.bgPanelOpacity,
+    prefs.theme,
+    themeStyle.cardRgb,
+    themeStyle.cardBorder,
+  ]);
 
   const vnVisibleParagraphs = useMemo(() => {
     if (chapterParagraphs.length === 0) return [];
@@ -1077,7 +1263,25 @@ export const JapaneseNovelReaderModal: React.FC<
         if (f) void handleImportFile(f);
       }}
     >
-      {/* Hidden file picker */}
+      {/* FULL-BLEED RESPONSIVE READER BACKGROUND LAYER (Yomitan-safe, non-blocking) */}
+      {hasActiveBg && (
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none"
+        >
+          <div
+            className="absolute -inset-8 bg-cover bg-no-repeat transition-[opacity,filter,background-position] duration-200"
+            style={{
+              backgroundImage: `url("${safeBgUrl}")`,
+              backgroundPosition: bgPositionCss,
+              filter: `blur(${prefs.bgBlur}px)`,
+              opacity: prefs.bgOpacity / 100,
+            }}
+          />
+        </div>
+      )}
+
+      {/* Hidden file pickers */}
       <input
         ref={fileInputRef}
         type="file"
@@ -1087,6 +1291,13 @@ export const JapaneseNovelReaderModal: React.FC<
           if (f) void handleImportFile(f);
           e.target.value = '';
         }}
+        className="hidden"
+      />
+      <input
+        ref={bgFileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleUploadReaderBg}
         className="hidden"
       />
 
@@ -1153,7 +1364,9 @@ export const JapaneseNovelReaderModal: React.FC<
       {/* TOP TOOLBAR */}
       {!isFullscreenOrZen && (
         <header
-          className={`shrink-0 border-b backdrop-blur-md z-20 pt-[max(0.5rem,env(safe-area-inset-top))] ${themeStyle.toolbar}`}
+          className={`relative z-20 shrink-0 border-b backdrop-blur-md pt-[max(0.5rem,env(safe-area-inset-top))] ${
+            hasActiveBg ? themeStyle.toolbarGlass : themeStyle.toolbar
+          }`}
         >
           {/* Row 1: Primary Bar (Zero Overlap on Mobile) */}
           <div className="px-3 sm:px-5 py-2 flex items-center justify-between gap-2">
@@ -1307,11 +1520,37 @@ export const JapaneseNovelReaderModal: React.FC<
               <button
                 type="button"
                 onClick={() => {
+                  if (showSettings && settingsTab === 'background') {
+                    setShowSettings(false);
+                  } else {
+                    setSettingsTab('background');
+                    setShowSettings(true);
+                    setShowToc(false);
+                    setShowBacklog(false);
+                  }
+                }}
+                title="Atur Background, Blur & Opacity Reader"
+                aria-label="Background Reader"
+                className={`hidden md:inline-flex p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold items-center gap-1 transition cursor-pointer ${
+                  showSettings && settingsTab === 'background'
+                    ? 'bg-sky-500 text-slate-950 border-sky-400'
+                    : hasActiveBg
+                      ? 'bg-sky-500/20 border-sky-400/45 text-sky-300'
+                      : themeStyle.subtleBtn
+                }`}
+              >
+                <ImageIcon className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden xl:inline">BG</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
                   setShowSettings((prev) => !prev);
                   setShowToc(false);
                   setShowBacklog(false);
                 }}
-                title="Pengaturan Baca, Mode VN & Animasi (S)"
+                title="Pengaturan Baca, Mode VN & Background (S)"
                 className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer ${
                   showSettings
                     ? 'bg-sky-500 text-slate-950 border-sky-400'
@@ -1410,6 +1649,24 @@ export const JapaneseNovelReaderModal: React.FC<
                 <span>EPUB</span>
               </button>
 
+              <button
+                type="button"
+                onClick={() => {
+                  setSettingsTab('background');
+                  setShowSettings(true);
+                  setShowToc(false);
+                  setShowBacklog(false);
+                }}
+                className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${
+                  hasActiveBg
+                    ? 'bg-sky-500 text-slate-950 border-sky-400'
+                    : themeStyle.subtleBtn
+                }`}
+              >
+                <ImageIcon className="w-3 h-3" />
+                <span>BG</span>
+              </button>
+
               <a
                 href={directYatsuUrl}
                 target="_blank"
@@ -1424,405 +1681,827 @@ export const JapaneseNovelReaderModal: React.FC<
         </header>
       )}
 
-      {/* SETTINGS POPOVER */}
+      {/* SETTINGS DRAWER (HP Bottom Sheet & Laptop Side Panel) */}
       {showSettings && (
-        <div
-          className={`fixed top-14 right-3 sm:right-5 z-[110] w-[21rem] max-w-[calc(100vw-1.5rem)] max-h-[calc(100dvh-5rem)] overflow-y-auto rounded-2xl border p-4 shadow-2xl space-y-4 animate-scale-in ${themeStyle.panel}`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-extrabold uppercase tracking-wider">
-              Pengaturan Reader Novel
-            </span>
-            <button
-              type="button"
-              onClick={() => setShowSettings(false)}
-              className="p-1 rounded-lg opacity-70 hover:opacity-100 cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+        <>
+          <div
+            className="sm:hidden fixed inset-0 z-[105] bg-black/35"
+            onClick={() => setShowSettings(false)}
+          />
+          <div
+            role="dialog"
+            aria-label="Pengaturan Reader Novel"
+            className={`fixed inset-x-0 bottom-0 z-[110] max-h-[78dvh] rounded-t-3xl border-t flex flex-col pb-[env(safe-area-inset-bottom)] shadow-2xl animate-scale-in sm:inset-auto sm:top-16 sm:right-5 sm:w-[23.5rem] sm:max-w-[calc(100vw-2.5rem)] sm:max-h-[calc(100dvh-5.5rem)] sm:rounded-2xl sm:border sm:pb-0 ${themeStyle.panel}`}
+          >
+            <div className="sm:hidden w-10 h-1 rounded-full bg-current/25 mx-auto mt-2.5 shrink-0" />
 
-          {/* Reading Mode */}
-          <div className="space-y-1.5">
-            <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
-              Mode Membaca (P / V)
-            </span>
-            <div className="grid grid-cols-3 gap-1.5">
-              {(
-                [
-                  { id: 'scroll', label: 'Scroll' },
-                  { id: 'paginated', label: 'Halaman' },
-                  { id: 'vn', label: 'Mode VN' },
-                ] as const
-              ).map((rm) => (
-                <button
-                  key={rm.id}
-                  type="button"
-                  onClick={() => updatePrefs({ readingMode: rm.id })}
-                  className={`px-2 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                    prefs.readingMode === rm.id
-                      ? 'bg-sky-500 text-slate-950 border-sky-400'
-                      : themeStyle.subtleBtn
-                  }`}
-                >
-                  {rm.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Writing Direction */}
-          <div className="space-y-1.5">
-            <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
-              Arah Baca (T)
-            </span>
-            <div className="grid grid-cols-2 gap-1.5">
-              {(
-                [
-                  { id: 'horizontal', label: 'Horizontal (横書き)' },
-                  { id: 'vertical', label: 'Vertikal (縦書き)' },
-                ] as const
-              ).map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => updatePrefs({ writingMode: m.id })}
-                  className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                    prefs.writingMode === m.id
-                      ? 'bg-sky-500 text-slate-950 border-sky-400'
-                      : themeStyle.subtleBtn
-                  }`}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* VN Mode Specific Options */}
-          <div className="p-3 rounded-xl bg-sky-500/10 border border-sky-400/25 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-extrabold text-sky-300 inline-flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5" />
-                Pengaturan Mode VN
-              </span>
-              {prefs.readingMode !== 'vn' && (
-                <button
-                  type="button"
-                  onClick={() => updatePrefs({ readingMode: 'vn' })}
-                  className="text-[10px] font-bold text-sky-300 underline cursor-pointer"
-                >
-                  Aktifkan
-                </button>
-              )}
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className={themeStyle.mutedText}>
-                  Paragraf Sekali Muncul
+            <div className="px-4 pt-3 pb-2.5 border-b border-current/10 space-y-2.5 shrink-0">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5">
+                  <SlidersHorizontal className={`w-3.5 h-3.5 ${themeStyle.accentText}`} />
+                  <span>Pengaturan Reader</span>
                 </span>
-                <span className="font-mono font-bold text-sky-300">
-                  {prefs.vnParagraphsPerStep} paragraf
-                </span>
-              </div>
-              <div className="grid grid-cols-8 gap-1">
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => updatePrefs({ vnParagraphsPerStep: n })}
-                    className={`py-1 rounded-lg text-[11px] font-mono font-bold border transition cursor-pointer ${
-                      prefs.vnParagraphsPerStep === n
-                        ? 'bg-sky-500 text-slate-950 border-sky-400'
-                        : themeStyle.subtleBtn
-                    }`}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <span className={`block text-[11px] ${themeStyle.mutedText}`}>
-                Animasi Teks Masuk
-              </span>
-              <div className="grid grid-cols-5 gap-1">
-                {(
-                  [
-                    { id: 'fade-up', label: 'Fade' },
-                    { id: 'typewriter', label: 'Ketik' },
-                    { id: 'slide', label: 'Geser' },
-                    { id: 'blur-in', label: 'Blur' },
-                    { id: 'none', label: 'Instan' },
-                  ] as Array<{ id: VnAnimationStyle; label: string }>
-                ).map((anim) => (
-                  <button
-                    key={anim.id}
-                    type="button"
-                    onClick={() => updatePrefs({ vnAnimation: anim.id })}
-                    className={`py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
-                      prefs.vnAnimation === anim.id
-                        ? 'bg-sky-500 text-slate-950 border-sky-400'
-                        : themeStyle.subtleBtn
-                    }`}
-                  >
-                    {anim.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <span className={`block text-[11px] ${themeStyle.mutedText}`}>
-                Gaya Tampil VN
-              </span>
-              <div className="grid grid-cols-2 gap-1.5">
-                {(
-                  [
-                    { id: 'card', label: 'Kotak VN' },
-                    { id: 'stream', label: 'Tumpuk Paragraf' },
-                  ] as const
-                ).map((ds) => (
-                  <button
-                    key={ds.id}
-                    type="button"
-                    onClick={() => updatePrefs({ vnDisplayStyle: ds.id })}
-                    className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
-                      prefs.vnDisplayStyle === ds.id
-                        ? 'bg-sky-500 text-slate-950 border-sky-400'
-                        : themeStyle.subtleBtn
-                    }`}
-                  >
-                    {ds.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Furigana */}
-          <div className="space-y-1.5">
-            <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
-              Furigana (F)
-            </span>
-            <div className="grid grid-cols-3 gap-1.5">
-              {(
-                [
-                  { id: 'show', label: 'Tampil' },
-                  { id: 'hover', label: 'Hover' },
-                  { id: 'hide', label: 'Sembunyi' },
-                ] as const
-              ).map((f) => (
                 <button
-                  key={f.id}
                   type="button"
-                  onClick={() => updatePrefs({ furigana: f.id })}
-                  className={`px-2 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                    prefs.furigana === f.id
-                      ? 'bg-sky-500 text-slate-950 border-sky-400'
-                      : themeStyle.subtleBtn
-                  }`}
+                  onClick={() => setShowSettings(false)}
+                  aria-label="Tutup Pengaturan"
+                  className="p-1 rounded-lg opacity-70 hover:opacity-100 cursor-pointer"
                 >
-                  {f.label}
+                  <X className="w-4 h-4" />
                 </button>
-              ))}
-            </div>
-          </div>
+              </div>
 
-          {/* Font Size */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className={`font-bold ${themeStyle.mutedText}`}>
-                Ukuran Huruf (+/-)
-              </span>
-              <span className="font-mono font-bold">{prefs.fontSize}px</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  updatePrefs({ fontSize: Math.max(16, prefs.fontSize - 1) })
-                }
-                className={`px-2.5 py-1 rounded-lg border text-xs font-bold cursor-pointer ${themeStyle.subtleBtn}`}
-              >
-                A-
-              </button>
-              <input
-                type="range"
-                min={16}
-                max={34}
-                step={1}
-                value={prefs.fontSize}
-                onChange={(e) =>
-                  updatePrefs({ fontSize: Number(e.target.value) })
-                }
-                className="flex-1 h-1.5 accent-sky-400 cursor-pointer"
-              />
-              <button
-                type="button"
-                onClick={() =>
-                  updatePrefs({ fontSize: Math.min(34, prefs.fontSize + 1) })
-                }
-                className={`px-2.5 py-1 rounded-lg border text-xs font-bold cursor-pointer ${themeStyle.subtleBtn}`}
-              >
-                A+
-              </button>
-            </div>
-          </div>
-
-          {/* Line Height */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className={`font-bold ${themeStyle.mutedText}`}>
-                Jarak Baris
-              </span>
-              <span className="font-mono font-bold">
-                {prefs.lineHeight.toFixed(2)}x
-              </span>
-            </div>
-            <input
-              type="range"
-              min={1.6}
-              max={2.4}
-              step={0.05}
-              value={prefs.lineHeight}
-              onChange={(e) =>
-                updatePrefs({ lineHeight: Number(e.target.value) })
-              }
-              className="w-full h-1.5 accent-sky-400 cursor-pointer"
-            />
-          </div>
-
-          {/* Horizontal Width & Indent */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
-                Lebar Teks
-              </span>
               <div className="grid grid-cols-3 gap-1">
                 {(
                   [
-                    { id: 'narrow', label: 'S' },
-                    { id: 'medium', label: 'M' },
-                    { id: 'wide', label: 'L' },
+                    { id: 'reading', label: 'Baca' },
+                    { id: 'vn', label: 'VN & Animasi' },
+                    { id: 'background', label: 'Background' },
                   ] as const
-                ).map((w) => (
+                ).map((tab) => (
                   <button
-                    key={w.id}
+                    key={tab.id}
                     type="button"
-                    onClick={() => updatePrefs({ maxWidth: w.id })}
-                    className={`py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
-                      prefs.maxWidth === w.id
+                    onClick={() => setSettingsTab(tab.id)}
+                    className={`py-1.5 px-2 rounded-xl text-[11px] font-extrabold border transition cursor-pointer ${
+                      settingsTab === tab.id
                         ? 'bg-sky-500 text-slate-950 border-sky-400'
                         : themeStyle.subtleBtn
                     }`}
                   >
-                    {w.label}
+                    {tab.label}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="space-y-1">
-              <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
-                Indent Paragraf
-              </span>
+            <div className="flex-1 overflow-y-auto px-4 py-3.5 space-y-4">
+              {settingsTab === 'reading' && (
+                <>
+                  {/* Reading Mode */}
+                  <div className="space-y-1.5">
+                    <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
+                      Mode Membaca (P / V)
+                    </span>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(
+                        [
+                          { id: 'scroll', label: 'Scroll' },
+                          { id: 'paginated', label: 'Halaman' },
+                          { id: 'vn', label: 'Mode VN' },
+                        ] as const
+                      ).map((rm) => (
+                        <button
+                          key={rm.id}
+                          type="button"
+                          onClick={() => updatePrefs({ readingMode: rm.id })}
+                          className={`px-2 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                            prefs.readingMode === rm.id
+                              ? 'bg-sky-500 text-slate-950 border-sky-400'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          {rm.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Writing Direction */}
+                  <div className="space-y-1.5">
+                    <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
+                      Arah Baca (T)
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {(
+                        [
+                          { id: 'horizontal', label: 'Horizontal (横書き)' },
+                          { id: 'vertical', label: 'Vertikal (縦書き)' },
+                        ] as const
+                      ).map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => updatePrefs({ writingMode: m.id })}
+                          className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                            prefs.writingMode === m.id
+                              ? 'bg-sky-500 text-slate-950 border-sky-400'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Furigana */}
+                  <div className="space-y-1.5">
+                    <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
+                      Furigana (F)
+                    </span>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(
+                        [
+                          { id: 'show', label: 'Tampil' },
+                          { id: 'hover', label: 'Hover' },
+                          { id: 'hide', label: 'Sembunyi' },
+                        ] as const
+                      ).map((f) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => updatePrefs({ furigana: f.id })}
+                          className={`px-2 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                            prefs.furigana === f.id
+                              ? 'bg-sky-500 text-slate-950 border-sky-400'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Font Size */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className={`font-bold ${themeStyle.mutedText}`}>
+                        Ukuran Huruf (+/-)
+                      </span>
+                      <span className="font-mono font-bold">{prefs.fontSize}px</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updatePrefs({ fontSize: Math.max(16, prefs.fontSize - 1) })
+                        }
+                        className={`px-2.5 py-1 rounded-lg border text-xs font-bold cursor-pointer ${themeStyle.subtleBtn}`}
+                      >
+                        A-
+                      </button>
+                      <input
+                        type="range"
+                        min={16}
+                        max={34}
+                        step={1}
+                        value={prefs.fontSize}
+                        onChange={(e) =>
+                          updatePrefs({ fontSize: Number(e.target.value) })
+                        }
+                        className="flex-1 h-2 accent-sky-400 cursor-pointer"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updatePrefs({ fontSize: Math.min(34, prefs.fontSize + 1) })
+                        }
+                        className={`px-2.5 py-1 rounded-lg border text-xs font-bold cursor-pointer ${themeStyle.subtleBtn}`}
+                      >
+                        A+
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Line Height */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className={`font-bold ${themeStyle.mutedText}`}>
+                        Jarak Baris
+                      </span>
+                      <span className="font-mono font-bold">
+                        {prefs.lineHeight.toFixed(2)}x
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1.6}
+                      max={2.4}
+                      step={0.05}
+                      value={prefs.lineHeight}
+                      onChange={(e) =>
+                        updatePrefs({ lineHeight: Number(e.target.value) })
+                      }
+                      className="w-full h-2 accent-sky-400 cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Horizontal Width & Indent */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
+                        Lebar Teks
+                      </span>
+                      <div className="grid grid-cols-3 gap-1">
+                        {(
+                          [
+                            { id: 'narrow', label: 'S' },
+                            { id: 'medium', label: 'M' },
+                            { id: 'wide', label: 'L' },
+                          ] as const
+                        ).map((w) => (
+                          <button
+                            key={w.id}
+                            type="button"
+                            onClick={() => updatePrefs({ maxWidth: w.id })}
+                            className={`py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                              prefs.maxWidth === w.id
+                                ? 'bg-sky-500 text-slate-950 border-sky-400'
+                                : themeStyle.subtleBtn
+                            }`}
+                          >
+                            {w.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
+                        Indent Paragraf
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updatePrefs({ indentParagraphs: !prefs.indentParagraphs })
+                        }
+                        className={`w-full py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                          prefs.indentParagraphs
+                            ? 'bg-sky-500 text-slate-950 border-sky-400'
+                            : themeStyle.subtleBtn
+                        }`}
+                      >
+                        {prefs.indentParagraphs ? 'Aktif (字下げ)' : 'Mati'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Font Family */}
+                  <div className="space-y-1.5">
+                    <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
+                      Font Bahasa Jepang
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {(
+                        [
+                          { id: 'serif', label: 'Mincho (Serif)' },
+                          { id: 'sans', label: 'Gothic (Sans)' },
+                        ] as const
+                      ).map((ff) => (
+                        <button
+                          key={ff.id}
+                          type="button"
+                          onClick={() => updatePrefs({ fontFamily: ff.id })}
+                          className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                            prefs.fontFamily === ff.id
+                              ? 'bg-sky-500 text-slate-950 border-sky-400'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          {ff.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Theme Colors */}
+                  <div className="space-y-1.5">
+                    <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
+                      Tema Warna Baca
+                    </span>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {(
+                        [
+                          { id: 'navy', label: 'Navy' },
+                          { id: 'amoled', label: 'AMOLED' },
+                          { id: 'sepia', label: 'Sepia' },
+                          { id: 'light', label: 'Terang' },
+                        ] as const
+                      ).map((th) => (
+                        <button
+                          key={th.id}
+                          type="button"
+                          onClick={() => updatePrefs({ theme: th.id })}
+                          className={`px-2 py-1.5 rounded-xl text-[11px] font-bold border transition cursor-pointer ${
+                            prefs.theme === th.id
+                              ? 'bg-sky-500 text-slate-950 border-sky-400'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          {th.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {settingsTab === 'vn' && (
+                <div className="space-y-4">
+                  <div className="p-3 rounded-xl bg-sky-500/10 border border-sky-400/25 flex items-center justify-between gap-2">
+                    <span className={`text-[11px] font-extrabold inline-flex items-center gap-1.5 ${themeStyle.accentText}`}>
+                      <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                      <span>
+                        {prefs.readingMode === 'vn'
+                          ? 'Mode VN Sedang Aktif'
+                          : 'Aktifkan Mode VN untuk lihat animasi'}
+                      </span>
+                    </span>
+                    {prefs.readingMode !== 'vn' && (
+                      <button
+                        type="button"
+                        onClick={() => updatePrefs({ readingMode: 'vn' })}
+                        className="px-2.5 py-1 rounded-lg bg-sky-500 text-slate-950 text-[10px] font-extrabold cursor-pointer shrink-0"
+                      >
+                        Aktifkan
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className={`font-bold ${themeStyle.mutedText}`}>
+                        Paragraf Sekali Muncul
+                      </span>
+                      <span className={`font-mono font-bold ${themeStyle.accentText}`}>
+                        {prefs.vnParagraphsPerStep} paragraf
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-8 gap-1">
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => updatePrefs({ vnParagraphsPerStep: n })}
+                          className={`py-1.5 rounded-lg text-[11px] font-mono font-bold border transition cursor-pointer ${
+                            prefs.vnParagraphsPerStep === n
+                              ? 'bg-sky-500 text-slate-950 border-sky-400'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
+                      Gaya Tampil VN
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {(
+                        [
+                          { id: 'card', label: 'Kotak VN' },
+                          { id: 'stream', label: 'Tumpuk Paragraf' },
+                        ] as const
+                      ).map((ds) => (
+                        <button
+                          key={ds.id}
+                          type="button"
+                          onClick={() => updatePrefs({ vnDisplayStyle: ds.id })}
+                          className={`px-2 py-1.5 rounded-xl text-[11px] font-bold border transition cursor-pointer ${
+                            prefs.vnDisplayStyle === ds.id
+                              ? 'bg-sky-500 text-slate-950 border-sky-400'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          {ds.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
+                      Animasi Teks Masuk
+                    </span>
+                    <div className="grid grid-cols-5 gap-1">
+                      {(
+                        [
+                          { id: 'fade-up', label: 'Fade' },
+                          { id: 'typewriter', label: 'Ketik' },
+                          { id: 'slide', label: 'Geser' },
+                          { id: 'blur-in', label: 'Blur' },
+                          { id: 'none', label: 'Instan' },
+                        ] as Array<{ id: VnAnimationStyle; label: string }>
+                      ).map((anim) => (
+                        <button
+                          key={anim.id}
+                          type="button"
+                          onClick={() => {
+                            updatePrefs({ vnAnimation: anim.id });
+                            setAnimPreviewTick((t) => t + 1);
+                          }}
+                          className={`py-1.5 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                            prefs.vnAnimation === anim.id
+                              ? 'bg-sky-500 text-slate-950 border-sky-400'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          {anim.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* NEW: Animation Duration Control */}
+                  <div
+                    className={`space-y-2.5 transition-opacity ${
+                      prefs.vnAnimation === 'none' ? 'opacity-50' : 'opacity-100'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className={`font-bold ${themeStyle.mutedText}`}>
+                        Durasi Animasi Masuk
+                      </span>
+                      <span className={`font-mono font-bold ${themeStyle.accentText}`}>
+                        {prefs.vnAnimationDurationMs} ms (
+                        {(prefs.vnAnimationDurationMs / 1000).toFixed(2)} dtk)
+                      </span>
+                    </div>
+
+                    <input
+                      type="range"
+                      min={100}
+                      max={2000}
+                      step={50}
+                      disabled={prefs.vnAnimation === 'none'}
+                      value={prefs.vnAnimationDurationMs}
+                      onChange={(e) =>
+                        updatePrefs({
+                          vnAnimationDurationMs: Number(e.target.value),
+                        })
+                      }
+                      onPointerUp={() => setAnimPreviewTick((t) => t + 1)}
+                      onKeyUp={() => setAnimPreviewTick((t) => t + 1)}
+                      className="w-full h-2 accent-sky-400 cursor-pointer disabled:cursor-not-allowed"
+                    />
+
+                    <div className="grid grid-cols-4 gap-1">
+                      {[
+                        { label: 'Cepat', ms: 200 },
+                        { label: 'Normal', ms: 380 },
+                        { label: 'Santai', ms: 700 },
+                        { label: 'Lambat', ms: 1200 },
+                      ].map((preset) => (
+                        <button
+                          key={preset.ms}
+                          type="button"
+                          disabled={prefs.vnAnimation === 'none'}
+                          onClick={() => {
+                            updatePrefs({ vnAnimationDurationMs: preset.ms });
+                            setAnimPreviewTick((t) => t + 1);
+                          }}
+                          className={`py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer disabled:cursor-not-allowed ${
+                            prefs.vnAnimationDurationMs === preset.ms
+                              ? 'bg-sky-500 text-slate-950 border-sky-400'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Live Japanese Animation Preview Strip */}
+                    <div className="p-2.5 rounded-xl border border-current/15 bg-black/15 flex items-center justify-between gap-2 overflow-hidden">
+                      <div
+                        key={`vn-preview-${prefs.vnAnimation}-${prefs.vnAnimationDurationMs}-${animPreviewTick}`}
+                        className={`text-sm font-medium min-w-0 truncate ${contentFontClass} ${vnAnimClass}`}
+                        style={
+                          {
+                            '--vn-duration': `${prefs.vnAnimationDurationMs}ms`,
+                          } as React.CSSProperties
+                        }
+                      >
+                        「また、同じ夢を見ていた。」
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAnimPreviewTick((t) => t + 1)}
+                        title="Putar Ulang Preview Animasi"
+                        className={`px-2 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${themeStyle.subtleBtn}`}
+                      >
+                        <Play className="w-3 h-3" />
+                        <span>Uji</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {settingsTab === 'background' && (
+                <div className="space-y-4">
+                  {/* Source Picker */}
+                  <div className="space-y-1.5">
+                    <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
+                      Sumber Background Reader
+                    </span>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(
+                        [
+                          { id: 'none', label: 'Polos' },
+                          { id: 'app', label: 'Ikuti Web' },
+                          { id: 'custom', label: 'Kustom' },
+                        ] as Array<{ id: ReaderBgMode; label: string }>
+                      ).map((src) => (
+                        <button
+                          key={src.id}
+                          type="button"
+                          onClick={() => updatePrefs({ bgMode: src.id })}
+                          className={`px-2 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                            prefs.bgMode === src.id
+                              ? 'bg-sky-500 text-slate-950 border-sky-400'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          {src.label}
+                        </button>
+                      ))}
+                    </div>
+                    {prefs.bgMode === 'app' && !appWallpaperUrl.trim() && (
+                      <p className={`text-[11px] leading-snug ${themeStyle.mutedText}`}>
+                        Wallpaper web belum dipasang. Unggah gambar di bawah untuk
+                        background khusus reader ini.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Live Mini Preview Strip */}
+                  <div
+                    className={`relative h-20 rounded-xl overflow-hidden border border-current/15 ${themeStyle.articleBg}`}
+                  >
+                    {hasActiveBg && (
+                      <div
+                        className="absolute -inset-4 bg-cover bg-no-repeat"
+                        style={{
+                          backgroundImage: `url("${safeBgUrl}")`,
+                          backgroundPosition: bgPositionCss,
+                          filter: `blur(${prefs.bgBlur}px)`,
+                          opacity: prefs.bgOpacity / 100,
+                        }}
+                      />
+                    )}
+                    <div className="relative z-10 h-full px-3 flex items-center justify-between gap-2">
+                      <div
+                        className="px-3 py-1.5 rounded-lg border text-xs font-bold"
+                        style={
+                          hasActiveBg && prefs.bgPanelOpacity > 0
+                            ? {
+                                backgroundColor: `rgba(${themeStyle.cardRgb}, ${(prefs.bgPanelOpacity / 100).toFixed(2)})`,
+                                backdropFilter: 'blur(10px)',
+                                WebkitBackdropFilter: 'blur(10px)',
+                                borderColor: themeStyle.cardBorder,
+                              }
+                            : {
+                                borderColor: 'transparent',
+                                backgroundColor: 'transparent',
+                              }
+                        }
+                      >
+                        <span className={contentFontClass}>日本語の読書</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-md bg-black/55 text-white font-mono text-[10px]">
+                        {hasActiveBg
+                          ? `Blur ${prefs.bgBlur}px • ${prefs.bgOpacity}%`
+                          : 'Polos'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Upload & URL Actions */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => bgFileInputRef.current?.click()}
+                        className="btn-crimson flex-1 py-2 px-3 rounded-xl text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Unggah Gambar</span>
+                      </button>
+                      {prefs.bgImageUrl.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBgUrlDraft('');
+                            updatePrefs({ bgMode: 'none', bgImageUrl: '' });
+                            toast.success('Background kustom reader dihapus.');
+                          }}
+                          title="Hapus gambar background kustom"
+                          className={`p-2 rounded-xl border text-xs font-bold text-red-400 cursor-pointer ${themeStyle.subtleBtn}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <form onSubmit={handleApplyBgUrl} className="flex gap-1.5">
+                      <input
+                        type="url"
+                        placeholder="Tempel URL gambar (https://...)"
+                        value={bgUrlDraft}
+                        onChange={(e) => setBgUrlDraft(e.target.value)}
+                        className="flex-1 min-w-0 px-2.5 py-1.5 rounded-xl bg-black/20 border border-current/15 text-xs focus:outline-none focus:border-sky-400"
+                      />
+                      <button
+                        type="submit"
+                        className={`px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer shrink-0 ${themeStyle.subtleBtn}`}
+                      >
+                        Pakai
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Quick Glass & Blur Presets */}
+                  <div className="space-y-1.5">
+                    <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
+                      Preset Cepat Blur &amp; Opacity
+                    </span>
+                    <div className="grid grid-cols-4 gap-1">
+                      {[
+                        {
+                          label: 'Bening',
+                          bgBlur: 0,
+                          bgOpacity: 65,
+                          bgPanelOpacity: 55,
+                        },
+                        {
+                          label: 'Seimbang',
+                          bgBlur: 6,
+                          bgOpacity: 45,
+                          bgPanelOpacity: 72,
+                        },
+                        {
+                          label: 'Fokus',
+                          bgBlur: 14,
+                          bgOpacity: 30,
+                          bgPanelOpacity: 84,
+                        },
+                        {
+                          label: 'Transparan',
+                          bgBlur: 2,
+                          bgOpacity: 80,
+                          bgPanelOpacity: 0,
+                        },
+                      ].map((gp) => {
+                        const active =
+                          prefs.bgBlur === gp.bgBlur &&
+                          prefs.bgOpacity === gp.bgOpacity &&
+                          prefs.bgPanelOpacity === gp.bgPanelOpacity;
+                        return (
+                          <button
+                            key={gp.label}
+                            type="button"
+                            onClick={() =>
+                              updatePrefs({
+                                bgBlur: gp.bgBlur,
+                                bgOpacity: gp.bgOpacity,
+                                bgPanelOpacity: gp.bgPanelOpacity,
+                              })
+                            }
+                            className={`py-1.5 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                              active
+                                ? 'bg-sky-500 text-slate-950 border-sky-400'
+                                : themeStyle.subtleBtn
+                            }`}
+                          >
+                            {gp.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 3 Sliders: Background Blur, Background Opacity, Reading Panel Opacity */}
+                  <div className="space-y-3">
+                    <label className="block space-y-1">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className={`font-bold ${themeStyle.mutedText}`}>
+                          Blur Background
+                        </span>
+                        <span className={`font-mono font-bold ${themeStyle.accentText}`}>
+                          {prefs.bgBlur} px
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={28}
+                        step={1}
+                        value={prefs.bgBlur}
+                        onChange={(e) =>
+                          updatePrefs({ bgBlur: Number(e.target.value) })
+                        }
+                        className="w-full h-2 accent-sky-400 cursor-pointer"
+                      />
+                    </label>
+
+                    <label className="block space-y-1">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className={`font-bold ${themeStyle.mutedText}`}>
+                          Opacity Gambar Background
+                        </span>
+                        <span className={`font-mono font-bold ${themeStyle.accentText}`}>
+                          {prefs.bgOpacity}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={prefs.bgOpacity}
+                        onChange={(e) =>
+                          updatePrefs({ bgOpacity: Number(e.target.value) })
+                        }
+                        className="w-full h-2 accent-sky-400 cursor-pointer"
+                      />
+                    </label>
+
+                    <label className="block space-y-1">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className={`font-bold ${themeStyle.mutedText}`}>
+                          Opacity Latar Teks / Kotak Baca
+                        </span>
+                        <span className={`font-mono font-bold ${themeStyle.accentText}`}>
+                          {prefs.bgPanelOpacity}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={95}
+                        step={5}
+                        value={prefs.bgPanelOpacity}
+                        onChange={(e) =>
+                          updatePrefs({ bgPanelOpacity: Number(e.target.value) })
+                        }
+                        className="w-full h-2 accent-sky-400 cursor-pointer"
+                      />
+                    </label>
+                  </div>
+
+                  {/* Background Focus Position (Mobile Portrait & Laptop Landscape) */}
+                  <div className="space-y-1.5">
+                    <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
+                      Posisi Fokus Gambar (HP &amp; Laptop)
+                    </span>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(
+                        [
+                          { id: 'top', label: 'Atas' },
+                          { id: 'center', label: 'Tengah' },
+                          { id: 'bottom', label: 'Bawah' },
+                        ] as Array<{ id: ReaderBgPosition; label: string }>
+                      ).map((pos) => (
+                        <button
+                          key={pos.id}
+                          type="button"
+                          onClick={() => updatePrefs({ bgPosition: pos.id })}
+                          className={`py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                            prefs.bgPosition === pos.id
+                              ? 'bg-sky-500 text-slate-950 border-sky-400'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          {pos.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-4 py-2.5 border-t border-current/10 flex items-center justify-between gap-2 shrink-0">
               <button
                 type="button"
-                onClick={() =>
-                  updatePrefs({ indentParagraphs: !prefs.indentParagraphs })
-                }
-                className={`w-full py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
-                  prefs.indentParagraphs
-                    ? 'bg-sky-500 text-slate-950 border-sky-400'
-                    : themeStyle.subtleBtn
-                }`}
+                onClick={() => {
+                  setBgUrlDraft('');
+                  updatePrefs(DEFAULT_READER_PREFS);
+                }}
+                className={`text-[11px] font-bold hover:underline inline-flex items-center gap-1 cursor-pointer ${themeStyle.accentText}`}
               >
-                {prefs.indentParagraphs ? 'Aktif (字下げ)' : 'Mati'}
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset Pengaturan</span>
               </button>
-            </div>
-          </div>
-
-          {/* Font Family */}
-          <div className="space-y-1.5">
-            <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
-              Font Bahasa Jepang
-            </span>
-            <div className="grid grid-cols-2 gap-1.5">
-              {(
-                [
-                  { id: 'serif', label: 'Mincho (Serif)' },
-                  { id: 'sans', label: 'Gothic (Sans)' },
-                ] as const
-              ).map((ff) => (
+              {book && (
                 <button
-                  key={ff.id}
                   type="button"
-                  onClick={() => updatePrefs({ fontFamily: ff.id })}
-                  className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                    prefs.fontFamily === ff.id
-                      ? 'bg-sky-500 text-slate-950 border-sky-400'
-                      : themeStyle.subtleBtn
-                  }`}
+                  onClick={() => void handleDeleteCurrentBook()}
+                  className="text-[11px] font-bold text-red-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
                 >
-                  {ff.label}
+                  <Trash2 className="w-3 h-3" />
+                  <span>Hapus Buku</span>
                 </button>
-              ))}
+              )}
             </div>
           </div>
-
-          {/* Theme Colors */}
-          <div className="space-y-1.5">
-            <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
-              Tema Warna Baca
-            </span>
-            <div className="grid grid-cols-4 gap-1.5">
-              {(
-                [
-                  { id: 'navy', label: 'Navy' },
-                  { id: 'amoled', label: 'AMOLED' },
-                  { id: 'sepia', label: 'Sepia' },
-                  { id: 'light', label: 'Terang' },
-                ] as const
-              ).map((th) => (
-                <button
-                  key={th.id}
-                  type="button"
-                  onClick={() => updatePrefs({ theme: th.id })}
-                  className={`px-2 py-1.5 rounded-xl text-[11px] font-bold border transition cursor-pointer ${
-                    prefs.theme === th.id
-                      ? 'bg-sky-500 text-slate-950 border-sky-400'
-                      : themeStyle.subtleBtn
-                  }`}
-                >
-                  {th.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between pt-2 border-t border-white/10">
-            <button
-              type="button"
-              onClick={() => updatePrefs(DEFAULT_READER_PREFS)}
-              className="text-[11px] font-bold text-sky-400 hover:underline cursor-pointer"
-            >
-              Reset Pengaturan
-            </button>
-            {book && (
-              <button
-                type="button"
-                onClick={() => void handleDeleteCurrentBook()}
-                className="text-[11px] font-bold text-red-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
-              >
-                <Trash2 className="w-3 h-3" />
-                Hapus Buku
-              </button>
-            )}
-          </div>
-        </div>
+        </>
       )}
 
       {/* TOC & BOOKMARKS DRAWER */}
@@ -2061,7 +2740,11 @@ export const JapaneseNovelReaderModal: React.FC<
       )}
 
       {/* MAIN BODY */}
-      <div className={`relative flex-1 min-h-0 flex flex-col ${themeStyle.articleBg}`}>
+      <div
+        className={`relative z-10 flex-1 min-h-0 flex flex-col ${
+          hasActiveBg ? 'bg-transparent' : themeStyle.articleBg
+        }`}
+      >
         {/* Floating Paginated Side Arrow Buttons */}
         {book && activeChapter && prefs.readingMode === 'paginated' && (
           <>
@@ -2180,6 +2863,25 @@ export const JapaneseNovelReaderModal: React.FC<
                       ? 'Gaya: Kotak VN'
                       : 'Gaya: Tumpuk'}
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettingsTab('vn');
+                      setShowSettings(true);
+                      setShowToc(false);
+                      setShowBacklog(false);
+                    }}
+                    title="Atur Gaya & Durasi Animasi VN"
+                    className={`px-2.5 py-1 rounded-xl border text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer ${themeStyle.subtleBtn}`}
+                  >
+                    <Sparkles className="w-3 h-3 text-sky-400 shrink-0" />
+                    <span>
+                      {prefs.vnAnimation === 'none'
+                        ? 'Instan'
+                        : `${(prefs.vnAnimationDurationMs / 1000).toFixed(2)}d`}
+                    </span>
+                  </button>
                 </div>
 
                 <div className={`text-[11px] font-mono ${themeStyle.mutedText}`}>
@@ -2210,11 +2912,14 @@ export const JapaneseNovelReaderModal: React.FC<
                 }`}
               >
                 <div
-                  className={`rounded-3xl border p-5 sm:p-8 ${themeStyle.vnCard} ${
+                  className={`rounded-3xl border p-5 sm:p-8 ${
+                    hasActiveBg ? 'bg-transparent' : themeStyle.vnCard
+                  } ${
                     prefs.writingMode === 'vertical'
                       ? 'h-full min-w-[min(42rem,92vw)] overflow-x-auto'
                       : 'w-full max-w-3xl max-h-full overflow-y-auto'
                   }`}
+                  style={vnCardStyle}
                 >
                   <article
                     ref={articleRef}
@@ -2227,11 +2932,12 @@ export const JapaneseNovelReaderModal: React.FC<
                   >
                     {vnVisibleParagraphs.map((p, idx) => (
                       <div
-                        key={`${book.currentChapter}-${vnIndex}-${p.id}`}
+                        key={`${book.currentChapter}-${vnIndex}-${animPreviewTick}-${p.id}`}
                         className={vnAnimClass}
                         style={
                           {
-                            '--vn-delay': `${idx * 75}ms`,
+                            '--vn-duration': `${prefs.vnAnimationDurationMs}ms`,
+                            '--vn-delay': `${idx * vnStaggerMs}ms`,
                           } as React.CSSProperties
                         }
                         dangerouslySetInnerHTML={{ __html: p.html }}
@@ -2254,10 +2960,17 @@ export const JapaneseNovelReaderModal: React.FC<
                 <article
                   ref={articleRef}
                   data-furigana={prefs.furigana}
-                  className={`jp-novel-reader-content ${contentFontClass} ${contentDirClass} ${widthClass} ${indentClass}`}
+                  className={`jp-novel-reader-content ${contentFontClass} ${contentDirClass} ${widthClass} ${indentClass} ${
+                    hasActiveBg &&
+                    prefs.bgPanelOpacity > 0 &&
+                    prefs.writingMode === 'horizontal'
+                      ? 'px-4 py-5 sm:px-8 sm:py-8 shadow-xl'
+                      : ''
+                  }`}
                   style={{
                     fontSize: `${prefs.fontSize}px`,
                     lineHeight: prefs.lineHeight,
+                    ...articleGlassStyle,
                   }}
                 >
                   {vnVisibleParagraphs.map((p, idx) => {
@@ -2269,7 +2982,8 @@ export const JapaneseNovelReaderModal: React.FC<
                         style={
                           isNewBatch
                             ? ({
-                                '--vn-delay': `${Math.max(0, idx - vnIndex) * 70}ms`,
+                                '--vn-duration': `${prefs.vnAnimationDurationMs}ms`,
+                                '--vn-delay': `${Math.max(0, idx - vnIndex) * vnStaggerMs}ms`,
                               } as React.CSSProperties)
                             : undefined
                         }
@@ -2333,10 +3047,17 @@ export const JapaneseNovelReaderModal: React.FC<
             <article
               ref={articleRef}
               data-furigana={prefs.furigana}
-              className={`jp-novel-reader-content ${contentFontClass} ${contentDirClass} ${widthClass} ${indentClass}`}
+              className={`jp-novel-reader-content ${contentFontClass} ${contentDirClass} ${widthClass} ${indentClass} ${
+                hasActiveBg &&
+                prefs.bgPanelOpacity > 0 &&
+                prefs.writingMode === 'horizontal'
+                  ? 'px-4 py-5 sm:px-8 sm:py-8 shadow-xl'
+                  : ''
+              }`}
               style={{
                 fontSize: `${prefs.fontSize}px`,
                 lineHeight: prefs.lineHeight,
+                ...articleGlassStyle,
               }}
               dangerouslySetInnerHTML={{ __html: activeChapter.html }}
             />
@@ -2581,7 +3302,9 @@ export const JapaneseNovelReaderModal: React.FC<
         activeChapter &&
         prefs.readingMode !== 'vn' && (
           <footer
-            className={`shrink-0 px-2.5 sm:px-5 py-2 border-t flex items-center justify-between gap-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] ${themeStyle.toolbar}`}
+            className={`relative z-20 shrink-0 px-2.5 sm:px-5 py-2 border-t backdrop-blur-md flex items-center justify-between gap-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] ${
+              hasActiveBg ? themeStyle.toolbarGlass : themeStyle.toolbar
+            }`}
           >
             <div className="flex items-center gap-1 shrink-0">
               <button

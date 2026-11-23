@@ -52,6 +52,8 @@ export type VnAnimationStyle =
   | 'blur-in'
   | 'none';
 export type VnDisplayStyle = 'card' | 'stream';
+export type ReaderBgMode = 'none' | 'app' | 'custom';
+export type ReaderBgPosition = 'top' | 'center' | 'bottom';
 
 export interface ReaderPreferences {
   readingMode: ReaderMode;
@@ -65,7 +67,14 @@ export interface ReaderPreferences {
   indentParagraphs: boolean;
   vnParagraphsPerStep: number;
   vnAnimation: VnAnimationStyle;
+  vnAnimationDurationMs: number;
   vnDisplayStyle: VnDisplayStyle;
+  bgMode: ReaderBgMode;
+  bgImageUrl: string;
+  bgBlur: number;
+  bgOpacity: number;
+  bgPanelOpacity: number;
+  bgPosition: ReaderBgPosition;
 }
 
 export const DEFAULT_READER_PREFS: ReaderPreferences = {
@@ -80,7 +89,14 @@ export const DEFAULT_READER_PREFS: ReaderPreferences = {
   indentParagraphs: true,
   vnParagraphsPerStep: 2,
   vnAnimation: 'fade-up',
+  vnAnimationDurationMs: 380,
   vnDisplayStyle: 'card',
+  bgMode: 'none',
+  bgImageUrl: '',
+  bgBlur: 4,
+  bgOpacity: 45,
+  bgPanelOpacity: 72,
+  bgPosition: 'center',
 };
 
 const READER_PREFS_STORAGE_KEY = 'immersiontrack_reader_prefs_v1';
@@ -142,8 +158,36 @@ export function loadReaderPrefs(): ReaderPreferences {
         parsed.vnAnimation === 'none'
           ? parsed.vnAnimation
           : 'fade-up';
+      const vnAnimationDurationMs =
+        typeof parsed.vnAnimationDurationMs === 'number' &&
+        Number.isFinite(parsed.vnAnimationDurationMs)
+          ? Math.min(2000, Math.max(100, Math.round(parsed.vnAnimationDurationMs)))
+          : DEFAULT_READER_PREFS.vnAnimationDurationMs;
       const vnDisplayStyle: VnDisplayStyle =
         parsed.vnDisplayStyle === 'stream' ? 'stream' : 'card';
+      const bgMode: ReaderBgMode =
+        parsed.bgMode === 'app' || parsed.bgMode === 'custom'
+          ? parsed.bgMode
+          : 'none';
+      const bgImageUrl =
+        typeof parsed.bgImageUrl === 'string' ? parsed.bgImageUrl : '';
+      const bgBlur =
+        typeof parsed.bgBlur === 'number' && Number.isFinite(parsed.bgBlur)
+          ? Math.min(28, Math.max(0, Math.round(parsed.bgBlur)))
+          : DEFAULT_READER_PREFS.bgBlur;
+      const bgOpacity =
+        typeof parsed.bgOpacity === 'number' && Number.isFinite(parsed.bgOpacity)
+          ? Math.min(100, Math.max(0, Math.round(parsed.bgOpacity)))
+          : DEFAULT_READER_PREFS.bgOpacity;
+      const bgPanelOpacity =
+        typeof parsed.bgPanelOpacity === 'number' &&
+        Number.isFinite(parsed.bgPanelOpacity)
+          ? Math.min(95, Math.max(0, Math.round(parsed.bgPanelOpacity)))
+          : DEFAULT_READER_PREFS.bgPanelOpacity;
+      const bgPosition: ReaderBgPosition =
+        parsed.bgPosition === 'top' || parsed.bgPosition === 'bottom'
+          ? parsed.bgPosition
+          : 'center';
       return {
         readingMode,
         writingMode,
@@ -156,7 +200,14 @@ export function loadReaderPrefs(): ReaderPreferences {
         indentParagraphs,
         vnParagraphsPerStep,
         vnAnimation,
+        vnAnimationDurationMs,
         vnDisplayStyle,
+        bgMode,
+        bgImageUrl,
+        bgBlur,
+        bgOpacity,
+        bgPanelOpacity,
+        bgPosition,
       };
     }
   } catch {
@@ -165,11 +216,12 @@ export function loadReaderPrefs(): ReaderPreferences {
   return DEFAULT_READER_PREFS;
 }
 
-export function saveReaderPrefs(prefs: ReaderPreferences): void {
+export function saveReaderPrefs(prefs: ReaderPreferences): boolean {
   try {
     localStorage.setItem(READER_PREFS_STORAGE_KEY, JSON.stringify(prefs));
+    return true;
   } catch {
-    // ignore storage quota errors
+    return false;
   }
 }
 

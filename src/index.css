@@ -962,7 +962,7 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
 }
 
 .jp-vn-anim-fade-up {
-  animation: jpVnFadeUp 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: jpVnFadeUp var(--vn-duration, 380ms) cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: var(--vn-delay, 0ms);
 }
 
@@ -971,7 +971,7 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
 }
 
 .jp-vn-anim-typewriter {
-  animation: jpVnTypewriterH 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: jpVnTypewriterH var(--vn-duration, 450ms) cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: var(--vn-delay, 0ms);
 }
 
@@ -980,7 +980,7 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
 }
 
 .jp-vn-anim-slide {
-  animation: jpVnSlideH 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: jpVnSlideH var(--vn-duration, 340ms) cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: var(--vn-delay, 0ms);
 }
 
@@ -989,6 +989,6 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
 }
 
 .jp-vn-anim-blur-in {
-  animation: jpVnBlurIn 0.40s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: jpVnBlurIn var(--vn-duration, 400ms) cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: var(--vn-delay, 0ms);
 }
