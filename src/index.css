@@ -769,6 +769,10 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
 .jp-scroll-viewport-vertical {
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  justify-content: safe center;
+  align-items: center;
+  align-items: safe center;
   writing-mode: vertical-rl;
   -webkit-writing-mode: vertical-rl;
   text-orientation: mixed;
@@ -836,7 +840,7 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
   height: 100%;
   width: max-content;
   min-width: max-content;
-  margin: auto;
+  margin: 0;
   padding: 1.25rem 1.75rem;
 }
 

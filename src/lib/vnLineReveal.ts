@@ -13,53 +13,66 @@ export interface VnRevealOptions {
   onComplete?: () => void;
 }
 
-interface LineBand {
-  /** Primary axis start in px relative to element border-box (top in horizontal, left in vertical). */
-  sliceStart: number;
-  /** Primary axis end in px relative to element border-box (bottom in horizontal, right in vertical). */
-  sliceEnd: number;
-  /** Cross axis start in px (left in horizontal, top in vertical), padded slightly for glyph overhangs. */
-  crossStart: number;
-  /** Cross axis end in px (right in horizontal, bottom in vertical), padded slightly for glyph overhangs. */
-  crossEnd: number;
-  /** Raw un-padded primary start used for boundary splitting. */
-  bandStart: number;
-  /** Raw un-padded primary end used for boundary splitting. */
-  bandEnd: number;
-  center: number;
-}
+type CollectedUnit =
+  | { kind: 'element'; node: HTMLElement }
+  | { kind: 'text'; node: Text };
 
-interface ElementRevealPlan {
-  el: HTMLElement;
-  boxWidth: number;
-  boxHeight: number;
-  lines: LineBand[];
-}
-
-interface RawRect {
-  primaryStart: number;
-  primaryEnd: number;
-  crossStart: number;
-  crossEnd: number;
+interface MeasuredUnit {
+  kind: 'element' | 'text-slice';
+  el?: HTMLElement;
+  textNode?: Text;
+  start: number;
+  end: number;
+  primaryCenter: number;
+  crossCenter: number;
   thickness: number;
 }
 
-function clearElementRevealStyles(el: HTMLElement): void {
-  el.style.visibility = '';
-  el.style.opacity = '';
-  el.style.clipPath = '';
-  el.style.transform = '';
-  el.style.willChange = '';
-  el.style.contain = '';
-  el.style.removeProperty('-webkit-clip-path');
-  el.style.maskImage = '';
-  el.style.maskPosition = '';
-  el.style.maskSize = '';
-  el.style.maskRepeat = '';
-  el.style.removeProperty('-webkit-mask-image');
-  el.style.removeProperty('-webkit-mask-position');
-  el.style.removeProperty('-webkit-mask-size');
-  el.style.removeProperty('-webkit-mask-repeat');
+interface TextSegmentSpec {
+  start: number;
+  end: number;
+  revealAtMs: number;
+  transitionCss: string;
+}
+
+interface DirectElementRestore {
+  el: HTMLElement;
+  prevOpacity: string;
+  prevTransition: string;
+  prevWillChange: string;
+}
+
+interface RevealEntry {
+  target: HTMLElement;
+  revealAtMs: number;
+}
+
+function getCodepointOffsets(text: string): number[] {
+  const offsets: number[] = [0];
+  for (let i = 0; i < text.length; ) {
+    const code = text.charCodeAt(i);
+    i += code >= 0xd800 && code <= 0xdbff && i + 1 < text.length ? 2 : 1;
+    offsets.push(i);
+  }
+  return offsets;
+}
+
+function getRectMetrics(
+  rect: DOMRect,
+  writingMode: 'horizontal' | 'vertical'
+): { primaryCenter: number; crossCenter: number; thickness: number } {
+  if (writingMode === 'horizontal') {
+    return {
+      primaryCenter: (rect.top + rect.bottom) / 2,
+      crossCenter: (rect.left + rect.right) / 2,
+      thickness: rect.height,
+    };
+  }
+  return {
+    primaryCenter: (rect.left + rect.right) / 2,
+    crossCenter: (rect.top + rect.bottom) / 2,
+    thickness: rect.width,
+  };
 }
 
 function computeMedian(values: number[], fallback: number): number {
@@ -71,346 +84,229 @@ function computeMedian(values: number[], fallback: number): number {
     : sorted[mid];
 }
 
-function measureElementLines(
-  el: HTMLElement,
+function collectAtomicUnits(root: HTMLElement): CollectedUnit[] {
+  const units: CollectedUnit[] = [];
+  const doc = root.ownerDocument;
+  const TEXT_NODE = doc.defaultView?.Node.TEXT_NODE ?? 3;
+  const ELEMENT_NODE = doc.defaultView?.Node.ELEMENT_NODE ?? 1;
+
+  const walk = (node: Node) => {
+    const children = node.childNodes;
+    for (let i = 0; i < children.length; i += 1) {
+      const child = children[i];
+      if (child.nodeType === TEXT_NODE) {
+        const textNode = child as Text;
+        if (textNode.data && textNode.data.trim().length > 0) {
+          units.push({ kind: 'text', node: textNode });
+        }
+        continue;
+      }
+      if (child.nodeType === ELEMENT_NODE) {
+        const el = child as HTMLElement;
+        const tag = el.tagName.toUpperCase();
+        if (tag === 'RT' || tag === 'RP' || tag === 'SCRIPT' || tag === 'STYLE') {
+          continue;
+        }
+        if (tag === 'RUBY' || tag === 'IMG' || tag === 'SVG') {
+          units.push({ kind: 'element', node: el });
+          continue;
+        }
+        walk(el);
+      }
+    }
+  };
+
+  walk(root);
+  return units;
+}
+
+function measureVisibleCodepoint(
+  textNode: Text,
+  range: Range,
+  cpOffsets: number[],
+  cpIndex: number,
+  minCp: number,
+  maxCp: number,
   writingMode: 'horizontal' | 'vertical'
-): { boxWidth: number; boxHeight: number; lines: LineBand[] } {
-  const box = el.getBoundingClientRect();
-  const boxWidth = box.width;
-  const boxHeight = box.height;
+): { primaryCenter: number; crossCenter: number; thickness: number } | null {
+  const tryIdx = (idx: number): DOMRect | null => {
+    range.setStart(textNode, cpOffsets[idx]);
+    range.setEnd(textNode, cpOffsets[idx + 1]);
+    const rect = range.getBoundingClientRect();
+    return rect.width > 0.4 || rect.height > 0.4 ? rect : null;
+  };
 
-  if (boxWidth <= 0 || boxHeight <= 0) {
-    return { boxWidth: 0, boxHeight: 0, lines: [] };
+  const direct = tryIdx(cpIndex);
+  if (direct) return getRectMetrics(direct, writingMode);
+
+  const maxDist = Math.max(cpIndex - minCp, maxCp - cpIndex);
+  for (let d = 1; d <= maxDist; d += 1) {
+    if (cpIndex + d <= maxCp) {
+      const r = tryIdx(cpIndex + d);
+      if (r) return getRectMetrics(r, writingMode);
+    }
+    if (cpIndex - d >= minCp) {
+      const r = tryIdx(cpIndex - d);
+      if (r) return getRectMetrics(r, writingMode);
+    }
   }
+  return null;
+}
 
-  const rawRects: RawRect[] = [];
-  const doc = el.ownerDocument;
+function measureVisualRuns(
+  root: HTMLElement,
+  writingMode: 'horizontal' | 'vertical'
+): MeasuredUnit[] {
+  const collected = collectAtomicUnits(root);
+  if (collected.length === 0) return [];
+
+  const doc = root.ownerDocument;
   const range = doc.createRange();
+  const measured: MeasuredUnit[] = [];
 
-  const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      if (!node.nodeValue || !node.nodeValue.trim()) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      const parent = node.parentElement;
-      if (parent && parent.closest('rt, rp')) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      return NodeFilter.FILTER_ACCEPT;
-    },
-  });
+  for (const unit of collected) {
+    if (unit.kind === 'element') {
+      const r = unit.node.getBoundingClientRect();
+      if (r.width <= 0.5 || r.height <= 0.5) continue;
+      const metrics = getRectMetrics(r, writingMode);
+      measured.push({
+        kind: 'element',
+        el: unit.node,
+        start: 0,
+        end: 0,
+        ...metrics,
+      });
+      continue;
+    }
 
-  let textNode = walker.nextNode();
-  while (textNode) {
+    const textNode = unit.node;
     range.selectNodeContents(textNode);
     const rects = range.getClientRects();
-    for (let i = 0; i < rects.length; i += 1) {
-      const r = rects[i];
-      if (r.width <= 0.5 || r.height <= 0.5) continue;
-      if (writingMode === 'horizontal') {
-        rawRects.push({
-          primaryStart: r.top - box.top,
-          primaryEnd: r.bottom - box.top,
-          crossStart: r.left - box.left,
-          crossEnd: r.right - box.left,
-          thickness: r.height,
-        });
-      } else {
-        rawRects.push({
-          primaryStart: r.left - box.left,
-          primaryEnd: r.right - box.left,
-          crossStart: r.top - box.top,
-          crossEnd: r.bottom - box.top,
-          thickness: r.width,
+    if (rects.length === 0) continue;
+
+    if (rects.length === 1) {
+      const r = rects[0];
+      if (r.width <= 0.5 && r.height <= 0.5) continue;
+      const metrics = getRectMetrics(r, writingMode);
+      measured.push({
+        kind: 'text-slice',
+        textNode,
+        start: 0,
+        end: textNode.data.length,
+        ...metrics,
+      });
+      continue;
+    }
+
+    // Split wrapped Text node along visual line breaks via binary search on codepoint bounds
+    const cpOffsets = getCodepointOffsets(textNode.data);
+    const cpCount = cpOffsets.length - 1;
+    let curCp = 0;
+
+    while (curCp < cpCount) {
+      const firstMetrics = measureVisibleCodepoint(
+        textNode,
+        range,
+        cpOffsets,
+        curCp,
+        curCp,
+        cpCount - 1,
+        writingMode
+      );
+      if (!firstMetrics) {
+        curCp += 1;
+        continue;
+      }
+
+      const splitTol = Math.max(6, firstMetrics.thickness * 0.5);
+      let lo = curCp;
+      let hi = cpCount - 1;
+      let best = curCp;
+
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        const probe = measureVisibleCodepoint(
+          textNode,
+          range,
+          cpOffsets,
+          mid,
+          curCp,
+          hi,
+          writingMode
+        );
+        if (
+          !probe ||
+          Math.abs(probe.primaryCenter - firstMetrics.primaryCenter) <= splitTol
+        ) {
+          best = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+
+      const endCp = Math.max(curCp + 1, best + 1);
+      const startOff = cpOffsets[curCp];
+      const endOff = cpOffsets[endCp];
+      const lastMetrics = measureVisibleCodepoint(
+        textNode,
+        range,
+        cpOffsets,
+        endCp - 1,
+        curCp,
+        endCp - 1,
+        writingMode
+      );
+      const sliceCrossCenter = lastMetrics
+        ? (firstMetrics.crossCenter + lastMetrics.crossCenter) / 2
+        : firstMetrics.crossCenter;
+
+      if (textNode.data.slice(startOff, endOff).length > 0) {
+        measured.push({
+          kind: 'text-slice',
+          textNode,
+          start: startOff,
+          end: endOff,
+          primaryCenter: firstMetrics.primaryCenter,
+          crossCenter: sliceCrossCenter,
+          thickness: firstMetrics.thickness,
         });
       }
-    }
-    textNode = walker.nextNode();
-  }
 
-  const mediaNodes = el.querySelectorAll('img, svg');
-  mediaNodes.forEach((node) => {
-    const r = node.getBoundingClientRect();
-    if (r.width <= 1 || r.height <= 1) return;
-    if (writingMode === 'horizontal') {
-      rawRects.push({
-        primaryStart: r.top - box.top,
-        primaryEnd: r.bottom - box.top,
-        crossStart: r.left - box.left,
-        crossEnd: r.right - box.left,
-        thickness: r.height,
-      });
-    } else {
-      rawRects.push({
-        primaryStart: r.left - box.left,
-        primaryEnd: r.right - box.left,
-        crossStart: r.top - box.top,
-        crossEnd: r.bottom - box.top,
-        thickness: r.width,
-      });
-    }
-  });
-
-  if (rawRects.length === 0) {
-    return { boxWidth, boxHeight, lines: [] };
-  }
-
-  const medianThickness = computeMedian(
-    rawRects.map((r) => r.thickness),
-    18
-  );
-  const tolerance = Math.max(4, medianThickness * 0.45);
-  const crossMax = writingMode === 'horizontal' ? boxWidth : boxHeight;
-  const primaryMax = writingMode === 'horizontal' ? boxHeight : boxWidth;
-
-  // Sort in natural reading order: top-to-bottom (horizontal) or right-to-left (vertical).
-  const sortedRects = [...rawRects].sort((a, b) => {
-    const ca = (a.primaryStart + a.primaryEnd) / 2;
-    const cb = (b.primaryStart + b.primaryEnd) / 2;
-    return writingMode === 'horizontal' ? ca - cb : cb - ca;
-  });
-
-  const clusters: Array<{
-    bandStart: number;
-    bandEnd: number;
-    crossStart: number;
-    crossEnd: number;
-    centerSum: number;
-    count: number;
-    center: number;
-  }> = [];
-
-  for (const r of sortedRects) {
-    const rectCenter = (r.primaryStart + r.primaryEnd) / 2;
-    const last = clusters[clusters.length - 1];
-    if (last && Math.abs(rectCenter - last.center) <= tolerance) {
-      last.bandStart = Math.min(last.bandStart, r.primaryStart);
-      last.bandEnd = Math.max(last.bandEnd, r.primaryEnd);
-      last.crossStart = Math.min(last.crossStart, r.crossStart);
-      last.crossEnd = Math.max(last.crossEnd, r.crossEnd);
-      last.centerSum += rectCenter;
-      last.count += 1;
-      last.center = last.centerSum / last.count;
-    } else {
-      clusters.push({
-        bandStart: r.primaryStart,
-        bandEnd: r.primaryEnd,
-        crossStart: r.crossStart,
-        crossEnd: r.crossEnd,
-        centerSum: rectCenter,
-        count: 1,
-        center: rectCenter,
-      });
+      curCp = endCp;
     }
   }
 
-  const lines: LineBand[] = clusters.map((c) => ({
-    sliceStart: 0,
-    sliceEnd: primaryMax,
-    crossStart: Math.max(0, c.crossStart - 6),
-    crossEnd: Math.min(crossMax, c.crossEnd + 10),
-    bandStart: c.bandStart,
-    bandEnd: c.bandEnd,
-    center: c.center,
-  }));
-
-  if (lines.length === 1) {
-    lines[0].sliceStart = 0;
-    lines[0].sliceEnd = primaryMax;
-    return { boxWidth, boxHeight, lines };
-  }
-
-  // Split inter-line boundaries so furigana (<rt>) remains grouped with its own base line.
-  if (writingMode === 'horizontal') {
-    lines[0].sliceStart = 0;
-    for (let i = 0; i < lines.length - 1; i += 1) {
-      const prev = lines[i];
-      const next = lines[i + 1];
-      const rawCut = prev.bandEnd + (next.bandStart - prev.bandEnd) * 0.15;
-      const clampedCut = Math.max(prev.sliceStart, Math.min(primaryMax, rawCut));
-      prev.sliceEnd = clampedCut;
-      next.sliceStart = clampedCut;
-    }
-    lines[lines.length - 1].sliceEnd = primaryMax;
-  } else {
-    // Vertical RTL: lines[0] is rightmost (up to boxWidth), lines[last] is leftmost (down to 0).
-    // Furigana (<rt>) sits to the RIGHT of its base column, near next.bandEnd in the gap.
-    lines[0].sliceEnd = primaryMax;
-    for (let i = 0; i < lines.length - 1; i += 1) {
-      const prev = lines[i];
-      const next = lines[i + 1];
-      const rawCut = prev.bandStart - (prev.bandStart - next.bandEnd) * 0.15;
-      const clampedCut = Math.min(prev.sliceEnd, Math.max(0, rawCut));
-      prev.sliceStart = clampedCut;
-      next.sliceEnd = clampedCut;
-    }
-    lines[lines.length - 1].sliceStart = 0;
-  }
-
-  return { boxWidth, boxHeight, lines };
+  return measured;
 }
 
-function buildHorizontalStaircasePolygon(
-  W: number,
-  y1: number,
-  y2: number,
-  x: number
-): string {
-  const cy1 = y1.toFixed(1);
-  const cy2 = y2.toFixed(1);
-  const cx = Math.max(0, Math.min(W, x)).toFixed(1);
-  return `polygon(0px 0px, ${W}px 0px, ${W}px ${cy1}px, ${cx}px ${cy1}px, ${cx}px ${cy2}px, 0px ${cy2}px)`;
-}
+function buildCodepointChunks(
+  text: string,
+  startOff: number,
+  endOff: number,
+  chunkSize: number
+): Array<{ start: number; end: number }> {
+  const sub = text.slice(startOff, endOff);
+  const cpOffsets = getCodepointOffsets(sub);
+  const totalCp = cpOffsets.length - 1;
+  if (totalCp <= 0) return [];
 
-function buildVerticalStaircasePolygon(
-  W: number,
-  H: number,
-  x1: number,
-  x2: number,
-  y: number
-): string {
-  const cx1 = Math.max(0, Math.min(W, x1)).toFixed(1);
-  const cx2 = Math.max(0, Math.min(W, x2)).toFixed(1);
-  const cy = Math.max(0, Math.min(H, y)).toFixed(1);
-  return `polygon(${cx1}px 0px, ${W}px 0px, ${W}px ${H}px, ${cx2}px ${H}px, ${cx2}px ${cy}px, ${cx1}px ${cy}px)`;
-}
-
-function buildStepAnimationSpec(
-  plan: ElementRevealPlan,
-  lineIndex: number,
-  style: Exclude<VnAnimationStyle, 'none'>,
-  writingMode: 'horizontal' | 'vertical'
-): { keyframes: [Keyframe, Keyframe]; easing: string } {
-  const { boxWidth, boxHeight, lines } = plan;
-  const line = lines[lineIndex];
-  const isLastLine = lineIndex === lines.length - 1;
-  const W = Math.max(2, Math.ceil(boxWidth) + 2);
-  const H = Math.max(2, Math.ceil(boxHeight) + 2);
-
-  if (style === 'fade-up') {
-    let startClip: string;
-    let endClip: string;
-    if (writingMode === 'horizontal') {
-      const prevBottom =
-        lineIndex === 0 ? H : Math.max(0, Math.ceil(H - line.sliceStart));
-      const nextBottom = isLastLine
-        ? 0
-        : Math.max(0, Math.ceil(H - line.sliceEnd));
-      startClip = `inset(0px 0px ${prevBottom}px 0px)`;
-      endClip = `inset(0px 0px ${nextBottom}px 0px)`;
-    } else {
-      const prevLeft =
-        lineIndex === 0 ? W : Math.max(0, Math.floor(line.sliceEnd));
-      const nextLeft = isLastLine ? 0 : Math.max(0, Math.floor(line.sliceStart));
-      startClip = `inset(0px 0px 0px ${prevLeft}px)`;
-      endClip = `inset(0px 0px 0px ${nextLeft}px)`;
-    }
-
-    const startFrame: Keyframe = { clipPath: startClip };
-    const endFrame: Keyframe = { clipPath: endClip };
-
-    if (lineIndex === 0) {
-      startFrame.opacity = 0.35;
-      endFrame.opacity = 1;
-      startFrame.transform =
-        writingMode === 'horizontal'
-          ? 'translate3d(0, 6px, 0)'
-          : 'translate3d(-6px, 0, 0)';
-      endFrame.transform = 'translate3d(0, 0, 0)';
-    }
-
-    return {
-      keyframes: [startFrame, endFrame],
-      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-    };
+  const chunks: Array<{ start: number; end: number }> = [];
+  for (let i = 0; i < totalCp; i += chunkSize) {
+    const nextCp = Math.min(totalCp, i + chunkSize);
+    chunks.push({
+      start: startOff + cpOffsets[i],
+      end: startOff + cpOffsets[nextCp],
+    });
   }
-
-  let startClip: string;
-  let endClip: string;
-
-  if (writingMode === 'horizontal') {
-    if (lineIndex === 0) {
-      const bottomClip = isLastLine
-        ? 0
-        : Math.max(0, Math.ceil(H - line.sliceEnd));
-      const rightStart = Math.max(0, Math.ceil(W - line.crossStart));
-      const rightEnd = isLastLine
-        ? 0
-        : Math.max(0, Math.ceil(W - Math.min(W, line.crossEnd)));
-      startClip = `inset(0px ${rightStart}px ${bottomClip}px 0px)`;
-      endClip = `inset(0px ${rightEnd}px ${bottomClip}px 0px)`;
-    } else {
-      const y2 = isLastLine ? H : line.sliceEnd;
-      startClip = buildHorizontalStaircasePolygon(
-        W,
-        line.sliceStart,
-        y2,
-        line.crossStart
-      );
-      endClip = buildHorizontalStaircasePolygon(
-        W,
-        line.sliceStart,
-        y2,
-        isLastLine ? W : Math.min(W, line.crossEnd)
-      );
-    }
-  } else if (lineIndex === 0) {
-    const leftClip = isLastLine ? 0 : Math.max(0, Math.floor(line.sliceStart));
-    const bottomStart = Math.max(0, Math.ceil(H - line.crossStart));
-    const bottomEnd = isLastLine
-      ? 0
-      : Math.max(0, Math.ceil(H - Math.min(H, line.crossEnd)));
-    startClip = `inset(0px 0px ${bottomStart}px ${leftClip}px)`;
-    endClip = `inset(0px 0px ${bottomEnd}px ${leftClip}px)`;
-  } else {
-    const x1 = isLastLine ? 0 : line.sliceStart;
-    startClip = buildVerticalStaircasePolygon(
-      W,
-      H,
-      x1,
-      line.sliceEnd,
-      line.crossStart
-    );
-    endClip = buildVerticalStaircasePolygon(
-      W,
-      H,
-      x1,
-      line.sliceEnd,
-      isLastLine ? H : Math.min(H, line.crossEnd)
-    );
-  }
-
-  const startFrame: Keyframe = { clipPath: startClip };
-  const endFrame: Keyframe = { clipPath: endClip };
-
-  if (lineIndex === 0) {
-    if (style === 'blur-in') {
-      startFrame.opacity = 0.15;
-      endFrame.opacity = 1;
-    } else if (style === 'slide') {
-      startFrame.transform =
-        writingMode === 'horizontal'
-          ? 'translate3d(12px, 0, 0)'
-          : 'translate3d(0, -12px, 0)';
-      endFrame.transform = 'translate3d(0, 0, 0)';
-    }
-  }
-
-  const easing =
-    style === 'typewriter'
-      ? 'linear'
-      : style === 'slide'
-        ? 'cubic-bezier(0.22, 1, 0.36, 1)'
-        : 'cubic-bezier(0.37, 0, 0.63, 1)';
-
-  return { keyframes: [startFrame, endFrame], easing };
+  return chunks;
 }
 
 /**
- * Reveals one or more Japanese text elements strictly line-by-line (top-to-bottom for
- * horizontal writing mode, right-to-left for vertical writing mode) using chained
- * 2-keyframe GPU-composited Web Animations API animations with zero wrapper spans
- * so Yomitan popup lookups remain 100% intact.
+ * Reveals Japanese VN paragraphs strictly one visual line (horizontal) or
+ * one column (vertical right-to-left) at a time using pure GPU opacity
+ * transitions — zero CSS clip-path or mask-image — then unwraps back to
+ * native pristine EPUB DOM so Yomitan lookups stay 100% intact.
  */
 export function startLineByLineReveal(
   elements: HTMLElement[],
@@ -418,13 +314,7 @@ export function startLineByLineReveal(
 ): VnRevealController {
   const { style, writingMode, durationPerLineMs, onComplete } = options;
 
-  if (
-    elements.length === 0 ||
-    style === 'none' ||
-    durationPerLineMs <= 0 ||
-    typeof elements[0]?.animate !== 'function'
-  ) {
-    elements.forEach(clearElementRevealStyles);
+  if (elements.length === 0 || style === 'none' || durationPerLineMs <= 0) {
     onComplete?.();
     return {
       finishNow: () => {},
@@ -433,20 +323,12 @@ export function startLineByLineReveal(
     };
   }
 
-  const plans: ElementRevealPlan[] = elements.map((el) => {
-    clearElementRevealStyles(el);
-    const measured = measureElementLines(el, writingMode);
-    return {
-      el,
-      boxWidth: measured.boxWidth,
-      boxHeight: measured.boxHeight,
-      lines: measured.lines,
-    };
-  });
+  const allMeasuredPerElement = elements.map((el) =>
+    measureVisualRuns(el, writingMode)
+  );
+  const allUnitsFlat = allMeasuredPerElement.flat();
 
-  const activePlans = plans.filter((p) => p.lines.length > 0);
-  if (activePlans.length === 0) {
-    elements.forEach(clearElementRevealStyles);
+  if (allUnitsFlat.length === 0) {
     onComplete?.();
     return {
       finishNow: () => {},
@@ -455,115 +337,299 @@ export function startLineByLineReveal(
     };
   }
 
-  const steps: Array<{ planIndex: number; lineIndex: number }> = [];
-  activePlans.forEach((plan, planIndex) => {
-    plan.lines.forEach((_, lineIndex) => {
-      steps.push({ planIndex, lineIndex });
+  const medianThickness = computeMedian(
+    allUnitsFlat.map((u) => u.thickness).filter((v) => v > 0),
+    18
+  );
+  const tolerance = Math.max(4, medianThickness * 0.45);
+
+  const elementLineGroups: MeasuredUnit[][][] = allMeasuredPerElement.map(
+    (units) => {
+      if (units.length === 0) return [];
+      const sortedPrimary = [...units].sort((a, b) =>
+        writingMode === 'horizontal'
+          ? a.primaryCenter - b.primaryCenter
+          : b.primaryCenter - a.primaryCenter
+      );
+
+      const clusters: Array<{
+        centerSum: number;
+        count: number;
+        center: number;
+        items: MeasuredUnit[];
+      }> = [];
+
+      for (const u of sortedPrimary) {
+        const last = clusters[clusters.length - 1];
+        if (last && Math.abs(u.primaryCenter - last.center) <= tolerance) {
+          last.items.push(u);
+          last.centerSum += u.primaryCenter;
+          last.count += 1;
+          last.center = last.centerSum / last.count;
+        } else {
+          clusters.push({
+            centerSum: u.primaryCenter,
+            count: 1,
+            center: u.primaryCenter,
+            items: [u],
+          });
+        }
+      }
+
+      return clusters.map((c) =>
+        c.items.sort((a, b) => a.crossCenter - b.crossCenter)
+      );
+    }
+  );
+
+  const flatLines: MeasuredUnit[][] = elementLineGroups.flat();
+  if (flatLines.length === 0) {
+    onComplete?.();
+    return {
+      finishNow: () => {},
+      cancel: () => {},
+      isRunning: () => false,
+    };
+  }
+
+  const stepMs = Math.max(40, durationPerLineMs);
+  const textNodeSpecs = new Map<Text, TextSegmentSpec[]>();
+  const directRestores: DirectElementRestore[] = [];
+  const entries: RevealEntry[] = [];
+
+  const transitionTailMs =
+    style === 'fade-up'
+      ? stepMs
+      : style === 'blur-in'
+        ? Math.round(stepMs * 1.15)
+        : style === 'slide'
+          ? Math.min(220, Math.max(60, Math.round(stepMs * 0.45)))
+          : 0;
+
+  const isChunked = style === 'typewriter' || style === 'slide';
+
+  flatLines.forEach((lineUnits, lineIdx) => {
+    const lineStartMs = lineIdx * stepMs;
+
+    if (!isChunked) {
+      const transitionCss =
+        style === 'blur-in'
+          ? `opacity ${Math.round(stepMs * 1.15)}ms cubic-bezier(0.37, 0, 0.63, 1)`
+          : `opacity ${stepMs}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+
+      for (const u of lineUnits) {
+        if (u.kind === 'element' && u.el) {
+          directRestores.push({
+            el: u.el,
+            prevOpacity: u.el.style.opacity,
+            prevTransition: u.el.style.transition,
+            prevWillChange: u.el.style.willChange,
+          });
+          u.el.style.willChange = 'opacity';
+          u.el.style.transition = transitionCss;
+          u.el.style.opacity = '0';
+          entries.push({ target: u.el, revealAtMs: lineStartMs });
+        } else if (u.kind === 'text-slice' && u.textNode) {
+          const list = textNodeSpecs.get(u.textNode) ?? [];
+          list.push({
+            start: u.start,
+            end: u.end,
+            revealAtMs: lineStartMs,
+            transitionCss,
+          });
+          textNodeSpecs.set(u.textNode, list);
+        }
+      }
+      return;
+    }
+
+    // Chunked character/word sweep strictly along lineIdx
+    const lineTotalChars = lineUnits.reduce(
+      (sum, u) =>
+        sum + (u.kind === 'element' ? 2 : Math.max(0, u.end - u.start)),
+      0
+    );
+    const chunkSize =
+      style === 'typewriter'
+        ? Math.max(1, Math.ceil(lineTotalChars / 28))
+        : Math.max(2, Math.ceil(lineTotalChars / 16));
+    const transitionCss =
+      style === 'slide'
+        ? `opacity ${Math.min(220, Math.max(60, Math.round(stepMs * 0.45)))}ms ease-out`
+        : '';
+
+    const pendingChunks: Array<
+      | { kind: 'element'; el: HTMLElement }
+      | { kind: 'text'; textNode: Text; start: number; end: number }
+    > = [];
+
+    for (const u of lineUnits) {
+      if (u.kind === 'element' && u.el) {
+        pendingChunks.push({ kind: 'element', el: u.el });
+      } else if (u.kind === 'text-slice' && u.textNode) {
+        const subChunks = buildCodepointChunks(
+          u.textNode.data,
+          u.start,
+          u.end,
+          chunkSize
+        );
+        for (const ch of subChunks) {
+          pendingChunks.push({
+            kind: 'text',
+            textNode: u.textNode,
+            start: ch.start,
+            end: ch.end,
+          });
+        }
+      }
+    }
+
+    const totalChunks = Math.max(1, pendingChunks.length);
+    pendingChunks.forEach((chunk, chunkIdx) => {
+      const chunkDelayMs =
+        lineStartMs + (chunkIdx / totalChunks) * (stepMs * 0.92);
+      if (chunk.kind === 'element') {
+        directRestores.push({
+          el: chunk.el,
+          prevOpacity: chunk.el.style.opacity,
+          prevTransition: chunk.el.style.transition,
+          prevWillChange: chunk.el.style.willChange,
+        });
+        chunk.el.style.willChange = 'opacity';
+        if (transitionCss) chunk.el.style.transition = transitionCss;
+        chunk.el.style.opacity = '0';
+        entries.push({ target: chunk.el, revealAtMs: chunkDelayMs });
+      } else {
+        const list = textNodeSpecs.get(chunk.textNode) ?? [];
+        list.push({
+          start: chunk.start,
+          end: chunk.end,
+          revealAtMs: chunkDelayMs,
+          transitionCss,
+        });
+        textNodeSpecs.set(chunk.textNode, list);
+      }
     });
   });
 
-  // Hide subsequent paragraphs until their first line begins revealing
-  const firstPlanIndex = steps[0].planIndex;
-  activePlans.forEach((plan, planIndex) => {
-    if (planIndex > firstPlanIndex) {
-      plan.el.style.visibility = 'hidden';
+  // Wrap text slices in-place right-to-left so earlier UTF-16 offsets stay exact
+  const createdSpans: HTMLSpanElement[] = [];
+
+  textNodeSpecs.forEach((specs, textNode) => {
+    const parent = textNode.parentNode;
+    if (!parent) return;
+    const doc = textNode.ownerDocument;
+    const sortedDesc = [...specs].sort((a, b) => b.start - a.start);
+
+    for (const spec of sortedDesc) {
+      if (spec.end <= spec.start || spec.start >= textNode.data.length) continue;
+
+      let targetNode: Text;
+      if (spec.start > 0) {
+        targetNode = textNode.splitText(spec.start);
+      } else {
+        targetNode = textNode;
+      }
+
+      const len = spec.end - spec.start;
+      if (len < targetNode.data.length) {
+        targetNode.splitText(len);
+      }
+
+      const span = doc.createElement('span');
+      span.setAttribute('data-vn-seg', '1');
+      span.style.opacity = '0';
+      if (spec.transitionCss) {
+        span.style.willChange = 'opacity';
+        span.style.transition = spec.transitionCss;
+      }
+
+      const targetParent = targetNode.parentNode;
+      if (!targetParent) continue;
+      targetParent.replaceChild(span, targetNode);
+      span.appendChild(targetNode);
+      createdSpans.push(span);
+      entries.push({ target: span, revealAtMs: spec.revealAtMs });
     }
   });
 
-  const stepMs = Math.max(40, durationPerLineMs);
-  let activeAnim: Animation | null = null;
+  if (entries.length === 0) {
+    onComplete?.();
+    return {
+      finishNow: () => {},
+      cancel: () => {},
+      isRunning: () => false,
+    };
+  }
+
+  entries.sort((a, b) => a.revealAtMs - b.revealAtMs);
+
+  let rafId: number | null = null;
+  let startTime: number | null = null;
+  let nextIdx = 0;
   let running = true;
+  const finishAtMs = flatLines.length * stepMs + transitionTailMs + 30;
+
+  const restoreAllDom = () => {
+    for (const r of directRestores) {
+      r.el.style.opacity = r.prevOpacity;
+      r.el.style.transition = r.prevTransition;
+      r.el.style.willChange = r.prevWillChange;
+    }
+
+    for (let i = createdSpans.length - 1; i >= 0; i -= 1) {
+      const span = createdSpans[i];
+      const parent = span.parentNode;
+      if (!parent) continue;
+      while (span.firstChild) {
+        parent.insertBefore(span.firstChild, span);
+      }
+      parent.removeChild(span);
+    }
+
+    for (const rootEl of elements) {
+      try {
+        rootEl.normalize();
+      } catch {
+        // ignore detached elements
+      }
+    }
+  };
 
   const cleanup = () => {
     running = false;
-    if (activeAnim) {
-      try {
-        activeAnim.onfinish = null;
-        activeAnim.cancel();
-      } catch {
-        // ignore Web Animations cleanup errors
-      }
-      activeAnim = null;
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
     }
-    elements.forEach(clearElementRevealStyles);
+    restoreAllDom();
   };
 
-  const runStep = (stepIdx: number, prevSameElAnim: Animation | null) => {
+  const tick = (now: number) => {
     if (!running) return;
-    const step = steps[stepIdx];
-    const plan = activePlans[step.planIndex];
-    const isLastLineOfPlan = step.lineIndex === plan.lines.length - 1;
+    // Frame 0 only anchors startTime so browsers commit initial opacity: 0 before transitioning
+    if (startTime === null) {
+      startTime = now;
+      rafId = requestAnimationFrame(tick);
+      return;
+    }
 
-    plan.el.style.visibility = '';
-    plan.el.style.willChange = 'clip-path, opacity, transform';
+    const elapsed = now - startTime;
+    while (nextIdx < entries.length && elapsed >= entries[nextIdx].revealAtMs) {
+      entries[nextIdx].target.style.opacity = '1';
+      nextIdx += 1;
+    }
 
-    const { keyframes, easing } = buildStepAnimationSpec(
-      plan,
-      step.lineIndex,
-      style,
-      writingMode
-    );
-
-    let nextAnim: Animation;
-    try {
-      nextAnim = plan.el.animate(keyframes, {
-        duration: stepMs,
-        easing,
-        fill: 'forwards',
-      });
-    } catch {
-      if (prevSameElAnim) {
-        try {
-          prevSameElAnim.onfinish = null;
-          prevSameElAnim.cancel();
-        } catch {
-          // ignore
-        }
-      }
+    if (elapsed >= finishAtMs && nextIdx >= entries.length) {
       cleanup();
       onComplete?.();
       return;
     }
 
-    activeAnim = nextAnim;
-
-    // Cancel previous line animation AFTER starting nextAnim so there is zero flash between lines
-    if (prevSameElAnim && prevSameElAnim !== nextAnim) {
-      try {
-        prevSameElAnim.onfinish = null;
-        prevSameElAnim.cancel();
-      } catch {
-        // ignore
-      }
-    }
-
-    nextAnim.onfinish = () => {
-      if (!running || activeAnim !== nextAnim) return;
-
-      if (isLastLineOfPlan) {
-        try {
-          nextAnim.onfinish = null;
-          nextAnim.cancel();
-        } catch {
-          // ignore
-        }
-        if (activeAnim === nextAnim) {
-          activeAnim = null;
-        }
-        clearElementRevealStyles(plan.el);
-      }
-
-      if (stepIdx + 1 < steps.length) {
-        runStep(stepIdx + 1, isLastLineOfPlan ? null : nextAnim);
-      } else {
-        running = false;
-        activeAnim = null;
-        onComplete?.();
-      }
-    };
+    rafId = requestAnimationFrame(tick);
   };
 
-  runStep(0, null);
+  rafId = requestAnimationFrame(tick);
 
   return {
     finishNow: () => {
