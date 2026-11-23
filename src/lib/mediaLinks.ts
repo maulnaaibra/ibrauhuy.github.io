@@ -133,83 +133,40 @@ export function getCatalogMediaDestinations(
     };
   }
 
-  // 2. Novels -> Direct Yatsu Reader Library (app.yatsu.moe/library) + optional Epub.moe download
+  // 2. Novels -> Direct Yatsu Reader Library, clipboard-assisted Epub.moe portal, & Yomitan web novel portals
   if (
     section === 'Novels' ||
     category === 'light_novel' ||
     category === 'book'
   ) {
     const YATSU_LIBRARY_URL = 'https://app.yatsu.moe/library';
-
-    if (params.epubMoeMd5) {
-      const downloadUrl =
-        params.downloadUrl ||
-        `https://epub.moe/books/${params.epubMoeMd5}/download`;
-
-      const alternatives: ExternalMediaLink[] = [
-        {
-          label: 'Unduh File EPUB Langsung (Epub.moe)',
-          shortLabel: 'Unduh EPUB',
-          siteName: 'Epub.moe',
-          url: downloadUrl,
-          description:
-            'Unduh file .epub bahasa Jepang untuk dimasukkan ke Yatsu Reader.',
-        },
-        {
-          label: 'Buka Portal Pencarian Epub.moe',
-          shortLabel: 'Epub.moe',
-          siteName: 'Epub.moe',
-          url: 'https://epub.moe/',
-          description: 'Cari volume lain di Epub.moe (judul otomatis disalin).',
-        },
-      ];
-      if (params.sourceUrl) {
-        alternatives.push({
-          label: 'Halaman Info Buku (AniList / Bookmeter)',
-          shortLabel: 'Info Buku',
-          siteName: params.sourceUrl.includes('bookmeter')
-            ? 'Bookmeter'
-            : 'AniList',
-          url: params.sourceUrl,
-          description: 'Lihat ulasan dan detail novel.',
-        });
-      }
-      alternatives.push({
-        label: 'Cari di BookWalker JP',
-        shortLabel: 'BookWalker JP',
-        siteName: 'BookWalker.jp',
-        url: `https://bookwalker.jp/search/?word=${q}`,
-        description: 'Preview resmi light novel bahasa Jepang.',
-      });
-
-      return {
-        primary: {
-          label: 'Baca di Yatsu Reader',
-          shortLabel: 'Baca di Yatsu',
-          siteName: 'Yatsu Reader',
-          url: YATSU_LIBRARY_URL,
-          description:
-            'Langsung membuka Yatsu Reader Library (app.yatsu.moe/library) untuk membaca novel ini (judul otomatis disalin).',
-        },
-        quickSecondary: {
-          label: 'Unduh EPUB',
-          shortLabel: 'EPUB',
-          siteName: 'Epub.moe',
-          url: downloadUrl,
-          description:
-            'Unduh file .epub untuk dimasukkan ke Yatsu Reader.',
-        },
-        alternatives,
-        volumes: params.epubMoeVolumes,
-      };
-    }
-
+    const EPUB_PORTAL_URL = 'https://epub.moe/';
+    const syosetuUrl = `https://yomou.syosetu.com/search.php?word=${q}`;
+    const kakuyomuUrl = `https://kakuyomu.jp/search?q=${q}`;
     const isAozora = Boolean(params.sourceUrl?.includes('aozora.gr.jp'));
 
-    const alternatives: ExternalMediaLink[] = [];
+    const alternatives: ExternalMediaLink[] = [
+      {
+        label: 'Baca Online di Syosetu (Support Yomitan)',
+        shortLabel: 'Syosetu',
+        siteName: 'Syosetu',
+        url: syosetuUrl,
+        description:
+          'Baca web novel Jepang langsung di browser tanpa download (100% kompatibel Yomitan & sentence mining).',
+      },
+      {
+        label: 'Baca Online di Kakuyomu (Support Yomitan)',
+        shortLabel: 'Kakuyomu',
+        siteName: 'Kakuyomu',
+        url: kakuyomuUrl,
+        description:
+          'Baca web novel & light novel di Kakuyomu (100% kompatibel Yomitan & sentence mining).',
+      },
+    ];
+
     if (isAozora && params.sourceUrl) {
       alternatives.push({
-        label: 'Baca di Aozora Bunko',
+        label: 'Baca di Aozora Bunko (Support Yomitan)',
         shortLabel: 'Aozora Bunko',
         siteName: 'Aozora.gr.jp',
         url: params.sourceUrl,
@@ -217,23 +174,25 @@ export function getCatalogMediaDestinations(
           'Langsung membuka teks lengkap sastra Jepang di Aozora Bunko.',
       });
     }
+
     alternatives.push(
       {
-        label: 'Cari EPUB di Epub.moe (Judul Otomatis Disalin)',
+        label: 'Unduh File .EPUB di Epub.moe (Judul Otomatis Disalin)',
         shortLabel: 'Epub.moe',
         siteName: 'Epub.moe',
-        url: 'https://epub.moe/',
+        url: EPUB_PORTAL_URL,
         description:
-          'Buka Epub.moe untuk mengunduh EPUB (judul otomatis disalin).',
+          'Buka Epub.moe — judul otomatis disalin, cukup tekan Ctrl+V → Enter → klik Download.',
       },
       {
         label: 'Cari di BookWalker JP',
         shortLabel: 'BookWalker JP',
         siteName: 'BookWalker.jp',
         url: `https://bookwalker.jp/search/?word=${q}`,
-        description: 'Langsung cari judul novel ini di BookWalker JP.',
+        description: 'Preview resmi light novel bahasa Jepang.',
       }
     );
+
     if (params.sourceUrl && !isAozora) {
       alternatives.push({
         label: 'Halaman Info Buku (AniList / Bookmeter)',
@@ -242,7 +201,7 @@ export function getCatalogMediaDestinations(
           ? 'Bookmeter'
           : 'AniList',
         url: params.sourceUrl,
-        description: 'Lihat halaman referensi novel ini.',
+        description: 'Lihat ulasan dan detail novel.',
       });
     }
 
@@ -253,25 +212,27 @@ export function getCatalogMediaDestinations(
         siteName: 'Yatsu Reader',
         url: YATSU_LIBRARY_URL,
         description:
-          'Langsung membuka Yatsu Reader Library (app.yatsu.moe/library) untuk membaca novel ini (judul otomatis disalin).',
+          'Langsung membuka Yatsu Reader Library (app.yatsu.moe/library) untuk membaca novel ini.',
       },
-      quickSecondary: isAozora
-        ? {
-            label: 'Aozora Bunko',
-            shortLabel: 'Aozora Bunko',
-            siteName: 'Aozora.gr.jp',
-            url: params.sourceUrl!,
-            description: 'Buka teks sastra Jepang di Aozora Bunko.',
-          }
-        : {
-            label: 'Unduh / Cari EPUB',
-            shortLabel: 'Cari EPUB',
-            siteName: 'Epub.moe',
-            url: 'https://epub.moe/',
-            description:
-              'Cari file EPUB di Epub.moe (judul otomatis disalin ke clipboard).',
-          },
+      quickSecondary:
+        isAozora && params.sourceUrl
+          ? {
+              label: 'Aozora Bunko',
+              shortLabel: 'Aozora Bunko',
+              siteName: 'Aozora.gr.jp',
+              url: params.sourceUrl,
+              description: 'Buka teks sastra Jepang di Aozora Bunko.',
+            }
+          : {
+              label: 'Unduh EPUB (Epub.moe)',
+              shortLabel: 'Unduh EPUB',
+              siteName: 'Epub.moe',
+              url: EPUB_PORTAL_URL,
+              description:
+                'Buka Epub.moe — judul otomatis disalin, cukup Ctrl+V lalu klik Download.',
+            },
       alternatives,
+      volumes: params.epubMoeMd5 ? params.epubMoeVolumes : undefined,
     };
   }
 

@@ -323,6 +323,17 @@ export const JapaneseNovelReaderModal: React.FC<
     toast.success('Buku dihapus dari penyimpanan browser.');
   };
 
+  const handleOpenEpubPortal = (copyTitle: string) => {
+    try {
+      void navigator.clipboard?.writeText(copyTitle);
+    } catch {
+      // ignore clipboard errors
+    }
+    toast.success(
+      `Judul 「${copyTitle}」 disalin! Tempel (Ctrl+V) di Epub.moe → Enter → klik Download.`
+    );
+  };
+
   const handleSaveYatsuLink = (e: React.FormEvent) => {
     e.preventDefault();
     const normalized = normalizeYatsuUrl(yatsuInput);
@@ -803,9 +814,10 @@ export const JapaneseNovelReaderModal: React.FC<
               <div className="grid sm:grid-cols-2 gap-3 text-left pt-1">
                 {target.downloadUrl && (
                   <a
-                    href={target.downloadUrl}
+                    href="https://epub.moe/"
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={() => handleOpenEpubPortal(target.title)}
                     className={`p-4 rounded-xl border transition flex flex-col justify-between gap-2 ${themeStyle.subtleBtn}`}
                   >
                     <div className="text-[11px] font-mono uppercase tracking-wider text-sky-400 font-bold">
@@ -813,11 +825,12 @@ export const JapaneseNovelReaderModal: React.FC<
                     </div>
                     <div className="font-extrabold text-sm flex items-center gap-1.5">
                       <Download className="w-4 h-4 text-sky-400 shrink-0" />
-                      <span>Unduh File .EPUB</span>
+                      <span>Unduh .EPUB di Epub.moe</span>
                     </div>
                     <p className={`text-[11px] ${themeStyle.mutedText}`}>
-                      Simpan file .epub dari Epub.moe ke perangkat Anda (cukup
-                      sekali).
+                      Buka Epub.moe (judul otomatis disalin — cukup tekan
+                      Ctrl+V → Enter → Download), lalu tarik file .epub ke
+                      kotak di kanan.
                     </p>
                   </a>
                 )}
@@ -854,18 +867,50 @@ export const JapaneseNovelReaderModal: React.FC<
                 </button>
               </div>
 
+              {/* 1-click Pure HTML Web Novel portals for instant Yomitan without downloading */}
+              <div className="pt-2 border-t border-white/10 text-left flex flex-wrap items-center justify-between gap-2">
+                <span className={`text-[11px] font-bold ${themeStyle.mutedText}`}>
+                  Atau Baca Langsung Online (Support Yomitan, Tanpa Download):
+                </span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <a
+                    href={`https://yomou.syosetu.com/search.php?word=${encodeURIComponent(
+                      target.title
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/35 text-emerald-300 text-[11px] font-bold inline-flex items-center gap-1"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Syosetu (なろう)
+                  </a>
+                  <a
+                    href={`https://kakuyomu.jp/search?q=${encodeURIComponent(
+                      target.title
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/35 text-sky-300 text-[11px] font-bold inline-flex items-center gap-1"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Kakuyomu
+                  </a>
+                </div>
+              </div>
+
               {target.volumes && target.volumes.length > 1 && (
                 <div className="pt-2 border-t border-white/10 text-left space-y-2">
                   <div className={`text-[11px] font-bold ${themeStyle.mutedText}`}>
-                    Unduh Volume Lainnya (.EPUB):
+                    Cari &amp; Unduh Volume Spesifik di Epub.moe (Judul Otomatis Disalin):
                   </div>
                   <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
                     {target.volumes.map((v, i) => (
                       <a
                         key={v.md5}
-                        href={`https://epub.moe/books/${v.md5}/download`}
+                        href="https://epub.moe/"
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={() => handleOpenEpubPortal(v.title)}
                         className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 ${themeStyle.subtleBtn}`}
                       >
                         <Download className="w-3 h-3" />
