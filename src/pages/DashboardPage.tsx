@@ -999,11 +999,7 @@ export const DashboardPage: React.FC = () => {
     setExtProfileOverride(updated);
     const res = await saveExtendedProfileMeta(user?.id ?? 'default', updated);
     if (res.ok) {
-      toast.success(
-        level === 'auto'
-          ? 'Level JLPT diatur ke Otomatis (berdasarkan jam)'
-          : `Level JLPT diatur ke ${level}`
-      );
+      toast.success(`Level JLPT diubah ke ${level}`);
       await refreshProfile();
     } else {
       toast.error(res.error || 'Gagal menyimpan level JLPT');
@@ -1243,14 +1239,9 @@ export const DashboardPage: React.FC = () => {
             <div className="grid lg:grid-cols-3 gap-4 animate-fade-up delay-1">
               <div className="card-pro p-5 space-y-3.5">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                      Level JLPT
-                    </span>
-                    <span className="px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[10px] font-semibold text-slate-600">
-                      {stats.stage.isManual ? 'Manual' : 'Auto'}
-                    </span>
-                  </div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Level JLPT
+                  </span>
                   <span className="inline-flex items-center gap-1 text-xs font-mono text-rose-600">
                     <Award className="w-3.5 h-3.5" />
                     {stats.totalHours.toFixed(1)} jam
@@ -1276,34 +1267,30 @@ export const DashboardPage: React.FC = () => {
 
                 {/* 1-Click JLPT Stage Selector */}
                 <div className="flex items-center gap-1 flex-wrap">
-                  {(
-                    [
-                      'N5',
-                      'N4',
-                      'N3',
-                      'N2',
-                      'N1',
-                      'Native',
-                      'auto',
-                    ] as const
-                  ).map((lvl) => {
-                    const selected =
-                      (ownExtProfile.jlpt_level ?? 'auto') === lvl;
-                    return (
-                      <button
-                        key={lvl}
-                        type="button"
-                        onClick={() => void handleQuickChangeJlptLevel(lvl)}
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border transition cursor-pointer ${
-                          selected
-                            ? 'bg-rose-600 border-rose-600 text-white shadow-2xs'
-                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-rose-300 hover:text-rose-600'
-                        }`}
-                      >
-                        {lvl === 'auto' ? 'Auto' : lvl}
-                      </button>
-                    );
-                  })}
+                  {(['N5', 'N4', 'N3', 'N2', 'N1', 'Native'] as const).map(
+                    (lvl) => {
+                      const activeLvl =
+                        ownExtProfile.jlpt_level &&
+                        ownExtProfile.jlpt_level !== 'auto'
+                          ? ownExtProfile.jlpt_level
+                          : stats.stage.code;
+                      const selected = activeLvl === lvl;
+                      return (
+                        <button
+                          key={lvl}
+                          type="button"
+                          onClick={() => void handleQuickChangeJlptLevel(lvl)}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border transition cursor-pointer ${
+                            selected
+                              ? 'bg-rose-600 border-rose-600 text-white shadow-2xs'
+                              : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-rose-300 hover:text-rose-600'
+                          }`}
+                        >
+                          {lvl}
+                        </button>
+                      );
+                    }
+                  )}
                 </div>
 
                 {/* Clean 3-Track Immersion Distribution */}

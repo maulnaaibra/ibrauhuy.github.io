@@ -390,12 +390,12 @@ export const ProfileDashboardSection: React.FC<
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-2 flex-wrap relative z-10">
+          <div className="flex items-center justify-end gap-2 flex-wrap relative z-10 pl-28 sm:pl-36">
             <div className="flex items-center gap-2 text-white text-xs font-mono">
-              <span className="px-2.5 py-0.5 rounded-md bg-black/45 backdrop-blur-xs border border-white/20 font-bold">
+              <span className="px-2.5 py-0.5 rounded-md bg-black/55 backdrop-blur-xs border border-white/20 font-bold">
                 Level {stats.stageCode}
               </span>
-              <span className="px-2.5 py-0.5 rounded-md bg-black/45 backdrop-blur-xs border border-white/20 font-bold">
+              <span className="px-2.5 py-0.5 rounded-md bg-black/55 backdrop-blur-xs border border-white/20 font-bold">
                 Target JLPT {activeProfile.jlpt_target}
               </span>
             </div>
@@ -937,28 +937,34 @@ export const ProfileDashboardSection: React.FC<
                 Level JLPT Saat Ini (Tampil di Profil & Dashboard)
               </label>
               <span className="text-[11px] text-slate-500">
-                Pilih level manual atau <strong>Auto</strong> sesuai total jam
+                Pilih level bahasa Jepang Anda saat ini
               </span>
             </div>
-            <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
-              {(
-                ['auto', 'N5', 'N4', 'N3', 'N2', 'N1', 'Native'] as const
-              ).map((lvl) => (
-                <button
-                  key={lvl}
-                  type="button"
-                  onClick={() =>
-                    setForm((prev) => ({ ...prev, jlpt_level: lvl }))
-                  }
-                  className={`py-2 rounded-xl text-xs font-mono font-bold border transition cursor-pointer ${
-                    (form.jlpt_level ?? 'auto') === lvl
-                      ? 'bg-rose-600 text-white border-rose-600'
-                      : 'bg-white text-slate-700 border-slate-200 hover:border-rose-300'
-                  }`}
-                >
-                  {lvl === 'auto' ? 'Auto' : lvl}
-                </button>
-              ))}
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+              {(['N5', 'N4', 'N3', 'N2', 'N1', 'Native'] as const).map(
+                (lvl) => {
+                  const activeLvl =
+                    form.jlpt_level && form.jlpt_level !== 'auto'
+                      ? form.jlpt_level
+                      : stats.stageCode;
+                  return (
+                    <button
+                      key={lvl}
+                      type="button"
+                      onClick={() =>
+                        setForm((prev) => ({ ...prev, jlpt_level: lvl }))
+                      }
+                      className={`py-2 rounded-xl text-xs font-mono font-bold border transition cursor-pointer ${
+                        activeLvl === lvl
+                          ? 'bg-rose-600 text-white border-rose-600'
+                          : 'bg-white text-slate-700 border-slate-200 hover:border-rose-300'
+                      }`}
+                    >
+                      {lvl}
+                    </button>
+                  );
+                }
+              )}
             </div>
           </div>
 
@@ -1167,14 +1173,9 @@ export const ProfileDashboardSection: React.FC<
 
         <div className="card-pro p-5 space-y-2.5">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Level JLPT
-              </span>
-              <span className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px] font-semibold text-slate-600">
-                {stats.stageIsManual ? 'Manual' : 'Auto'}
-              </span>
-            </div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              Level JLPT
+            </span>
             <Award className="w-4 h-4 text-rose-600" />
           </div>
           <div className="flex items-baseline justify-between gap-2">
@@ -1193,10 +1194,14 @@ export const ProfileDashboardSection: React.FC<
           </div>
           {isOwnProfile && onSaveProfile && (
             <div className="flex items-center gap-1 flex-wrap pt-0.5">
-              {(['N5', 'N4', 'N3', 'N2', 'N1', 'Native', 'auto'] as const).map(
+              {(['N5', 'N4', 'N3', 'N2', 'N1', 'Native'] as const).map(
                 (lvl) => {
-                  const selected =
-                    (activeProfile.jlpt_level ?? 'auto') === lvl;
+                  const activeLvl =
+                    activeProfile.jlpt_level &&
+                    activeProfile.jlpt_level !== 'auto'
+                      ? activeProfile.jlpt_level
+                      : stats.stageCode;
+                  const selected = activeLvl === lvl;
                   return (
                     <button
                       key={lvl}
@@ -1206,11 +1211,7 @@ export const ProfileDashboardSection: React.FC<
                         setForm(updated);
                         const res = await onSaveProfile(updated);
                         if (res.ok) {
-                          toast.success(
-                            lvl === 'auto'
-                              ? 'Level JLPT diubah ke Auto'
-                              : `Level JLPT diubah ke ${lvl}`
-                          );
+                          toast.success(`Level JLPT diubah ke ${lvl}`);
                         }
                       }}
                       className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border transition cursor-pointer ${
@@ -1219,7 +1220,7 @@ export const ProfileDashboardSection: React.FC<
                           : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-rose-300'
                       }`}
                     >
-                      {lvl === 'auto' ? 'Auto' : lvl}
+                      {lvl}
                     </button>
                   );
                 }

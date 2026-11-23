@@ -70,11 +70,15 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
   const [dailyGoal, setDailyGoal] = useState(
     () => initialProfile?.daily_goal_minutes ?? 90
   );
-  const [jlptLevel, setJlptLevel] = useState<JlptLevelSetting>(
-    () =>
-      loadExtendedProfileMeta(userId, initialProfile, userEmail, userMetadata)
-        .jlpt_level
-  );
+  const [jlptLevel, setJlptLevel] = useState<JlptLevelSetting>(() => {
+    const loaded = loadExtendedProfileMeta(
+      userId,
+      initialProfile,
+      userEmail,
+      userMetadata
+    ).jlpt_level;
+    return loaded === 'auto' ? 'N5' : loaded;
+  });
   const [saving, setSaving] = useState(false);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -194,26 +198,24 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
             Level JLPT Saat Ini
           </label>
           <span className="text-[11px] text-slate-500">
-            Pilih manual atau Auto dari jam
+            Tentukan level bahasa Jepang Anda saat ini
           </span>
         </div>
-        <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
-          {(['auto', 'N5', 'N4', 'N3', 'N2', 'N1', 'Native'] as const).map(
-            (lvl) => (
-              <button
-                key={lvl}
-                type="button"
-                onClick={() => setJlptLevel(lvl)}
-                className={`py-2 rounded-xl text-xs font-mono font-bold border transition cursor-pointer ${
-                  jlptLevel === lvl
-                    ? 'bg-rose-600 text-white border-rose-600'
-                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-rose-300'
-                }`}
-              >
-                {lvl === 'auto' ? 'Auto' : lvl}
-              </button>
-            )
-          )}
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+          {(['N5', 'N4', 'N3', 'N2', 'N1', 'Native'] as const).map((lvl) => (
+            <button
+              key={lvl}
+              type="button"
+              onClick={() => setJlptLevel(lvl)}
+              className={`py-2 rounded-xl text-xs font-mono font-bold border transition cursor-pointer ${
+                jlptLevel === lvl
+                  ? 'bg-rose-600 text-white border-rose-600'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-rose-300'
+              }`}
+            >
+              {lvl}
+            </button>
+          ))}
         </div>
       </div>
 
