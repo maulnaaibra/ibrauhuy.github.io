@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import {
   Bookmark,
@@ -87,6 +94,10 @@ import {
   importFullLibraryBackup,
   scheduleCloudLibraryPush,
 } from '../lib/libraryCloudSync';
+import {
+  startLineByLineReveal,
+  type VnRevealController,
+} from '../lib/vnLineReveal';
 
 export interface NovelReaderTarget {
   storageKey: string;
@@ -220,6 +231,9 @@ export const JapaneseNovelReaderModal: React.FC<
   const vnVerticalViewportRef = useRef<HTMLDivElement | null>(null);
   const vnStreamEndRef = useRef<HTMLDivElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
+  const vnRevealControllerRef = useRef<VnRevealController | null>(null);
+  const vnPreviewContainerRef = useRef<HTMLDivElement | null>(null);
+  const vnPreviewControllerRef = useRef<VnRevealController | null>(null);
   const progressTimerRef = useRef<number | null>(null);
   const pendingJumpToEndRef = useRef(false);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(
@@ -711,6 +725,87 @@ export const JapaneseNovelReaderModal: React.FC<
     }
   }, [vnIndex, prefs.readingMode, prefs.vnDisplayStyle]);
 
+  // Synchronously initialize strict line-by-line reveal in VN mode before frame paint
+  useLayoutEffect(() => {
+    if (
+      loadingBook ||
+      !book ||
+      !activeChapter ||
+      prefs.readingMode !== 'vn' ||
+      chapterParagraphs.length === 0
+    ) {
+      vnRevealControllerRef.current?.cancel();
+      vnRevealControllerRef.current = null;
+      return;
+    }
+
+    const article = articleRef.current;
+    if (!article) return;
+
+    const targets = Array.from(
+      article.querySelectorAll<HTMLElement>('[data-vn-reveal="true"]')
+    );
+    if (targets.length === 0) return;
+
+    const controller = startLineByLineReveal(targets, {
+      style: prefs.vnAnimation,
+      writingMode: prefs.writingMode,
+      durationPerLineMs: prefsRef.current.vnAnimationDurationMs,
+    });
+    vnRevealControllerRef.current = controller;
+
+    return () => {
+      controller.cancel();
+      if (vnRevealControllerRef.current === controller) {
+        vnRevealControllerRef.current = null;
+      }
+    };
+  }, [
+    loadingBook,
+    book?.storageKey,
+    book?.currentChapter,
+    Boolean(activeChapter),
+    prefs.readingMode,
+    prefs.vnDisplayStyle,
+    prefs.writingMode,
+    prefs.vnAnimation,
+    prefs.vnParagraphsPerStep,
+    vnIndex,
+    chapterParagraphs.length,
+    animPreviewTick,
+  ]);
+
+  // Live line-by-line preview in Settings -> VN & Animasi tab
+  useLayoutEffect(() => {
+    if (!showSettings || settingsTab !== 'vn') {
+      vnPreviewControllerRef.current?.cancel();
+      vnPreviewControllerRef.current = null;
+      return;
+    }
+
+    const previewEl = vnPreviewContainerRef.current;
+    if (!previewEl) return;
+
+    const controller = startLineByLineReveal([previewEl], {
+      style: prefs.vnAnimation,
+      writingMode: 'horizontal',
+      durationPerLineMs: prefsRef.current.vnAnimationDurationMs,
+    });
+    vnPreviewControllerRef.current = controller;
+
+    return () => {
+      controller.cancel();
+      if (vnPreviewControllerRef.current === controller) {
+        vnPreviewControllerRef.current = null;
+      }
+    };
+  }, [
+    showSettings,
+    settingsTab,
+    prefs.vnAnimation,
+    animPreviewTick,
+  ]);
+
   // Restore scroll position cleanly when chapter or writingMode changes
   useEffect(() => {
     const el = scrollContainerRef.current;
@@ -757,6 +852,10 @@ export const JapaneseNovelReaderModal: React.FC<
     if (!book) return;
 
     if (prefs.readingMode === 'vn') {
+      if (vnRevealControllerRef.current?.isRunning()) {
+        vnRevealControllerRef.current.finishNow();
+        return;
+      }
       const nextVn = vnIndex + prefs.vnParagraphsPerStep;
       if (nextVn >= chapterParagraphs.length) {
         if (book.currentChapter < book.chapters.length - 1) {
@@ -1439,13 +1538,6 @@ export const JapaneseNovelReaderModal: React.FC<
     scrollPct,
     elapsedSec,
   ]);
-
-  const vnAnimClass =
-    prefs.vnAnimation === 'none' ? '' : `jp-vn-anim-${prefs.vnAnimation}`;
-  const vnStaggerMs = Math.min(
-    240,
-    Math.round(prefs.vnAnimationDurationMs * 0.18)
-  );
 
   const resolvedRawBgUrl = useMemo(() => {
     if (prefs.bgMode === 'app') return appWallpaperUrl.trim();
@@ -2731,7 +2823,7 @@ export const JapaneseNovelReaderModal: React.FC<
                   >
                     <div className="flex items-center justify-between text-[11px]">
                       <span className={`font-bold ${themeStyle.mutedText}`}>
-                        Durasi Animasi Masuk
+                        Durasi Animasi per Baris
                       </span>
                       <span className={`font-mono font-bold ${themeStyle.accentText}`}>
                         {prefs.vnAnimationDurationMs} ms (
@@ -2782,19 +2874,18 @@ export const JapaneseNovelReaderModal: React.FC<
                       ))}
                     </div>
 
-                    {/* Live Japanese Animation Preview Strip */}
+                    {/* Live Japanese Line-by-Line Animation Preview */}
                     <div className="p-2.5 rounded-xl border border-current/15 bg-black/15 flex items-center justify-between gap-2 overflow-hidden">
                       <div
-                        key={`vn-preview-${prefs.vnAnimation}-${prefs.vnAnimationDurationMs}-${animPreviewTick}`}
-                        className={`text-sm font-medium min-w-0 truncate ${contentFontClass} ${vnAnimClass}`}
-                        style={
-                          {
-                            '--vn-duration': `${prefs.vnAnimationDurationMs}ms`,
-                            letterSpacing: `${prefs.letterSpacing}em`,
-                          } as React.CSSProperties
-                        }
+                        ref={vnPreviewContainerRef}
+                        className={`text-xs sm:text-sm font-medium leading-relaxed min-w-0 ${contentFontClass}`}
+                        style={{
+                          letterSpacing: `${prefs.letterSpacing}em`,
+                        }}
                       >
-                        「また、同じ夢を見ていた。」
+                        危険回避のため、脳内コンピューターを
+                        <br />
+                        フル稼働させ、瞬時に答えを導き出す。
                       </div>
                       <button
                         type="button"
@@ -3823,16 +3914,10 @@ export const JapaneseNovelReaderModal: React.FC<
                       letterSpacing: `${prefs.letterSpacing}em`,
                     }}
                   >
-                    {vnVisibleParagraphs.map((p, idx) => (
+                    {vnVisibleParagraphs.map((p) => (
                       <div
-                        key={`${book.currentChapter}-${vnIndex}-${animPreviewTick}-${p.id}`}
-                        className={vnAnimClass}
-                        style={
-                          {
-                            '--vn-duration': `${prefs.vnAnimationDurationMs}ms`,
-                            '--vn-delay': `${idx * vnStaggerMs}ms`,
-                          } as React.CSSProperties
-                        }
+                        key={`${book.currentChapter}-${vnIndex}-${p.id}`}
+                        data-vn-reveal="true"
                         dangerouslySetInnerHTML={{ __html: p.html }}
                       />
                     ))}
@@ -3872,15 +3957,7 @@ export const JapaneseNovelReaderModal: React.FC<
                     return (
                       <div
                         key={`${book.currentChapter}-stream-${p.id}`}
-                        className={isNewBatch ? vnAnimClass : undefined}
-                        style={
-                          isNewBatch
-                            ? ({
-                                '--vn-duration': `${prefs.vnAnimationDurationMs}ms`,
-                                '--vn-delay': `${Math.max(0, idx - vnIndex) * vnStaggerMs}ms`,
-                              } as React.CSSProperties)
-                            : undefined
-                        }
+                        data-vn-reveal={isNewBatch ? 'true' : undefined}
                         dangerouslySetInnerHTML={{ __html: p.html }}
                       />
                     );
