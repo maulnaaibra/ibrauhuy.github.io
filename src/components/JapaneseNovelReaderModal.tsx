@@ -559,6 +559,7 @@ export const JapaneseNovelReaderModal: React.FC<
     prefs.readingMode,
     prefs.fontSize,
     prefs.lineHeight,
+    prefs.letterSpacing,
     prefs.maxWidth,
     computeScrollMetrics,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1232,9 +1233,9 @@ export const JapaneseNovelReaderModal: React.FC<
   ]);
 
   const widthClass =
-    prefs.writingMode === 'horizontal'
-      ? `jp-width-${prefs.maxWidth}`
-      : '';
+    prefs.writingMode === 'vertical'
+      ? `jp-vheight-${prefs.maxWidth}`
+      : `jp-width-${prefs.maxWidth}`;
   const indentClass = prefs.indentParagraphs ? 'jp-indent-on' : '';
   const contentFontClass =
     prefs.fontFamily === 'serif' ? 'jp-font-serif' : 'jp-font-sans';
@@ -1888,11 +1889,92 @@ export const JapaneseNovelReaderModal: React.FC<
                     />
                   </div>
 
-                  {/* Horizontal Width & Indent */}
+                  {/* Letter Spacing (Jarak Huruf) */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className={`font-bold ${themeStyle.mutedText}`}>
+                        Jarak Huruf
+                      </span>
+                      <span className="font-mono font-bold">
+                        {prefs.letterSpacing.toFixed(2)}em
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updatePrefs({
+                            letterSpacing: Math.max(
+                              -0.02,
+                              Math.round((prefs.letterSpacing - 0.01) * 100) / 100
+                            ),
+                          })
+                        }
+                        className={`px-2.5 py-1 rounded-lg border text-xs font-bold cursor-pointer ${themeStyle.subtleBtn}`}
+                      >
+                        -
+                      </button>
+                      <input
+                        type="range"
+                        min={-0.02}
+                        max={0.3}
+                        step={0.01}
+                        value={prefs.letterSpacing}
+                        onChange={(e) =>
+                          updatePrefs({
+                            letterSpacing:
+                              Math.round(Number(e.target.value) * 100) / 100,
+                          })
+                        }
+                        className="flex-1 h-2 accent-sky-400 cursor-pointer"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updatePrefs({
+                            letterSpacing: Math.min(
+                              0.3,
+                              Math.round((prefs.letterSpacing + 0.01) * 100) / 100
+                            ),
+                          })
+                        }
+                        className={`px-2.5 py-1 rounded-lg border text-xs font-bold cursor-pointer ${themeStyle.subtleBtn}`}
+                      >
+                        +
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {[
+                        { label: 'Rapat', em: 0 },
+                        { label: 'Normal', em: 0.04 },
+                        { label: 'Lega', em: 0.1 },
+                        { label: 'Lebar', em: 0.18 },
+                      ].map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() =>
+                            updatePrefs({ letterSpacing: preset.em })
+                          }
+                          className={`py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                            Math.abs(prefs.letterSpacing - preset.em) < 0.005
+                              ? 'bg-sky-500 text-slate-950 border-sky-400'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Horizontal Width / Vertical Column Height & Indent */}
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
-                        Lebar Teks
+                        {prefs.writingMode === 'vertical'
+                          ? 'Tinggi Kolom'
+                          : 'Lebar Teks'}
                       </span>
                       <div className="grid grid-cols-3 gap-1">
                         {(
@@ -2174,6 +2256,7 @@ export const JapaneseNovelReaderModal: React.FC<
                         style={
                           {
                             '--vn-duration': `${prefs.vnAnimationDurationMs}ms`,
+                            letterSpacing: `${prefs.letterSpacing}em`,
                           } as React.CSSProperties
                         }
                       >
@@ -2262,7 +2345,12 @@ export const JapaneseNovelReaderModal: React.FC<
                               }
                         }
                       >
-                        <span className={contentFontClass}>日本語の読書</span>
+                        <span
+                          className={contentFontClass}
+                          style={{ letterSpacing: `${prefs.letterSpacing}em` }}
+                        >
+                          日本語の読書
+                        </span>
                       </div>
                       <span className="px-2 py-0.5 rounded-md bg-black/55 text-white font-mono text-[10px]">
                         {hasActiveBg
@@ -2903,31 +2991,48 @@ export const JapaneseNovelReaderModal: React.FC<
               </div>
             ) : prefs.vnDisplayStyle === 'card' ? (
               <div
-                ref={vnVerticalViewportRef}
-                onWheel={handleWheel}
-                className={`flex-1 min-h-0 flex ${
+                ref={
+                  prefs.writingMode === 'horizontal'
+                    ? vnVerticalViewportRef
+                    : undefined
+                }
+                onWheel={
+                  prefs.writingMode === 'horizontal' ? handleWheel : undefined
+                }
+                className={`flex-1 min-h-0 flex items-center justify-center ${
                   prefs.writingMode === 'vertical'
-                    ? 'jp-scroll-viewport-vertical px-4 py-2'
-                    : 'items-center justify-center overflow-y-auto px-1 sm:px-4'
+                    ? 'overflow-hidden px-2 sm:px-6 py-2'
+                    : 'overflow-y-auto px-1 sm:px-4'
                 }`}
               >
                 <div
-                  className={`rounded-3xl border p-5 sm:p-8 ${
+                  ref={
+                    prefs.writingMode === 'vertical'
+                      ? vnVerticalViewportRef
+                      : undefined
+                  }
+                  onWheel={
+                    prefs.writingMode === 'vertical' ? handleWheel : undefined
+                  }
+                  className={`rounded-3xl border ${
                     hasActiveBg ? 'bg-transparent' : themeStyle.vnCard
                   } ${
                     prefs.writingMode === 'vertical'
-                      ? 'h-full min-w-[min(42rem,92vw)] overflow-x-auto'
-                      : 'w-full max-w-3xl max-h-full overflow-y-auto'
+                      ? 'jp-scroll-viewport-vertical w-full max-w-4xl h-full max-h-[38rem] sm:max-h-[42rem] px-3 sm:px-6 py-3 sm:py-5'
+                      : 'w-full max-w-3xl max-h-full overflow-y-auto p-5 sm:p-8'
                   }`}
                   style={vnCardStyle}
                 >
                   <article
                     ref={articleRef}
                     data-furigana={prefs.furigana}
-                    className={`jp-novel-reader-content ${contentFontClass} ${contentDirClass} ${indentClass}`}
+                    className={`jp-novel-reader-content ${contentFontClass} ${contentDirClass} ${
+                      prefs.writingMode === 'vertical' ? widthClass : ''
+                    } ${indentClass}`}
                     style={{
                       fontSize: `${prefs.fontSize}px`,
                       lineHeight: prefs.lineHeight,
+                      letterSpacing: `${prefs.letterSpacing}em`,
                     }}
                   >
                     {vnVisibleParagraphs.map((p, idx) => (
@@ -2970,6 +3075,7 @@ export const JapaneseNovelReaderModal: React.FC<
                   style={{
                     fontSize: `${prefs.fontSize}px`,
                     lineHeight: prefs.lineHeight,
+                    letterSpacing: `${prefs.letterSpacing}em`,
                     ...articleGlassStyle,
                   }}
                 >
@@ -3057,6 +3163,7 @@ export const JapaneseNovelReaderModal: React.FC<
               style={{
                 fontSize: `${prefs.fontSize}px`,
                 lineHeight: prefs.lineHeight,
+                letterSpacing: `${prefs.letterSpacing}em`,
                 ...articleGlassStyle,
               }}
               dangerouslySetInnerHTML={{ __html: activeChapter.html }}

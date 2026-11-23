@@ -63,6 +63,7 @@ export interface ReaderPreferences {
   fontFamily: 'serif' | 'sans';
   theme: 'navy' | 'amoled' | 'sepia' | 'light';
   lineHeight: number;
+  letterSpacing: number;
   maxWidth: 'narrow' | 'medium' | 'wide';
   indentParagraphs: boolean;
   vnParagraphsPerStep: number;
@@ -85,6 +86,7 @@ export const DEFAULT_READER_PREFS: ReaderPreferences = {
   fontFamily: 'serif',
   theme: 'navy',
   lineHeight: 1.95,
+  letterSpacing: 0,
   maxWidth: 'medium',
   indentParagraphs: true,
   vnParagraphsPerStep: 2,
@@ -138,6 +140,11 @@ export function loadReaderPrefs(): ReaderPreferences {
         Number.isFinite(parsed.lineHeight)
           ? Math.min(2.4, Math.max(1.6, Math.round(parsed.lineHeight * 20) / 20))
           : DEFAULT_READER_PREFS.lineHeight;
+      const letterSpacing =
+        typeof parsed.letterSpacing === 'number' &&
+        Number.isFinite(parsed.letterSpacing)
+          ? Math.min(0.3, Math.max(-0.02, Math.round(parsed.letterSpacing * 100) / 100))
+          : DEFAULT_READER_PREFS.letterSpacing;
       const maxWidth: ReaderPreferences['maxWidth'] =
         parsed.maxWidth === 'narrow' || parsed.maxWidth === 'wide'
           ? parsed.maxWidth
@@ -196,6 +203,7 @@ export function loadReaderPrefs(): ReaderPreferences {
         fontFamily,
         theme,
         lineHeight,
+        letterSpacing,
         maxWidth,
         indentParagraphs,
         vnParagraphsPerStep,

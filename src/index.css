@@ -767,6 +767,8 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
    NATIVE-DOM JAPANESE NOVEL READER (100% Yomitan / Sentence Mining Friendly)
    ============================================================================ */
 .jp-scroll-viewport-vertical {
+  display: flex;
+  flex-direction: column;
   writing-mode: vertical-rl;
   -webkit-writing-mode: vertical-rl;
   text-orientation: mixed;
@@ -814,13 +816,28 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
   max-width: 58rem;
 }
 
+.jp-novel-reader-content.jp-vheight-narrow {
+  max-height: min(100%, 28rem);
+}
+
+.jp-novel-reader-content.jp-vheight-medium {
+  max-height: min(100%, 38rem);
+}
+
+.jp-novel-reader-content.jp-vheight-wide {
+  max-height: 100%;
+}
+
 .jp-novel-reader-content.jp-writing-vertical {
   writing-mode: vertical-rl;
   -webkit-writing-mode: vertical-rl;
   text-orientation: mixed;
+  flex: 0 0 auto;
   height: 100%;
+  width: max-content;
   min-width: max-content;
-  padding: 1.5rem 2.25rem;
+  margin: auto;
+  padding: 1.25rem 1.75rem;
 }
 
 .jp-novel-reader-content p {
@@ -845,6 +862,7 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
 .jp-novel-reader-content rt {
   font-size: 0.56em;
   opacity: 0.84;
+  letter-spacing: 0;
   user-select: none;
   -webkit-user-select: none;
 }
