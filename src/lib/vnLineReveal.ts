@@ -46,6 +46,11 @@ interface RawRect {
 
 function clearElementRevealStyles(el: HTMLElement): void {
   el.style.opacity = '';
+  el.style.clipPath = '';
+  el.style.transform = '';
+  el.style.willChange = '';
+  el.style.contain = '';
+  el.style.removeProperty('-webkit-clip-path');
   el.style.maskImage = '';
   el.style.maskPosition = '';
   el.style.maskSize = '';
@@ -54,28 +59,6 @@ function clearElementRevealStyles(el: HTMLElement): void {
   el.style.removeProperty('-webkit-mask-position');
   el.style.removeProperty('-webkit-mask-size');
   el.style.removeProperty('-webkit-mask-repeat');
-}
-
-function setElementMaskLayers(
-  el: HTMLElement,
-  images: string[],
-  positions: string[],
-  sizes: string[]
-): void {
-  const imageStr = images.join(', ');
-  const posStr = positions.join(', ');
-  const sizeStr = sizes.join(', ');
-  const repeatStr = images.map(() => 'no-repeat').join(', ');
-
-  el.style.maskImage = imageStr;
-  el.style.maskPosition = posStr;
-  el.style.maskSize = sizeStr;
-  el.style.maskRepeat = repeatStr;
-
-  el.style.setProperty('-webkit-mask-image', imageStr);
-  el.style.setProperty('-webkit-mask-position', posStr);
-  el.style.setProperty('-webkit-mask-size', sizeStr);
-  el.style.setProperty('-webkit-mask-repeat', repeatStr);
 }
 
 function computeMedian(values: number[], fallback: number): number {
@@ -266,112 +249,166 @@ function measureElementLines(
   return { boxWidth, boxHeight, lines };
 }
 
-function easeOutCubic(p: number): number {
-  const inv = 1 - p;
-  return 1 - inv * inv * inv;
-}
-
-function easeInOutQuad(p: number): number {
-  return p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
-}
-
-function buildActiveLineGradient(
-  style: VnAnimationStyle,
-  writingMode: 'horizontal' | 'vertical',
-  line: LineBand,
-  progress: number
+function buildHorizontalStaircasePolygon(
+  W: number,
+  y1: number,
+  y2: number,
+  x: number
 ): string {
-  const p = Math.max(0, Math.min(1, progress));
-  const dir = writingMode === 'horizontal' ? 'to right' : 'to bottom';
-  const span = Math.max(1, line.crossEnd - line.crossStart);
-
-  if (style === 'typewriter') {
-    const headPx = line.crossStart + span * p;
-    const solidEnd = Math.max(0, headPx - 4);
-    const fadeEnd = headPx + 2;
-    return `linear-gradient(${dir}, #000 0px, #000 ${solidEnd.toFixed(1)}px, rgba(0,0,0,0) ${fadeEnd.toFixed(1)}px)`;
-  }
-
-  if (style === 'slide') {
-    const t = easeOutCubic(p);
-    const feather = Math.min(56, Math.max(24, span * 0.18));
-    const travelEnd = line.crossEnd + feather;
-    const headPx = line.crossStart + (travelEnd - line.crossStart) * t;
-    const solidEnd = Math.max(0, headPx - feather);
-    return `linear-gradient(${dir}, #000 0px, #000 ${solidEnd.toFixed(1)}px, rgba(0,0,0,0) ${headPx.toFixed(1)}px)`;
-  }
-
-  if (style === 'blur-in') {
-    const alpha = easeInOutQuad(p);
-    const feather = Math.min(96, Math.max(36, span * 0.28));
-    const headPx = line.crossStart + (line.crossEnd + feather - line.crossStart) * alpha;
-    const solidEnd = Math.max(0, headPx - feather);
-    const peakAlpha = Math.min(1, alpha * 1.15).toFixed(3);
-    const tailAlpha = Math.max(0, (alpha - 0.35) / 0.65).toFixed(3);
-    return `linear-gradient(${dir}, rgba(0,0,0,${peakAlpha}) 0px, rgba(0,0,0,${peakAlpha}) ${solidEnd.toFixed(1)}px, rgba(0,0,0,${tailAlpha}) ${headPx.toFixed(1)}px)`;
-  }
-
-  // 'fade-up' default: soft smooth line fade across active slice band
-  const alpha = easeOutCubic(p).toFixed(3);
-  if (writingMode === 'horizontal') {
-    const leadAlpha = Math.max(0, easeOutCubic(Math.min(1, p * 1.15))).toFixed(3);
-    return `linear-gradient(to top, rgba(0,0,0,${alpha}) 0%, rgba(0,0,0,${leadAlpha}) 100%)`;
-  }
-  return `linear-gradient(to left, rgba(0,0,0,${alpha}) 0%, rgba(0,0,0,${alpha}) 100%)`;
+  const cy1 = y1.toFixed(1);
+  const cy2 = y2.toFixed(1);
+  const cx = Math.max(0, Math.min(W, x)).toFixed(1);
+  return `polygon(0px 0px, ${W}px 0px, ${W}px ${cy1}px, ${cx}px ${cy1}px, ${cx}px ${cy2}px, 0px ${cy2}px)`;
 }
 
-function applyMaskFrame(
+function buildVerticalStaircasePolygon(
+  W: number,
+  H: number,
+  x1: number,
+  x2: number,
+  y: number
+): string {
+  const cx1 = Math.max(0, Math.min(W, x1)).toFixed(1);
+  const cx2 = Math.max(0, Math.min(W, x2)).toFixed(1);
+  const cy = Math.max(0, Math.min(H, y)).toFixed(1);
+  return `polygon(${cx1}px 0px, ${W}px 0px, ${W}px ${H}px, ${cx2}px ${H}px, ${cx2}px ${cy}px, ${cx1}px ${cy}px)`;
+}
+
+function buildLineKeyframes(
   plan: ElementRevealPlan,
-  activeLineIdx: number,
-  progress: number,
-  style: VnAnimationStyle,
+  style: Exclude<VnAnimationStyle, 'none'>,
   writingMode: 'horizontal' | 'vertical'
-): void {
-  const { el, boxWidth, boxHeight, lines } = plan;
-  el.style.opacity = '';
+): Keyframe[] {
+  const { boxWidth, boxHeight, lines } = plan;
+  const count = lines.length;
+  const W = Math.max(2, Math.ceil(boxWidth) + 2);
+  const H = Math.max(2, Math.ceil(boxHeight) + 2);
 
-  const line = lines[activeLineIdx];
-  if (!line) {
-    clearElementRevealStyles(el);
-    return;
-  }
-
-  const images: string[] = [];
-  const positions: string[] = [];
-  const sizes: string[] = [];
-
-  if (writingMode === 'horizontal') {
-    if (activeLineIdx > 0 && line.sliceStart > 0) {
-      images.push('linear-gradient(#000, #000)');
-      positions.push('0px 0px');
-      sizes.push(`100% ${line.sliceStart.toFixed(1)}px`);
-    }
-    const bandHeight = Math.max(1, line.sliceEnd - line.sliceStart);
-    images.push(buildActiveLineGradient(style, writingMode, line, progress));
-    positions.push(`0px ${line.sliceStart.toFixed(1)}px`);
-    sizes.push(`100% ${bandHeight.toFixed(1)}px`);
-  } else {
-    if (activeLineIdx > 0 && line.sliceEnd < boxWidth) {
-      const finishedWidth = Math.max(0, boxWidth - line.sliceEnd);
-      if (finishedWidth > 0.5) {
-        images.push('linear-gradient(#000, #000)');
-        positions.push(`${line.sliceEnd.toFixed(1)}px 0px`);
-        sizes.push(`${finishedWidth.toFixed(1)}px ${boxHeight.toFixed(1)}px`);
+  if (style === 'fade-up') {
+    const keyframes: Keyframe[] = [];
+    if (writingMode === 'horizontal') {
+      keyframes.push({
+        offset: 0,
+        clipPath: `inset(0px 0px ${H}px 0px)`,
+        opacity: 0.35,
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      });
+      for (let i = 0; i < count; i += 1) {
+        const bottomClip =
+          i === count - 1
+            ? 0
+            : Math.max(0, Math.ceil(H - lines[i].sliceEnd));
+        keyframes.push({
+          offset: i === count - 1 ? 1 : (i + 1) / count,
+          clipPath: `inset(0px 0px ${bottomClip}px 0px)`,
+          opacity: 1,
+          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+        });
+      }
+    } else {
+      keyframes.push({
+        offset: 0,
+        clipPath: `inset(0px 0px 0px ${W}px)`,
+        opacity: 0.35,
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      });
+      for (let i = 0; i < count; i += 1) {
+        const leftClip =
+          i === count - 1 ? 0 : Math.max(0, Math.floor(lines[i].sliceStart));
+        keyframes.push({
+          offset: i === count - 1 ? 1 : (i + 1) / count,
+          clipPath: `inset(0px 0px 0px ${leftClip}px)`,
+          opacity: 1,
+          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+        });
       }
     }
-    const bandWidth = Math.max(1, line.sliceEnd - line.sliceStart);
-    images.push(buildActiveLineGradient(style, writingMode, line, progress));
-    positions.push(`${line.sliceStart.toFixed(1)}px 0px`);
-    sizes.push(`${bandWidth.toFixed(1)}px 100%`);
+    return keyframes;
   }
 
-  setElementMaskLayers(el, images, positions, sizes);
+  const lineEasing =
+    style === 'typewriter'
+      ? 'linear'
+      : style === 'slide'
+        ? 'cubic-bezier(0.22, 1, 0.36, 1)'
+        : 'cubic-bezier(0.37, 0, 0.63, 1)';
+
+  const keyframes: Keyframe[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const line = lines[i];
+    const startOffset = i === 0 ? 0 : i / count;
+    const endOffset = i === count - 1 ? 1 : (i + 1) / count;
+    const crossMax = writingMode === 'horizontal' ? W : H;
+    const startCross = line.crossStart;
+    const endCross =
+      i === count - 1 ? crossMax : Math.min(crossMax, line.crossEnd);
+
+    const startPoly =
+      writingMode === 'horizontal'
+        ? buildHorizontalStaircasePolygon(
+            W,
+            line.sliceStart,
+            i === count - 1 ? H : line.sliceEnd,
+            startCross
+          )
+        : buildVerticalStaircasePolygon(
+            W,
+            H,
+            i === count - 1 ? 0 : line.sliceStart,
+            line.sliceEnd,
+            startCross
+          );
+
+    const endPoly =
+      writingMode === 'horizontal'
+        ? buildHorizontalStaircasePolygon(
+            W,
+            line.sliceStart,
+            i === count - 1 ? H : line.sliceEnd,
+            endCross
+          )
+        : buildVerticalStaircasePolygon(
+            W,
+            H,
+            i === count - 1 ? 0 : line.sliceStart,
+            line.sliceEnd,
+            endCross
+          );
+
+    const startFrame: Keyframe = {
+      offset: startOffset,
+      clipPath: startPoly,
+      easing: lineEasing,
+    };
+    const endFrame: Keyframe = {
+      offset: endOffset,
+      clipPath: endPoly,
+    };
+
+    if (style === 'blur-in') {
+      startFrame.opacity = i === 0 ? 0.2 : 1;
+      endFrame.opacity = 1;
+    } else if (style === 'slide') {
+      startFrame.transform =
+        i === 0
+          ? writingMode === 'horizontal'
+            ? 'translate3d(10px, 0, 0)'
+            : 'translate3d(0, -10px, 0)'
+          : 'translate3d(0, 0, 0)';
+      endFrame.transform = 'translate3d(0, 0, 0)';
+    }
+
+    keyframes.push(startFrame, endFrame);
+  }
+
+  return keyframes;
 }
 
 /**
  * Reveals one or more Japanese text elements strictly line-by-line (top-to-bottom for
- * horizontal writing mode, right-to-left for vertical writing mode) without injecting
- * wrapper spans so Yomitan popup lookups remain completely intact.
+ * horizontal writing mode, right-to-left for vertical writing mode) using GPU-composited
+ * Web Animations API clip-path with zero per-frame JS work and zero wrapper spans so
+ * Yomitan popup lookups stay 100% intact.
  */
 export function startLineByLineReveal(
   elements: HTMLElement[],
@@ -379,7 +416,18 @@ export function startLineByLineReveal(
 ): VnRevealController {
   const { style, writingMode, durationPerLineMs, onComplete } = options;
 
-  if (elements.length === 0 || style === 'none' || durationPerLineMs <= 0) {
+  const prefersReducedMotion =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (
+    elements.length === 0 ||
+    style === 'none' ||
+    durationPerLineMs <= 0 ||
+    prefersReducedMotion ||
+    typeof elements[0]?.animate !== 'function'
+  ) {
     elements.forEach(clearElementRevealStyles);
     onComplete?.();
     return {
@@ -390,7 +438,6 @@ export function startLineByLineReveal(
   }
 
   const plans: ElementRevealPlan[] = elements.map((el) => {
-    // Ensure accurate measurement before hiding waiting elements
     clearElementRevealStyles(el);
     const measured = measureElementLines(el, writingMode);
     return {
@@ -401,31 +448,8 @@ export function startLineByLineReveal(
     };
   });
 
-  // Build sequential timeline across elements and lines
-  const stepMs = Math.max(40, durationPerLineMs);
-  interface LineStep {
-    planIndex: number;
-    lineIndex: number;
-    startMs: number;
-    endMs: number;
-  }
-  const steps: LineStep[] = [];
-  let cursorMs = 0;
-
-  plans.forEach((plan, planIndex) => {
-    if (plan.lines.length === 0) return;
-    plan.lines.forEach((_, lineIndex) => {
-      steps.push({
-        planIndex,
-        lineIndex,
-        startMs: cursorMs,
-        endMs: cursorMs + stepMs,
-      });
-      cursorMs += stepMs;
-    });
-  });
-
-  if (steps.length === 0) {
+  const activePlans = plans.filter((p) => p.lines.length > 0);
+  if (activePlans.length === 0) {
     elements.forEach(clearElementRevealStyles);
     onComplete?.();
     return {
@@ -435,85 +459,68 @@ export function startLineByLineReveal(
     };
   }
 
-  // Synchronously hide waiting elements & apply frame 0 mask before browser paints
-  const firstStep = steps[0];
-  plans.forEach((plan, idx) => {
-    if (idx === firstStep.planIndex) {
-      applyMaskFrame(plan, firstStep.lineIndex, 0, style, writingMode);
-    } else if (plan.lines.length > 0) {
-      plan.el.style.opacity = '0';
-    }
-  });
-
-  let rafId: number | null = null;
-  let startTime: number | null = null;
+  const stepMs = Math.max(40, durationPerLineMs);
+  const animations: Animation[] = [];
+  let cursorMs = 0;
   let running = true;
-  let lastCompletedPlan = -1;
 
-  const cleanupAll = () => {
-    if (rafId !== null) {
-      cancelAnimationFrame(rafId);
-      rafId = null;
+  const cancelAllAnimations = () => {
+    for (const anim of animations) {
+      try {
+        anim.onfinish = null;
+        anim.cancel();
+      } catch {
+        // ignore Web Animations cleanup errors
+      }
     }
+    animations.length = 0;
     elements.forEach(clearElementRevealStyles);
     running = false;
   };
 
+  activePlans.forEach((plan, idx) => {
+    const planDurationMs = plan.lines.length * stepMs;
+    const planDelayMs = cursorMs;
+    cursorMs += planDurationMs;
+
+    const keyframes = buildLineKeyframes(plan, style, writingMode);
+    plan.el.style.willChange = 'clip-path, opacity, transform';
+    plan.el.style.contain = 'paint';
+
+    const anim = plan.el.animate(keyframes, {
+      duration: planDurationMs,
+      delay: planDelayMs,
+      fill: 'both',
+    });
+
+    const isLastPlan = idx === activePlans.length - 1;
+    anim.onfinish = () => {
+      try {
+        anim.onfinish = null;
+        anim.cancel();
+      } catch {
+        // ignore
+      }
+      clearElementRevealStyles(plan.el);
+      if (isLastPlan && running) {
+        running = false;
+        onComplete?.();
+      }
+    };
+
+    animations.push(anim);
+  });
+
   const finishNow = () => {
     if (!running) return;
-    cleanupAll();
+    cancelAllAnimations();
     onComplete?.();
   };
 
   const cancel = () => {
     if (!running) return;
-    cleanupAll();
+    cancelAllAnimations();
   };
-
-  const tick = (now: number) => {
-    if (!running) return;
-    if (startTime === null) {
-      startTime = now;
-    }
-    const elapsed = now - startTime;
-
-    if (elapsed >= cursorMs) {
-      cleanupAll();
-      onComplete?.();
-      return;
-    }
-
-    // Find current active step
-    let currentIdx = Math.min(steps.length - 1, Math.floor(elapsed / stepMs));
-    while (currentIdx < steps.length - 1 && elapsed >= steps[currentIdx].endMs) {
-      currentIdx += 1;
-    }
-    while (currentIdx > 0 && elapsed < steps[currentIdx].startMs) {
-      currentIdx -= 1;
-    }
-
-    const active = steps[currentIdx];
-
-    // Reveal fully completed prior elements cleanly without masks
-    while (lastCompletedPlan + 1 < active.planIndex) {
-      lastCompletedPlan += 1;
-      clearElementRevealStyles(plans[lastCompletedPlan].el);
-    }
-
-    const stepElapsed = Math.max(0, elapsed - active.startMs);
-    const p = Math.min(1, stepElapsed / stepMs);
-    applyMaskFrame(
-      plans[active.planIndex],
-      active.lineIndex,
-      p,
-      style,
-      writingMode
-    );
-
-    rafId = requestAnimationFrame(tick);
-  };
-
-  rafId = requestAnimationFrame(tick);
 
   return {
     finishNow,

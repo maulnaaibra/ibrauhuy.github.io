@@ -96,6 +96,16 @@ import {
 } from '../lib/libraryCloudSync';
 import { LIBRARY_DATA_CHANGED_EVENT } from '../lib/mediaCinematicDetails';
 import {
+  BUILTIN_READER_FONTS,
+  addNamedCustomFont,
+  deleteCustomReaderFont,
+  ensureReaderFontLoaded,
+  loadCustomReaderFonts,
+  resolveReaderFontCss,
+  saveCustomFontFile,
+  type CustomReaderFont,
+} from '../lib/readerFonts';
+import {
   startLineByLineReveal,
   type VnRevealController,
 } from '../lib/vnLineReveal';
@@ -221,6 +231,43 @@ const READER_SHORTCUTS: Array<{ keys: string[]; desc: string }> = [
   { keys: ['Esc'], desc: 'Tutup panel / keluar dari Reader' },
 ];
 
+const ReaderSessionTimerButton: React.FC<{
+  active: boolean;
+  resetToken: number;
+  onLog: (minutes: number) => void;
+}> = React.memo(({ active, resetToken, onLog }) => {
+  const [elapsedSec, setElapsedSec] = useState(0);
+
+  useEffect(() => {
+    setElapsedSec(0);
+  }, [resetToken]);
+
+  useEffect(() => {
+    if (!active) return;
+    const id = window.setInterval(() => {
+      setElapsedSec((prev) => prev + 1);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [active]);
+
+  const mins = Math.floor(elapsedSec / 60);
+  const secs = elapsedSec % 60;
+  const label = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onLog(Math.max(1, Math.round(elapsedSec / 60)))}
+      title="Catat durasi baca saat ini ke Immersion Log"
+      className="px-2 sm:px-2.5 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-300 text-xs font-mono font-bold inline-flex items-center gap-1 transition cursor-pointer"
+    >
+      <Clock className="w-3.5 h-3.5 shrink-0" />
+      <span>{label}</span>
+      <Save className="w-3 h-3 hidden sm:inline shrink-0" />
+    </button>
+  );
+});
+
 export const JapaneseNovelReaderModal: React.FC<
   JapaneseNovelReaderModalProps
 > = ({ target, userId, onClose, onLogReadingSession, onBookLibraryChanged }) => {
@@ -229,6 +276,7 @@ export const JapaneseNovelReaderModal: React.FC<
   const addBookInputRef = useRef<HTMLInputElement | null>(null);
   const backupInputRef = useRef<HTMLInputElement | null>(null);
   const bgFileInputRef = useRef<HTMLInputElement | null>(null);
+  const fontFileInputRef = useRef<HTMLInputElement | null>(null);
   const bgVideoRef = useRef<HTMLVideoElement | null>(null);
   const bgYtIframeRef = useRef<HTMLIFrameElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -276,6 +324,14 @@ export const JapaneseNovelReaderModal: React.FC<
   const [appWallpaperUrl, setAppWallpaperUrl] = useState<string>(
     () => loadAppearanceSettings().customImageUrl
   );
+  const [customFonts, setCustomFonts] = useState<CustomReaderFont[]>(
+    loadCustomReaderFonts
+  );
+  const [uploadingFont, setUploadingFont] = useState(false);
+  const [customFontNameDraft, setCustomFontNameDraft] = useState('');
+  const [customFontSourceDraft, setCustomFontSourceDraft] = useState<
+    'google' | 'system'
+  >('google');
   const [animPreviewTick, setAnimPreviewTick] = useState(0);
   const [showBacklog, setShowBacklog] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -288,7 +344,8 @@ export const JapaneseNovelReaderModal: React.FC<
     total: 1,
   });
   const [vnIndex, setVnIndex] = useState(0);
-  const [elapsedSec, setElapsedSec] = useState(0);
+  const sessionStartMsRef = useRef<number>(Date.now());
+  const [timerResetToken, setTimerResetToken] = useState(0);
   const [selectedSentence, setSelectedSentence] = useState('');
 
   const [yatsuLinks, setYatsuLinks] = useState<Record<string, string>>(
@@ -386,6 +443,8 @@ export const JapaneseNovelReaderModal: React.FC<
       setYatsuInput(yatsuLinks[loaded?.storageKey ?? resolvedKey] ?? '');
       setBook(loaded);
       setVnIndex(loaded?.vnIndex ?? 0);
+      sessionStartMsRef.current = Date.now();
+      setTimerResetToken((t) => t + 1);
       setSavedBooks(allSaved);
       if (loaded) {
         setLastOpenedNovelKey(loaded.storageKey);
@@ -409,12 +468,15 @@ export const JapaneseNovelReaderModal: React.FC<
   }, [target.storageKey, loadBookByKey]);
 
   useEffect(() => {
-    if (!book) return;
-    const id = window.setInterval(() => {
-      setElapsedSec((prev) => prev + 1);
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [book]);
+    void ensureReaderFontLoaded(prefs.fontFamily, customFonts);
+  }, [prefs.fontFamily, customFonts]);
+
+  useEffect(() => {
+    if (!showSettings || settingsTab !== 'reading') return;
+    customFonts.forEach((cf) => {
+      void ensureReaderFontLoaded(cf.id, customFonts);
+    });
+  }, [showSettings, settingsTab, customFonts]);
 
   useEffect(() => {
     return subscribeAppearanceChanges((next) => {
@@ -1350,7 +1412,8 @@ export const JapaneseNovelReaderModal: React.FC<
         setLastOpenedNovelKey(lastParsed.storageKey);
         setBook(lastParsed);
         setVnIndex(lastParsed.vnIndex ?? 0);
-        setElapsedSec(0);
+        sessionStartMsRef.current = Date.now();
+        setTimerResetToken((t) => t + 1);
       }
 
       const list = await listStoredNovelBooks();
@@ -1564,18 +1627,63 @@ export const JapaneseNovelReaderModal: React.FC<
     toast.success('Link buku Yatsu disimpan!');
   };
 
-  const handleLogCurrentSession = () => {
-    const mins = Math.max(1, Math.round(elapsedSec / 60));
-    onLogReadingSession(book?.title || target.title, mins);
+  const handleUploadCustomFont = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingFont(true);
+    try {
+      const added = await saveCustomFontFile(file);
+      setCustomFonts(loadCustomReaderFonts());
+      updatePrefs({ fontFamily: added.id });
+      toast.success(`Font 「${added.name}」 berhasil dipasang!`);
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : 'Gagal memuat file font kustom.'
+      );
+    } finally {
+      setUploadingFont(false);
+      e.target.value = '';
+    }
   };
+
+  const handleAddNamedFont = (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const added = addNamedCustomFont(
+        customFontNameDraft,
+        customFontSourceDraft
+      );
+      setCustomFonts(loadCustomReaderFonts());
+      updatePrefs({ fontFamily: added.id });
+      setCustomFontNameDraft('');
+      toast.success(`Font 「${added.name}」 ditambahkan & diterapkan!`);
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : 'Gagal menambahkan nama font.'
+      );
+    }
+  };
+
+  const handleDeleteCustomFont = async (fontId: string) => {
+    const next = await deleteCustomReaderFont(fontId);
+    setCustomFonts(next);
+    if (prefsRef.current.fontFamily === fontId) {
+      updatePrefs({ fontFamily: 'serif' });
+    }
+    toast.success('Font tambahan dihapus.');
+  };
+
+  const handleLogTimerSession = useCallback(
+    (mins: number) => {
+      onLogReadingSession(bookRef.current?.title || target.title, mins);
+    },
+    [onLogReadingSession, target.title]
+  );
 
   const themeStyle = READER_THEME_STYLES[prefs.theme];
   const directYatsuUrl = resolveYatsuUrl(activeKey, yatsuLinks);
-  const formatElapsed = (sec: number) => {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  };
 
   // Compute live character progress & reading speed across entire book
   const readingProgressStats = useMemo(() => {
@@ -1601,9 +1709,13 @@ export const JapaneseNovelReaderModal: React.FC<
     const readChars = Math.min(book.totalChars, charsBefore + chapterCharsRead);
     const bookPct =
       book.totalChars > 0 ? Math.round((readChars / book.totalChars) * 100) : 0;
+    const elapsedNowSec = Math.max(
+      0,
+      Math.floor((Date.now() - sessionStartMsRef.current) / 1000)
+    );
     const charsPerHour =
-      elapsedSec >= 20 && chapterCharsRead > 0
-        ? Math.round((chapterCharsRead / elapsedSec) * 3600)
+      elapsedNowSec >= 20 && chapterCharsRead > 0
+        ? Math.round((chapterCharsRead / elapsedNowSec) * 3600)
         : 0;
     return { readChars, totalChars: book.totalChars, bookPct, charsPerHour };
   }, [
@@ -1614,7 +1726,6 @@ export const JapaneseNovelReaderModal: React.FC<
     chapterParagraphs,
     vnIndex,
     scrollPct,
-    elapsedSec,
   ]);
 
   const resolvedRawBgUrl = useMemo(() => {
@@ -1720,10 +1831,11 @@ export const JapaneseNovelReaderModal: React.FC<
   const articleGlassStyle: React.CSSProperties = useMemo(() => {
     if (!hasActiveBg) return {};
     if (prefs.bgPanelOpacity > 0) {
+      const glassBlur = isVideoBg ? 'none' : 'blur(8px)';
       return {
         backgroundColor: `rgba(${themeStyle.surfaceRgb}, ${(prefs.bgPanelOpacity / 100).toFixed(2)})`,
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
+        backdropFilter: glassBlur,
+        WebkitBackdropFilter: glassBlur,
         border: `1px solid ${themeStyle.cardBorder}`,
         borderRadius: '1.25rem',
       };
@@ -1737,6 +1849,7 @@ export const JapaneseNovelReaderModal: React.FC<
     };
   }, [
     hasActiveBg,
+    isVideoBg,
     prefs.bgPanelOpacity,
     prefs.theme,
     themeStyle.surfaceRgb,
@@ -1746,10 +1859,11 @@ export const JapaneseNovelReaderModal: React.FC<
   const vnCardStyle: React.CSSProperties | undefined = useMemo(() => {
     if (!hasActiveBg) return undefined;
     if (prefs.bgPanelOpacity > 0) {
+      const glassBlur = isVideoBg ? 'none' : 'blur(8px)';
       return {
         backgroundColor: `rgba(${themeStyle.cardRgb}, ${(prefs.bgPanelOpacity / 100).toFixed(2)})`,
-        backdropFilter: 'blur(14px)',
-        WebkitBackdropFilter: 'blur(14px)',
+        backdropFilter: glassBlur,
+        WebkitBackdropFilter: glassBlur,
         borderColor: themeStyle.cardBorder,
       };
     }
@@ -1766,6 +1880,7 @@ export const JapaneseNovelReaderModal: React.FC<
     };
   }, [
     hasActiveBg,
+    isVideoBg,
     prefs.bgPanelOpacity,
     prefs.theme,
     themeStyle.cardRgb,
@@ -1790,8 +1905,10 @@ export const JapaneseNovelReaderModal: React.FC<
       ? `jp-vheight-${prefs.maxWidth}`
       : `jp-width-${prefs.maxWidth}`;
   const indentClass = prefs.indentParagraphs ? 'jp-indent-on' : '';
-  const contentFontClass =
-    prefs.fontFamily === 'serif' ? 'jp-font-serif' : 'jp-font-sans';
+  const activeFontCss = useMemo(
+    () => resolveReaderFontCss(prefs.fontFamily, customFonts),
+    [prefs.fontFamily, customFonts]
+  );
   const contentDirClass =
     prefs.writingMode === 'vertical'
       ? 'jp-writing-vertical'
@@ -1833,6 +1950,8 @@ export const JapaneseNovelReaderModal: React.FC<
               style={{
                 opacity: prefs.bgOpacity / 100,
                 filter: `blur(${prefs.bgBlur}px)`,
+                transform: 'translate3d(0, 0, 0)',
+                willChange: 'transform',
               }}
             >
               <iframe
@@ -1864,6 +1983,8 @@ export const JapaneseNovelReaderModal: React.FC<
                 objectPosition: bgPositionCss,
                 filter: `blur(${prefs.bgBlur}px)`,
                 opacity: prefs.bgOpacity / 100,
+                transform: 'translate3d(0, 0, 0)',
+                willChange: 'transform',
               }}
             />
           ) : (
@@ -1874,6 +1995,8 @@ export const JapaneseNovelReaderModal: React.FC<
                 backgroundPosition: bgPositionCss,
                 filter: `blur(${prefs.bgBlur}px)`,
                 opacity: prefs.bgOpacity / 100,
+                transform: 'translate3d(0, 0, 0)',
+                willChange: 'transform',
               }}
             />
           )}
@@ -1922,6 +2045,13 @@ export const JapaneseNovelReaderModal: React.FC<
         type="file"
         accept="image/*,video/mp4,video/webm,video/ogg"
         onChange={handleUploadReaderBg}
+        className="hidden"
+      />
+      <input
+        ref={fontFileInputRef}
+        type="file"
+        accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2"
+        onChange={handleUploadCustomFont}
         className="hidden"
       />
 
@@ -2073,17 +2203,12 @@ export const JapaneseNovelReaderModal: React.FC<
                     {prefs.writingMode === 'vertical' ? '縦書き' : '横書き'}
                   </button>
 
-                  {/* Live Timer & Save to Log */}
-                  <button
-                    type="button"
-                    onClick={handleLogCurrentSession}
-                    title="Catat durasi baca saat ini ke Immersion Log"
-                    className="px-2 sm:px-2.5 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-300 text-xs font-mono font-bold inline-flex items-center gap-1 transition cursor-pointer"
-                  >
-                    <Clock className="w-3.5 h-3.5 shrink-0" />
-                    <span>{formatElapsed(elapsedSec)}</span>
-                    <Save className="w-3 h-3 hidden sm:inline shrink-0" />
-                  </button>
+                  {/* Isolated Live Timer & Save to Log */}
+                  <ReaderSessionTimerButton
+                    active={Boolean(book)}
+                    resetToken={timerResetToken}
+                    onLog={handleLogTimerSession}
+                  />
 
                   {/* Desktop Bookmark */}
                   <button
@@ -2744,32 +2869,177 @@ export const JapaneseNovelReaderModal: React.FC<
                     </div>
                   </div>
 
-                  {/* Font Family */}
-                  <div className="space-y-1.5">
-                    <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
-                      Font Bahasa Jepang
-                    </span>
+                  {/* Font Family & Custom Japanese Fonts */}
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-[11px] font-bold ${themeStyle.mutedText}`}>
+                        Font Bahasa Jepang
+                      </span>
+                      <button
+                        type="button"
+                        disabled={uploadingFont}
+                        onClick={() => fontFileInputRef.current?.click()}
+                        className={`px-2.5 py-1 rounded-lg border text-[10px] font-extrabold inline-flex items-center gap-1 cursor-pointer ${themeStyle.subtleBtn}`}
+                      >
+                        {uploadingFont ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Upload className="w-3 h-3 text-sky-400" />
+                        )}
+                        <span>Upload .TTF/.OTF/.WOFF2</span>
+                      </button>
+                    </div>
+
+                    {/* Live Font Sample Preview */}
+                    <div
+                      className="px-3 py-2 rounded-xl border border-current/15 bg-black/15 text-sm leading-relaxed truncate"
+                      style={{
+                        fontFamily: activeFontCss,
+                        letterSpacing: `${prefs.letterSpacing}em`,
+                      }}
+                    >
+                      「桜の花びらが静かに舞い落ちる。」
+                    </div>
+
+                    {/* Built-in Japanese Presets Grid */}
                     <div className="grid grid-cols-2 gap-1.5">
-                      {(
-                        [
-                          { id: 'serif', label: 'Mincho (Serif)' },
-                          { id: 'sans', label: 'Gothic (Sans)' },
-                        ] as const
-                      ).map((ff) => (
+                      {BUILTIN_READER_FONTS.map((ff) => (
                         <button
                           key={ff.id}
                           type="button"
                           onClick={() => updatePrefs({ fontFamily: ff.id })}
-                          className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                          className={`px-2.5 py-1.5 rounded-xl text-left border transition cursor-pointer ${
                             prefs.fontFamily === ff.id
                               ? 'bg-sky-500 text-slate-950 border-sky-400'
                               : themeStyle.subtleBtn
                           }`}
                         >
-                          {ff.label}
+                          <div className="text-[11px] font-extrabold truncate">
+                            {ff.label}
+                          </div>
+                          <div
+                            className={`text-[9px] truncate ${
+                              prefs.fontFamily === ff.id
+                                ? 'text-slate-900/80'
+                                : 'opacity-65'
+                            }`}
+                          >
+                            {ff.sampleTag}
+                          </div>
                         </button>
                       ))}
                     </div>
+
+                    {/* User Custom Fonts List */}
+                    {customFonts.length > 0 && (
+                      <div className="space-y-1.5 pt-1">
+                        <span className={`block text-[10px] font-bold uppercase tracking-wider ${themeStyle.mutedText}`}>
+                          Font Tambahan Saya ({customFonts.length})
+                        </span>
+                        <div className="space-y-1 max-h-32 overflow-y-auto pr-0.5">
+                          {customFonts.map((cf) => {
+                            const active = prefs.fontFamily === cf.id;
+                            return (
+                              <div
+                                key={cf.id}
+                                className="flex items-center gap-1"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => updatePrefs({ fontFamily: cf.id })}
+                                  className={`flex-1 min-w-0 px-2.5 py-1.5 rounded-xl border text-left flex items-center justify-between gap-2 transition cursor-pointer ${
+                                    active
+                                      ? 'bg-sky-500 text-slate-950 border-sky-400'
+                                      : themeStyle.subtleBtn
+                                  }`}
+                                >
+                                  <span
+                                    className="text-xs font-bold truncate"
+                                    style={{ fontFamily: `'${cf.familyName.replace(/'/g, '')}', serif` }}
+                                  >
+                                    {cf.name}
+                                  </span>
+                                  <span
+                                    className={`text-[9px] px-1.5 py-0.2 rounded font-mono shrink-0 ${
+                                      active
+                                        ? 'bg-slate-950/15 text-slate-950'
+                                        : 'bg-black/20 opacity-75'
+                                    }`}
+                                  >
+                                    {cf.source === 'file'
+                                      ? 'File'
+                                      : cf.source === 'google'
+                                        ? 'Google'
+                                        : 'Sistem'}
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDeleteCustomFont(cf.id)}
+                                  title="Hapus font tambahan"
+                                  className={`p-1.5 rounded-xl border cursor-pointer shrink-0 hover:text-red-400 ${themeStyle.subtleBtn}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Add Google Font / Local OS System Font by Name */}
+                    <form
+                      onSubmit={handleAddNamedFont}
+                      className="p-2.5 rounded-xl border border-current/15 bg-black/15 space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span className={`text-[10px] font-bold ${themeStyle.mutedText}`}>
+                          Tambah Font Google / Sistem:
+                        </span>
+                        <div className="inline-flex rounded-lg border border-current/15 p-0.5 gap-0.5">
+                          {(
+                            [
+                              { id: 'google', label: 'Google Font' },
+                              { id: 'system', label: 'Font PC/HP' },
+                            ] as const
+                          ).map((src) => (
+                            <button
+                              key={src.id}
+                              type="button"
+                              onClick={() => setCustomFontSourceDraft(src.id)}
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition cursor-pointer ${
+                                customFontSourceDraft === src.id
+                                  ? 'bg-sky-500 text-slate-950'
+                                  : 'opacity-70 hover:opacity-100'
+                              }`}
+                            >
+                              {src.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          value={customFontNameDraft}
+                          onChange={(e) => setCustomFontNameDraft(e.target.value)}
+                          placeholder={
+                            customFontSourceDraft === 'google'
+                              ? 'Mis. Zen Old Mincho / Hachi Maru Pop'
+                              : 'Mis. Yu Mincho / Meiryo / Hiragino Mincho ProN'
+                          }
+                          className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-black/25 border border-current/15 text-[11px] focus:outline-none focus:border-sky-400"
+                        />
+                        <button
+                          type="submit"
+                          className="btn-crimson px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold inline-flex items-center gap-1 shrink-0 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>Tambah</span>
+                        </button>
+                      </div>
+                    </form>
                   </div>
 
                   {/* Theme Colors */}
@@ -2976,8 +3246,9 @@ export const JapaneseNovelReaderModal: React.FC<
                     <div className="p-2.5 rounded-xl border border-current/15 bg-black/15 flex items-center justify-between gap-2 overflow-hidden">
                       <div
                         ref={vnPreviewContainerRef}
-                        className={`text-xs sm:text-sm font-medium leading-relaxed min-w-0 ${contentFontClass}`}
+                        className="text-xs sm:text-sm font-medium leading-relaxed min-w-0"
                         style={{
+                          fontFamily: activeFontCss,
                           letterSpacing: `${prefs.letterSpacing}em`,
                         }}
                       >
@@ -3093,8 +3364,10 @@ export const JapaneseNovelReaderModal: React.FC<
                         }
                       >
                         <span
-                          className={contentFontClass}
-                          style={{ letterSpacing: `${prefs.letterSpacing}em` }}
+                          style={{
+                            fontFamily: activeFontCss,
+                            letterSpacing: `${prefs.letterSpacing}em`,
+                          }}
                         >
                           日本語の読書
                         </span>
@@ -4003,10 +4276,11 @@ export const JapaneseNovelReaderModal: React.FC<
                   <article
                     ref={articleRef}
                     data-furigana={prefs.furigana}
-                    className={`jp-novel-reader-content ${contentFontClass} ${contentDirClass} ${
+                    className={`jp-novel-reader-content ${contentDirClass} ${
                       prefs.writingMode === 'vertical' ? widthClass : ''
                     } ${indentClass}`}
                     style={{
+                      fontFamily: activeFontCss,
                       fontSize: `${prefs.fontSize}px`,
                       lineHeight: prefs.lineHeight,
                       letterSpacing: `${prefs.letterSpacing}em`,
@@ -4036,7 +4310,7 @@ export const JapaneseNovelReaderModal: React.FC<
                 <article
                   ref={articleRef}
                   data-furigana={prefs.furigana}
-                  className={`jp-novel-reader-content ${contentFontClass} ${contentDirClass} ${widthClass} ${indentClass} ${
+                  className={`jp-novel-reader-content ${contentDirClass} ${widthClass} ${indentClass} ${
                     hasActiveBg &&
                     prefs.bgPanelOpacity > 0 &&
                     prefs.writingMode === 'horizontal'
@@ -4044,6 +4318,7 @@ export const JapaneseNovelReaderModal: React.FC<
                       : ''
                   }`}
                   style={{
+                    fontFamily: activeFontCss,
                     fontSize: `${prefs.fontSize}px`,
                     lineHeight: prefs.lineHeight,
                     letterSpacing: `${prefs.letterSpacing}em`,
@@ -4116,7 +4391,7 @@ export const JapaneseNovelReaderModal: React.FC<
             <article
               ref={articleRef}
               data-furigana={prefs.furigana}
-              className={`jp-novel-reader-content ${contentFontClass} ${contentDirClass} ${widthClass} ${indentClass} ${
+              className={`jp-novel-reader-content ${contentDirClass} ${widthClass} ${indentClass} ${
                 hasActiveBg &&
                 prefs.bgPanelOpacity > 0 &&
                 prefs.writingMode === 'horizontal'
@@ -4124,6 +4399,7 @@ export const JapaneseNovelReaderModal: React.FC<
                   : ''
               }`}
               style={{
+                fontFamily: activeFontCss,
                 fontSize: `${prefs.fontSize}px`,
                 lineHeight: prefs.lineHeight,
                 letterSpacing: `${prefs.letterSpacing}em`,

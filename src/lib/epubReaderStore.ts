@@ -92,7 +92,7 @@ export interface ReaderPreferences {
   writingMode: 'horizontal' | 'vertical';
   furigana: 'show' | 'hover' | 'hide';
   fontSize: number;
-  fontFamily: 'serif' | 'sans';
+  fontFamily: string;
   theme: 'navy' | 'amoled' | 'sepia' | 'light';
   lineHeight: number;
   letterSpacing: number;
@@ -166,7 +166,10 @@ export function loadReaderPrefs(): ReaderPreferences {
         typeof parsed.fontSize === 'number' && Number.isFinite(parsed.fontSize)
           ? Math.min(34, Math.max(16, Math.round(parsed.fontSize)))
           : DEFAULT_READER_PREFS.fontSize;
-      const fontFamily = parsed.fontFamily === 'sans' ? 'sans' : 'serif';
+      const fontFamily =
+        typeof parsed.fontFamily === 'string' && parsed.fontFamily.trim()
+          ? parsed.fontFamily.trim()
+          : DEFAULT_READER_PREFS.fontFamily;
       const theme =
         parsed.theme === 'amoled' ||
         parsed.theme === 'sepia' ||
