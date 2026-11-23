@@ -11,6 +11,7 @@ import {
   History,
   Keyboard,
   LayoutDashboard,
+  Library,
   MonitorSmartphone,
   Plus,
   Search,
@@ -25,6 +26,7 @@ import type { PrimaryMediaCategory } from '../types';
 export type SidebarDashboardTab =
   | 'overview'
   | 'profile'
+  | 'library'
   | 'catalog'
   | 'stats'
   | 'goals'
@@ -255,10 +257,10 @@ export const KEYBOARD_SHORTCUT_GUIDE: Array<{
     description: 'Buka modal pencatatan waktu belajar (+ Log Sesi)',
   },
   {
-    keys: ['1', '–', '8'],
+    keys: ['1', '–', '9'],
     label: 'Pindah Tab Dashboard Instan',
     description:
-      '1: Overview • 2: Profil • 3: Katalog • 4: Stats • 5: Goals • 6: Achievements • 7: Activity • 8: Devices',
+      '1: Overview • 2: Profil • 3: Library • 4: Katalog • 5: Stats • 6: Goals • 7: Achievements • 8: Activity • 9: Devices',
   },
   {
     keys: ['P'],
@@ -309,6 +311,7 @@ export const LeftSidebarNavigation: React.FC<LeftSidebarNavigationProps> = ({
       icon: LayoutDashboard,
     },
     { id: 'profile', label: 'Profil', icon: User },
+    { id: 'library', label: 'Library', icon: Library },
     { id: 'catalog', label: 'Katalog', icon: Compass },
     { id: 'stats', label: 'Stats', icon: BarChart3 },
     { id: 'goals', label: 'Goals', icon: Target },
@@ -460,18 +463,19 @@ export const ShortcutsHubModal: React.FC<ShortcutsHubModalProps> = ({
   }> = [
     { keyNum: '1', label: 'Overview', tab: 'overview', icon: LayoutDashboard },
     { keyNum: '2', label: 'Profil & Background', tab: 'profile', icon: User },
-    { keyNum: '3', label: 'Katalog Media', tab: 'catalog', icon: Compass },
-    { keyNum: '4', label: 'Stats & Grafik', tab: 'stats', icon: BarChart3 },
-    { keyNum: '5', label: 'Goals / Target', tab: 'goals', icon: Target },
+    { keyNum: '3', label: 'Library & Riwayat Baca', tab: 'library', icon: Library },
+    { keyNum: '4', label: 'Katalog Media', tab: 'catalog', icon: Compass },
+    { keyNum: '5', label: 'Stats & Grafik', tab: 'stats', icon: BarChart3 },
+    { keyNum: '6', label: 'Goals / Target', tab: 'goals', icon: Target },
     {
-      keyNum: '6',
+      keyNum: '7',
       label: 'Achievements',
       tab: 'achievements',
       icon: Award,
     },
-    { keyNum: '7', label: 'Activity Log', tab: 'activity', icon: History },
+    { keyNum: '8', label: 'Activity Log', tab: 'activity', icon: History },
     {
-      keyNum: '8',
+      keyNum: '9',
       label: 'Devices & Companion PC',
       tab: 'devices',
       icon: MonitorSmartphone,

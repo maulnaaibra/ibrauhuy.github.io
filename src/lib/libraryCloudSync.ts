@@ -377,6 +377,47 @@ export async function pullCloudLibraryState(userId: string): Promise<boolean> {
   }
 }
 
+async function performCloudLibraryUpsert(
+  userId?: string
+): Promise<'synced' | 'local-only'> {
+  if (!userId || !isSupabaseConfigured || !cloudLibraryTableAvailable) {
+    return 'local-only';
+  }
+  try {
+    const { error } = await supabase.from('user_library_state').upsert(
+      {
+        user_id: userId,
+        watchlist: loadUserWatchlist(),
+        watched_episodes: loadWatchedEpisodesMap(),
+        yatsu_links: loadYatsuBookLinks(),
+        novel_progress: loadNovelProgressMirror(),
+        reader_prefs: sanitizeReaderPrefsForCloud(loadReaderPrefs()),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' }
+    );
+    if (error) {
+      if (isMissingCloudTableError(error)) {
+        cloudLibraryTableAvailable = false;
+      }
+      return 'local-only';
+    }
+    return 'synced';
+  } catch {
+    return 'local-only';
+  }
+}
+
+export async function pushCloudLibraryNow(
+  userId?: string
+): Promise<'synced' | 'local-only'> {
+  if (cloudSyncTimer !== null && typeof window !== 'undefined') {
+    window.clearTimeout(cloudSyncTimer);
+    cloudSyncTimer = null;
+  }
+  return performCloudLibraryUpsert(userId);
+}
+
 export function scheduleCloudLibraryPush(userId?: string): void {
   if (
     !userId ||
@@ -393,27 +434,6 @@ export function scheduleCloudLibraryPush(userId?: string): void {
 
   cloudSyncTimer = window.setTimeout(() => {
     cloudSyncTimer = null;
-    void (async () => {
-      if (!isSupabaseConfigured || !cloudLibraryTableAvailable) return;
-      try {
-        const { error } = await supabase.from('user_library_state').upsert(
-          {
-            user_id: userId,
-            watchlist: loadUserWatchlist(),
-            watched_episodes: loadWatchedEpisodesMap(),
-            yatsu_links: loadYatsuBookLinks(),
-            novel_progress: loadNovelProgressMirror(),
-            reader_prefs: sanitizeReaderPrefsForCloud(loadReaderPrefs()),
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' }
-        );
-        if (error && isMissingCloudTableError(error)) {
-          cloudLibraryTableAvailable = false;
-        }
-      } catch {
-        // ignore offline cloud sync errors gracefully
-      }
-    })();
+    void performCloudLibraryUpsert(userId);
   }, 1500);
 }

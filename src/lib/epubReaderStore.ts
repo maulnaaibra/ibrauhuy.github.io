@@ -44,6 +44,7 @@ export interface StoredNovelBook {
 export type StoredNovelSummary = Omit<StoredNovelBook, 'chapters'> & {
   chapterCount: number;
   bookmarkCount: number;
+  currentChapterTitle?: string;
 };
 
 export interface NovelProgressSnapshot {
@@ -922,26 +923,152 @@ export async function getStoredNovelBook(
   }
 }
 
-export async function listAllStoredNovelBooksFull(): Promise<StoredNovelBook[]> {
-  try {
-    const db = await openNovelDb();
-    const rawList = await new Promise<StoredNovelBook[]>((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readonly');
-      const req = tx.objectStore(STORE_NAME).getAll();
-      req.onsuccess = () => {
-        db.close();
-        resolve((req.result as StoredNovelBook[]) ?? []);
-      };
-      req.onerror = () => {
-        db.close();
-        reject(req.error ?? new Error('Gagal memuat daftar buku tersimpan.'));
-      };
-    });
-    const mirror = loadNovelProgressMirror();
-    return rawList.map((b) => reconcileBookWithMirror(b, mirror).book);
-  } catch {
-    return [];
+function normalizeBookText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function getBookProgressScore(
+  book: Pick<StoredNovelBook, 'currentChapter' | 'scrollRatio' | 'vnIndex'>
+): number {
+  return (
+    book.currentChapter + Math.min(0.9999, Math.max(0, book.scrollRatio ?? 0))
+  );
+}
+
+function isSameBookContent(a: StoredNovelBook, b: StoredNovelBook): boolean {
+  if (a.storageKey === b.storageKey) return true;
+  if (a.totalChars <= 0 || b.totalChars <= 0) return false;
+  if (a.totalChars !== b.totalChars) return false;
+
+  const chA = a.chapters?.length ?? 0;
+  const chB = b.chapters?.length ?? 0;
+  const titleA = normalizeBookText(a.title);
+  const titleB = normalizeBookText(b.title);
+  if (chA === chB && titleA && titleA === titleB) {
+    return true;
   }
+
+  const fileA = normalizeBookText(a.fileName);
+  const fileB = normalizeBookText(b.fileName);
+  if (fileA && fileA === fileB) {
+    return true;
+  }
+
+  return false;
+}
+
+function mergeDuplicateBooks(group: StoredNovelBook[]): StoredNovelBook {
+  const sortedByProgress = [...group].sort((a, b) => {
+    const scoreDiff = getBookProgressScore(b) - getBookProgressScore(a);
+    if (Math.abs(scoreDiff) > 1e-6) return scoreDiff;
+    const vnDiff = (b.vnIndex ?? 0) - (a.vnIndex ?? 0);
+    if (vnDiff !== 0) return vnDiff;
+    return b.updatedAt - a.updatedAt;
+  });
+
+  const winner = sortedByProgress[0];
+  const mergedBookmarks: NovelBookmark[] = [];
+  const seenBmIds = new Set<string>();
+  const seenBmContent = new Set<string>();
+
+  for (const item of group) {
+    for (const bm of item.bookmarks ?? []) {
+      const contentKey = `${bm.chapterIndex}:${normalizeBookText(bm.excerpt)}`;
+      if (seenBmIds.has(bm.id) || seenBmContent.has(contentKey)) continue;
+      seenBmIds.add(bm.id);
+      seenBmContent.add(contentKey);
+      mergedBookmarks.push(bm);
+    }
+  }
+  mergedBookmarks.sort((a, b) => b.createdAt - a.createdAt);
+
+  return {
+    ...winner,
+    bookmarks: mergedBookmarks.slice(0, 80),
+    coverDataUrl:
+      winner.coverDataUrl ||
+      group.find((b) => Boolean(b.coverDataUrl))?.coverDataUrl,
+    author: winner.author || group.find((b) => Boolean(b.author))?.author,
+    catalogItemId:
+      winner.catalogItemId ||
+      group.find((b) => Boolean(b.catalogItemId))?.catalogItemId,
+    updatedAt: Math.max(...group.map((b) => b.updatedAt)),
+  };
+}
+
+let listBooksInFlight: Promise<StoredNovelBook[]> | null = null;
+
+export async function listAllStoredNovelBooksFull(): Promise<StoredNovelBook[]> {
+  if (listBooksInFlight) return listBooksInFlight;
+
+  listBooksInFlight = (async () => {
+    try {
+      const db = await openNovelDb();
+      const rawList = await new Promise<StoredNovelBook[]>((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const req = tx.objectStore(STORE_NAME).getAll();
+        req.onsuccess = () => {
+          db.close();
+          resolve((req.result as StoredNovelBook[]) ?? []);
+        };
+        req.onerror = () => {
+          db.close();
+          reject(
+            req.error ?? new Error('Gagal memuat daftar buku tersimpan.')
+          );
+        };
+      });
+
+      const mirror = loadNovelProgressMirror();
+      const reconciled = rawList.map(
+        (b) => reconcileBookWithMirror(b, mirror).book
+      );
+
+      const groups: StoredNovelBook[][] = [];
+      for (const item of reconciled) {
+        const existingGroup = groups.find((grp) =>
+          grp.some((member) => isSameBookContent(member, item))
+        );
+        if (existingGroup) {
+          existingGroup.push(item);
+        } else {
+          groups.push([item]);
+        }
+      }
+
+      const dedupedList: StoredNovelBook[] = [];
+      const currentLastKey = getLastOpenedNovelKey();
+
+      for (const grp of groups) {
+        if (grp.length === 1) {
+          dedupedList.push(grp[0]);
+          continue;
+        }
+
+        const merged = mergeDuplicateBooks(grp);
+        const removedKeys = grp
+          .map((g) => g.storageKey)
+          .filter((k) => k !== merged.storageKey);
+
+        await saveStoredNovelBook(merged);
+        for (const rmKey of removedKeys) {
+          await deleteStoredNovelBook(rmKey);
+        }
+        if (currentLastKey && removedKeys.includes(currentLastKey)) {
+          setLastOpenedNovelKey(merged.storageKey);
+        }
+        dedupedList.push(merged);
+      }
+
+      return dedupedList;
+    } catch {
+      return [];
+    } finally {
+      listBooksInFlight = null;
+    }
+  })();
+
+  return listBooksInFlight;
 }
 
 export async function listStoredNovelBooks(): Promise<StoredNovelSummary[]> {
@@ -960,8 +1087,10 @@ export async function listStoredNovelBooks(): Promise<StoredNovelSummary[]> {
       coverDataUrl: b.coverDataUrl,
       totalChars: b.totalChars,
       currentChapter: b.currentChapter,
+      currentChapterTitle: b.chapters?.[b.currentChapter]?.title ?? '',
       scrollRatio: b.scrollRatio,
       vnIndex: b.vnIndex ?? 0,
+      bookmarks: b.bookmarks ?? [],
       bookmarkCount: b.bookmarks?.length ?? 0,
       updatedAt: b.updatedAt,
       chapterCount: b.chapters?.length ?? 0,
@@ -969,6 +1098,44 @@ export async function listStoredNovelBooks(): Promise<StoredNovelSummary[]> {
   });
   items.sort((a, b) => b.updatedAt - a.updatedAt);
   return items;
+}
+
+export async function importNovelFileToLibrary(
+  file: File,
+  options?: {
+    preferredStorageKey?: string;
+    catalogItemId?: string;
+    fallbackTitle?: string;
+  }
+): Promise<{ book: StoredNovelBook; deduplicated: boolean }> {
+  const preferredKey =
+    options?.preferredStorageKey ||
+    makeLibraryStorageKey(file.name, options?.fallbackTitle);
+  const parsed = await parseNovelFile(file, {
+    storageKey: preferredKey,
+    catalogItemId: options?.catalogItemId,
+    fallbackTitle: options?.fallbackTitle,
+  });
+
+  const existingBooks = await listAllStoredNovelBooksFull();
+  const matched = existingBooks.find((b) => isSameBookContent(b, parsed));
+
+  if (matched) {
+    const merged = mergeDuplicateBooks([
+      matched,
+      { ...parsed, storageKey: matched.storageKey },
+    ]);
+    const canonical: StoredNovelBook = {
+      ...merged,
+      storageKey: matched.storageKey,
+      updatedAt: Date.now(),
+    };
+    await saveStoredNovelBook(canonical);
+    return { book: canonical, deduplicated: true };
+  }
+
+  await saveStoredNovelBook(parsed);
+  return { book: parsed, deduplicated: false };
 }
 
 export async function updateStoredNovelProgress(

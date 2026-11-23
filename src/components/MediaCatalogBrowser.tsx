@@ -2,7 +2,6 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -16,9 +15,7 @@ import {
   Copy,
   Download,
   ExternalLink,
-  FolderInput,
   Globe,
-  HardDrive,
   Home,
   Library,
   Loader2,
@@ -27,9 +24,7 @@ import {
   Search,
   Sparkles,
   Star,
-  Trash2,
   TrendingUp,
-  Upload,
   X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -45,18 +40,13 @@ import {
   type EpubMoeVolume,
 } from '../lib/mediaLinks';
 import {
-  deleteStoredNovelBook,
   getLastOpenedNovelKey,
-  getLibraryStorageInfo,
   listStoredNovelBooks,
   loadYatsuBookLinks,
-  makeLibraryStorageKey,
   normalizeYatsuUrl,
-  parseNovelFile,
   removeYatsuBookLink,
   requestPersistentLibraryStorage,
   resolveYatsuUrl,
-  saveStoredNovelBook,
   saveYatsuBookLink,
   setLastOpenedNovelKey,
   type StoredNovelSummary,
@@ -71,8 +61,6 @@ import {
   type EnrichedCinematicMedia,
 } from '../lib/mediaCinematicDetails';
 import {
-  exportFullLibraryBackup,
-  importFullLibraryBackup,
   pullCloudLibraryState,
   scheduleCloudLibraryPush,
 } from '../lib/libraryCloudSync';
@@ -198,6 +186,7 @@ interface MediaCatalogBrowserProps {
   initialSelectedTitle?: string | null;
   onClearInitialSelected?: () => void;
   onBackToOverview?: () => void;
+  onOpenLibrary?: () => void;
 }
 
 const CATALOG_SECTION_STORAGE_KEY = 'immersiontrack_catalog_section_v1';
@@ -212,6 +201,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
   initialSelectedTitle = null,
   onClearInitialSelected,
   onBackToOverview,
+  onOpenLibrary,
 }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [section, setSection] = useState<CatalogSection>(() => {
@@ -260,17 +250,11 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
   const [searchingLive, setSearchingLive] = useState(false);
 
   const { user } = useAuth();
-  const libraryUploadInputRef = useRef<HTMLInputElement | null>(null);
-  const libraryBackupInputRef = useRef<HTMLInputElement | null>(null);
 
   const [readerTarget, setReaderTarget] = useState<NovelReaderTarget | null>(
     null
   );
   const [savedNovels, setSavedNovels] = useState<StoredNovelSummary[]>([]);
-  const [showLibraryShelf, setShowLibraryShelf] = useState(false);
-  const [storagePersisted, setStoragePersisted] = useState(false);
-  const [importingLibrary, setImportingLibrary] = useState(false);
-  const [restoringLibrary, setRestoringLibrary] = useState(false);
 
   const storedBooksMap = useMemo(() => {
     const map: Record<
@@ -293,18 +277,12 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
   const [yatsuInputDraft, setYatsuInputDraft] = useState('');
 
   const refreshStoredBooks = useCallback(async () => {
-    const [items, storage] = await Promise.all([
-      listStoredNovelBooks(),
-      getLibraryStorageInfo(),
-    ]);
+    const items = await listStoredNovelBooks();
     setSavedNovels(items);
-    setStoragePersisted(storage.persisted);
   }, []);
 
   useEffect(() => {
-    void requestPersistentLibraryStorage().then((persisted) => {
-      if (persisted) setStoragePersisted(true);
-    });
+    void requestPersistentLibraryStorage();
     void refreshStoredBooks();
   }, [refreshStoredBooks]);
 
@@ -665,90 +643,6 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
         item.category,
         item.suggestedMinutes
       );
-    }
-  };
-
-  const handleUploadBooksToLibrary = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    setImportingLibrary(true);
-    let importedCount = 0;
-    let lastTitle = '';
-    try {
-      for (const file of Array.from(files)) {
-        const storageKey = makeLibraryStorageKey(file.name);
-        const parsed = await parseNovelFile(file, { storageKey });
-        await saveStoredNovelBook(parsed);
-        importedCount += 1;
-        lastTitle = parsed.title;
-      }
-      await refreshStoredBooks();
-      scheduleCloudLibraryPush(user?.id);
-      setShowLibraryShelf(true);
-      toast.success(
-        importedCount === 1
-          ? `「${lastTitle}」 tersimpan di Library permanen!`
-          : `${importedCount} buku tersimpan di Library permanen!`
-      );
-    } catch (err: unknown) {
-      toast.error(
-        err instanceof Error ? err.message : 'Gagal menambah buku ke Library.'
-      );
-    } finally {
-      setImportingLibrary(false);
-    }
-  };
-
-  const handleDeleteBookFromShelf = async (storageKey: string, title: string) => {
-    await deleteStoredNovelBook(storageKey);
-    await refreshStoredBooks();
-    scheduleCloudLibraryPush(user?.id);
-    toast.success(`「${title}」 dihapus dari Library.`);
-  };
-
-  const handleExportLibraryBackup = async () => {
-    try {
-      const backup = await exportFullLibraryBackup();
-      const blob = new Blob([backup.json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = backup.fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success(
-        `Backup (${backup.bookCount} buku, ${backup.watchlistCount} Daftar Saya) diunduh!`
-      );
-    } catch {
-      toast.error('Gagal mengunduh backup library.');
-    }
-  };
-
-  const handleRestoreLibraryBackup = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setRestoringLibrary(true);
-    try {
-      const raw = await file.text();
-      const res = await importFullLibraryBackup(raw, user?.id);
-      setWatchlistIds(loadUserWatchlist());
-      setWatchedEpisodesMap(loadWatchedEpisodesMap());
-      setYatsuLinks(loadYatsuBookLinks());
-      await refreshStoredBooks();
-      setShowLibraryShelf(true);
-      toast.success(
-        `Dipulihkan: ${res.booksImported} buku & ${res.watchlistCount} Daftar Saya!`
-      );
-    } catch (err: unknown) {
-      toast.error(
-        err instanceof Error ? err.message : 'Gagal memulihkan file backup.'
-      );
-    } finally {
-      setRestoringLibrary(false);
-      e.target.value = '';
     }
   };
 
@@ -1738,14 +1632,12 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
           <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
-              onClick={() => setShowLibraryShelf((prev) => !prev)}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-extrabold inline-flex items-center gap-1.5 transition cursor-pointer ${
-                showLibraryShelf
-                  ? 'bg-sky-500 text-slate-950 border-sky-400 shadow-xs'
-                  : 'bg-white text-slate-700 border-slate-200 hover:border-rose-300'
-              }`}
+              onClick={() =>
+                onOpenLibrary ? onOpenLibrary() : handleOpenLastOrFirstLibraryBook()
+              }
+              className="px-3 py-1.5 rounded-xl border bg-white text-slate-700 border-slate-200 hover:border-rose-300 text-xs font-extrabold inline-flex items-center gap-1.5 transition cursor-pointer"
             >
-              <Library className="w-3.5 h-3.5" />
+              <Library className="w-3.5 h-3.5 text-rose-600" />
               <span>Library Novel ({savedNovels.length})</span>
             </button>
             {(section === 'Novels' || section === 'Semua') && (
@@ -1876,177 +1768,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
         </div>
       </div>
 
-      {/* Hidden Library Inputs */}
-      <input
-        ref={libraryUploadInputRef}
-        type="file"
-        multiple
-        accept=".epub,.txt,.html,.htm,.xhtml"
-        onChange={(e) => {
-          void handleUploadBooksToLibrary(e.target.files);
-          e.target.value = '';
-        }}
-        className="hidden"
-      />
-      <input
-        ref={libraryBackupInputRef}
-        type="file"
-        accept=".json,application/json"
-        onChange={handleRestoreLibraryBackup}
-        className="hidden"
-      />
-
-      {/* Library Novel Saya Shelf (Anti-Reset & Multi-Buku) */}
-      {showLibraryShelf && (
-        <div className="card-pro p-4 sm:p-5 space-y-4 animate-fade-in">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Library className="w-4 h-4 text-rose-600" />
-                <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
-                  Library Novel Saya ({savedNovels.length})
-                </h3>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] font-bold text-emerald-700 inline-flex items-center gap-1">
-                  <HardDrive className="w-3 h-3" />
-                  {storagePersisted
-                    ? 'Anti-Reset Permanen Aktif'
-                    : 'Tersimpan di IndexedDB'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-500">
-                Setiap EPUB/TXT tersimpan terpisah — menambah buku baru tidak akan
-                menimpa buku atau posisi bab Anda sebelumnya.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-              <button
-                type="button"
-                disabled={importingLibrary}
-                onClick={() => libraryUploadInputRef.current?.click()}
-                className="btn-crimson px-3 py-2 rounded-xl text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                {importingLibrary ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Upload className="w-3.5 h-3.5" />
-                )}
-                <span>Tambah Novel (.EPUB / .TXT)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleExportLibraryBackup()}
-                className="px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-rose-300 text-xs font-bold text-slate-700 inline-flex items-center gap-1 cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Backup</span>
-              </button>
-              <button
-                type="button"
-                disabled={restoringLibrary}
-                onClick={() => libraryBackupInputRef.current?.click()}
-                className="px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-rose-300 text-xs font-bold text-slate-700 inline-flex items-center gap-1 cursor-pointer"
-              >
-                <FolderInput className="w-3.5 h-3.5" />
-                <span>{restoringLibrary ? 'Memulihkan...' : 'Pulihkan'}</span>
-              </button>
-            </div>
-          </div>
-
-          {savedNovels.length === 0 ? (
-            <div className="p-6 rounded-xl bg-slate-50 border border-slate-200 text-center space-y-2">
-              <p className="text-xs sm:text-sm font-semibold text-slate-700">
-                Belum ada file EPUB/TXT di Library Anda.
-              </p>
-              <p className="text-xs text-slate-500">
-                Klik <strong>Tambah Novel (.EPUB / .TXT)</strong> untuk mengimpor
-                beberapa novel sekaligus agar selalu siap dibaca kapan saja.
-              </p>
-            </div>
-          ) : (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {savedNovels.map((sb) => {
-                const progressPct =
-                  sb.chapterCount > 0
-                    ? Math.min(
-                        100,
-                        Math.round(
-                          ((sb.currentChapter + sb.scrollRatio) /
-                            sb.chapterCount) *
-                            100
-                        )
-                      )
-                    : 0;
-                return (
-                  <div
-                    key={sb.storageKey}
-                    className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-3 justify-between"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLastOpenedNovelKey(sb.storageKey);
-                        setReaderTarget({
-                          storageKey: sb.storageKey,
-                          catalogItemId: sb.catalogItemId,
-                          title: sb.title,
-                        });
-                      }}
-                      className="flex items-start gap-3 min-w-0 flex-1 text-left cursor-pointer group"
-                    >
-                      {sb.coverDataUrl ? (
-                        <img
-                          src={sb.coverDataUrl}
-                          alt={sb.title}
-                          className="w-12 h-16 rounded-lg object-cover shrink-0 border border-slate-200"
-                        />
-                      ) : (
-                        <MediaCover
-                          title={sb.title}
-                          category="light_novel"
-                          className="w-12 h-16 rounded-lg shrink-0"
-                        />
-                      )}
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <div className="text-xs font-extrabold text-slate-900 group-hover:text-rose-600 line-clamp-2 leading-snug">
-                          {sb.title}
-                        </div>
-                        <div className="text-[11px] font-mono text-slate-500">
-                          Bab {sb.currentChapter + 1}/{sb.chapterCount} •{' '}
-                          {progressPct}%
-                          {sb.bookmarkCount > 0
-                            ? ` • ${sb.bookmarkCount} mark`
-                            : ''}
-                        </div>
-                        <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
-                          <div
-                            className="h-full bg-rose-600 rounded-full"
-                            style={{ width: `${Math.max(4, progressPct)}%` }}
-                          />
-                        </div>
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void handleDeleteBookFromShelf(sb.storageKey, sb.title)
-                      }
-                      title="Hapus buku dari Library"
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-white cursor-pointer shrink-0"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {!showLibraryShelf &&
-        section === 'Novels' &&
-        savedNovels.length > 0 && (
+      {section === 'Novels' && savedNovels.length > 0 && (
           <div className="card-pro p-3.5 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               {savedNovels[0].coverDataUrl ? (
@@ -2077,7 +1799,11 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
-                onClick={() => setShowLibraryShelf(true)}
+                onClick={() =>
+                  onOpenLibrary
+                    ? onOpenLibrary()
+                    : handleOpenLastOrFirstLibraryBook()
+                }
                 className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:border-rose-300 text-xs font-bold text-slate-700 cursor-pointer"
               >
                 Lihat Semua ({savedNovels.length})
@@ -2092,7 +1818,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
               </button>
             </div>
           </div>
-        )}
+      )}
 
       {/* Media Cards Grid (Clicking any card opens the Cinematic Showcase View first!) */}
       {visibleItems.length === 0 ? (

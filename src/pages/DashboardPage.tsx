@@ -13,6 +13,7 @@ import {
   History,
   Home,
   LayoutDashboard,
+  Library,
   LogOut,
   Menu,
   MonitorSmartphone,
@@ -87,7 +88,9 @@ import { GoalsSection } from '../components/GoalsSection';
 import { AchievementsSection } from '../components/AchievementsSection';
 import { ActivityLogList } from '../components/ActivityLogList';
 import { DevicesSection } from '../components/DevicesSection';
+import { LibrarySection } from '../components/LibrarySection';
 import { MediaCatalogBrowser } from '../components/MediaCatalogBrowser';
+import { pullCloudLibraryState } from '../lib/libraryCloudSync';
 import {
   LeftSidebarNavigation,
   ShortcutsHubModal,
@@ -96,6 +99,7 @@ import {
 type DashboardTab =
   | 'overview'
   | 'profile'
+  | 'library'
   | 'catalog'
   | 'stats'
   | 'goals'
@@ -144,6 +148,7 @@ const QUICK_LOG_PRESETS: Array<{
 const VALID_DASHBOARD_TABS: DashboardTab[] = [
   'overview',
   'profile',
+  'library',
   'catalog',
   'stats',
   'goals',
@@ -304,6 +309,11 @@ export const DashboardPage: React.FC = () => {
       active = false;
     };
   }, [user]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    void pullCloudLibraryState(user.id);
+  }, [user?.id]);
 
   const logsRef = useRef<ImmersionLog[]>([]);
   useEffect(() => {
@@ -532,12 +542,13 @@ export const DashboardPage: React.FC = () => {
         const tabMap: Record<string, DashboardTab> = {
           '1': 'overview',
           '2': 'profile',
-          '3': 'catalog',
-          '4': 'stats',
-          '5': 'goals',
-          '6': 'achievements',
-          '7': 'activity',
-          '8': 'devices',
+          '3': 'library',
+          '4': 'catalog',
+          '5': 'stats',
+          '6': 'goals',
+          '7': 'achievements',
+          '8': 'activity',
+          '9': 'devices',
         };
         if (tabMap[e.key]) {
           e.preventDefault();
@@ -1026,6 +1037,7 @@ export const DashboardPage: React.FC = () => {
   }> = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'profile', label: 'Profil', icon: User },
+    { id: 'library', label: 'Library', icon: Library },
     { id: 'catalog', label: 'Katalog', icon: Compass },
     { id: 'stats', label: 'Stats', icon: BarChart3 },
     { id: 'goals', label: 'Goals', icon: Target },
@@ -1043,6 +1055,7 @@ export const DashboardPage: React.FC = () => {
     'profile',
     'goals',
     'achievements',
+    'activity',
     'devices',
   ]);
   const isMoreTabActive = moreMobileTabs.has(activeTab);
@@ -1217,6 +1230,14 @@ export const DashboardPage: React.FC = () => {
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Catat Sesi
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('library')}
+                  className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-rose-300 text-xs font-bold text-slate-800 inline-flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                >
+                  <Library className="w-3.5 h-3.5 text-rose-600" />
+                  Library Saya
                 </button>
                 <button
                   type="button"
@@ -1746,6 +1767,23 @@ export const DashboardPage: React.FC = () => {
               onInspectMember={(memberId) => setInspectedMemberId(memberId)}
             />
           </div>
+        ) : activeTab === 'library' ? (
+          <LibrarySection
+            key="tab-library"
+            userId={user?.id}
+            onLogReadingSession={(title, mins) =>
+              openNewLogModal({
+                title,
+                category: 'light_novel',
+                duration: mins,
+              })
+            }
+            onOpenCatalogItem={(title) => {
+              setInitialCatalogTitle(title);
+              setActiveTab('catalog');
+            }}
+            onGoToCatalog={() => setActiveTab('catalog')}
+          />
         ) : activeTab === 'catalog' ? (
           <div key="tab-catalog" className="space-y-4 animate-tab-in">
             <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -1775,6 +1813,7 @@ export const DashboardPage: React.FC = () => {
               initialSelectedTitle={initialCatalogTitle}
               onClearInitialSelected={() => setInitialCatalogTitle(null)}
               onBackToOverview={() => setActiveTab('overview')}
+              onOpenLibrary={() => setActiveTab('library')}
               onStartMedia={(title, category, suggestedMinutes) =>
                 openNewLogModal({
                   title,
@@ -1867,9 +1906,9 @@ export const DashboardPage: React.FC = () => {
             {(
               [
                 { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+                { id: 'library', label: 'Library', icon: Library },
                 { id: 'catalog', label: 'Katalog', icon: Compass },
                 { id: 'stats', label: 'Stats', icon: BarChart3 },
-                { id: 'activity', label: 'Activity', icon: History },
               ] as const
             ).map((item) => {
               const active = activeTab === item.id;
