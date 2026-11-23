@@ -525,12 +525,23 @@ html[data-theme="dark"] .card-pro-interactive:hover {
 }
 
 html[data-theme="dark"] header,
-html[data-theme="dark"] aside {
+html[data-theme="dark"] aside,
+html[data-theme="dark"] [data-mobile-bottom-nav="true"],
+html[data-theme="dark"] [data-mobile-drawer="true"] {
   background-color: rgba(11, 18, 28, var(--app-header-alpha, 0.78)) !important;
   backdrop-filter: blur(var(--app-glass-blur, 20px)) saturate(160%) !important;
   -webkit-backdrop-filter: blur(var(--app-glass-blur, 20px)) saturate(160%) !important;
   border-color: rgba(148, 179, 214, 0.14) !important;
   color: #f3f7fc !important;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Translucent Glass Inner Surfaces in Dark Mode */

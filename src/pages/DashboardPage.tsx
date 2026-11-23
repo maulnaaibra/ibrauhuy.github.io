@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Award,
@@ -10,8 +11,10 @@ import {
   ExternalLink,
   Flame,
   History,
+  Home,
   LayoutDashboard,
   LogOut,
+  Menu,
   MonitorSmartphone,
   Moon,
   Plus,
@@ -20,6 +23,7 @@ import {
   Target,
   Trophy,
   User,
+  X,
   Zap,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -149,6 +153,13 @@ const VALID_DASHBOARD_TABS: DashboardTab[] = [
 ];
 const ACTIVE_TAB_STORAGE_KEY = 'immersiontrack_active_tab_v1';
 
+function formatCompactHours(min: number): string {
+  if (min > 0 && min < 6) {
+    return `${Math.round(min)}m`;
+  }
+  return `${(min / 60).toFixed(1)}j`;
+}
+
 function isValidDashboardTab(val: string | null): val is DashboardTab {
   return Boolean(val && VALID_DASHBOARD_TABS.includes(val as DashboardTab));
 }
@@ -230,6 +241,7 @@ export const DashboardPage: React.FC = () => {
   const ankiSyncInFlightRef = useRef(false);
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
   const [isDarkTheme, setIsDarkTheme] = useState<boolean>(
     () => loadAppearanceSettings().darkMode
@@ -1027,29 +1039,48 @@ export const DashboardPage: React.FC = () => {
     },
   ];
 
+  const moreMobileTabs = new Set<DashboardTab>([
+    'profile',
+    'goals',
+    'achievements',
+    'devices',
+  ]);
+  const isMoreTabActive = moreMobileTabs.has(activeTab);
+
   return (
     <div className="min-h-screen app-bg-canvas text-slate-900">
       <header className="sticky top-0 z-30 pt-[env(safe-area-inset-top)] bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-2xs">
         <div className="px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4">
-          <Link to="/" className="flex items-center gap-2.5 sm:gap-3 min-w-0 group">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-rose-500 to-rose-700 flex items-center justify-center font-extrabold text-white shadow-sm shadow-rose-500/25 shrink-0">
-              I
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="font-extrabold text-sm sm:text-base leading-tight text-slate-900 group-hover:text-rose-600 transition-colors truncate">
-                  ImmersionTrack
-                </h1>
-                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-[10px] font-mono text-rose-700 shrink-0">
-                  {stats.stage.code}
-                </span>
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen(true)}
+              aria-label="Buka menu navigasi"
+              className="lg:hidden p-2 rounded-xl bg-slate-100 hover:bg-rose-50 border border-slate-200 text-slate-700 hover:text-rose-600 transition cursor-pointer shrink-0"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
+
+            <Link to="/" className="flex items-center gap-2 sm:gap-3 min-w-0 group">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-rose-500 to-rose-700 flex items-center justify-center font-extrabold text-white shadow-sm shadow-rose-500/25 shrink-0">
+                I
               </div>
-              <p className="text-[10px] sm:text-[11px] font-semibold text-slate-500 truncate">
-                {profile?.target_language ?? 'Japanese'} •{' '}
-                {stats.stage.label}
-              </p>
-            </div>
-          </Link>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <h1 className="font-extrabold text-sm sm:text-base leading-tight text-slate-900 group-hover:text-rose-600 transition-colors whitespace-nowrap">
+                    ImmersionTrack
+                  </h1>
+                  <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-[10px] font-mono text-rose-700 shrink-0">
+                    {stats.stage.code}
+                  </span>
+                </div>
+                <p className="text-[10px] sm:text-[11px] font-semibold text-slate-500 truncate">
+                  {profile?.target_language ?? 'Japanese'} •{' '}
+                  {stats.stage.label}
+                </p>
+              </div>
+            </Link>
+          </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
@@ -1060,7 +1091,7 @@ export const DashboardPage: React.FC = () => {
                   ? 'Ganti ke Tema Terang (Glass)'
                   : 'Ganti ke Tema Gelap (Blur Transparan)'
               }
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 border border-slate-200 hover:border-rose-300 text-[11px] font-bold text-slate-700 hover:text-rose-700 transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 border border-slate-200 hover:border-rose-300 text-[11px] font-bold text-slate-700 hover:text-rose-700 transition cursor-pointer"
             >
               {isDarkTheme ? (
                 <>
@@ -1101,7 +1132,7 @@ export const DashboardPage: React.FC = () => {
             <button
               type="button"
               onClick={() => openNewLogModal()}
-              className="btn-crimson px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer"
+              className="btn-crimson px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span className="hidden sm:inline">Catat Sesi</span>
@@ -1111,7 +1142,7 @@ export const DashboardPage: React.FC = () => {
             <Link
               to="/settings"
               title="Pengaturan & Background"
-              className="p-2 rounded-xl bg-white border border-slate-200 hover:border-rose-300 text-slate-600 hover:text-rose-600 transition"
+              className="hidden sm:inline-flex p-2 rounded-xl bg-white border border-slate-200 hover:border-rose-300 text-slate-600 hover:text-rose-600 transition"
             >
               <Settings className="w-4 h-4" />
             </Link>
@@ -1142,36 +1173,10 @@ export const DashboardPage: React.FC = () => {
               type="button"
               onClick={signOut}
               title="Keluar"
-              className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-300 text-slate-600 transition cursor-pointer"
+              className="hidden sm:inline-flex p-2 rounded-xl bg-white border border-slate-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-300 text-slate-600 transition cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
             </button>
-          </div>
-        </div>
-
-        <div className="lg:hidden border-t border-slate-200/80 overflow-x-auto">
-          <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2 flex items-center gap-1.5 min-w-max">
-            {navTabs.map((tab) => {
-              const active = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
-                    active
-                      ? 'bg-gradient-to-r from-rose-600 to-rose-500 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <tab.icon className="w-3.5 h-3.5" />
-                  {tab.label}
-                  {tab.dot && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  )}
-                </button>
-              );
-            })}
           </div>
         </div>
       </header>
@@ -1185,7 +1190,7 @@ export const DashboardPage: React.FC = () => {
           onQuickLog={() => openNewLogModal()}
         />
 
-        <main className="flex-1 min-w-0 max-w-6xl mx-auto px-3 sm:px-6 py-4 sm:py-7 pb-[max(2.5rem,env(safe-area-inset-bottom))] space-y-5 sm:space-y-6">
+        <main className="flex-1 min-w-0 max-w-6xl mx-auto px-3 sm:px-6 py-4 sm:py-7 pb-[calc(5.25rem+env(safe-area-inset-bottom))] lg:pb-10 space-y-5 sm:space-y-6">
         {loadingLogs ? (
           <div className="grid sm:grid-cols-3 gap-4">
             {[1, 2, 3].map((i) => (
@@ -1337,7 +1342,7 @@ export const DashboardPage: React.FC = () => {
                       </div>
                       <div className="mt-0.5 flex items-baseline justify-between gap-1 font-mono">
                         <span className="text-xs font-bold text-slate-900">
-                          {(stats.balance.listeningMin / 60).toFixed(1)}j
+                          {formatCompactHours(stats.balance.listeningMin)}
                         </span>
                         <span className="text-[10px] text-slate-500">
                           {stats.balance.listeningPct}%
@@ -1352,7 +1357,7 @@ export const DashboardPage: React.FC = () => {
                       </div>
                       <div className="mt-0.5 flex items-baseline justify-between gap-1 font-mono">
                         <span className="text-xs font-bold text-slate-900">
-                          {(stats.balance.readingMin / 60).toFixed(1)}j
+                          {formatCompactHours(stats.balance.readingMin)}
                         </span>
                         <span className="text-[10px] text-slate-500">
                           {stats.balance.readingPct}%
@@ -1367,7 +1372,7 @@ export const DashboardPage: React.FC = () => {
                       </div>
                       <div className="mt-0.5 flex items-baseline justify-between gap-1 font-mono">
                         <span className="text-xs font-bold text-slate-900">
-                          {(stats.balance.studyMin / 60).toFixed(1)}j
+                          {formatCompactHours(stats.balance.studyMin)}
                         </span>
                         <span className="text-[10px] text-slate-500">
                           {stats.balance.studyPct}%
@@ -1850,6 +1855,221 @@ export const DashboardPage: React.FC = () => {
           setActiveTab('catalog');
         }}
       />
+
+      {/* MOBILE BOTTOM NAVIGATION BAR */}
+      {createPortal(
+        <nav
+          data-mobile-bottom-nav="true"
+          aria-label="Navigasi Cepat HP"
+          className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-lg border-t border-slate-200/85 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_-8px_rgba(15,23,42,0.12)]"
+        >
+          <div className="grid grid-cols-5 h-16 px-1">
+            {(
+              [
+                { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+                { id: 'catalog', label: 'Katalog', icon: Compass },
+                { id: 'stats', label: 'Stats', icon: BarChart3 },
+                { id: 'activity', label: 'Activity', icon: History },
+              ] as const
+            ).map((item) => {
+              const active = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    setMobileNavOpen(false);
+                  }}
+                  className={`flex flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-bold transition cursor-pointer ${
+                    active
+                      ? 'text-rose-600'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  <div
+                    className={`px-3 py-1 rounded-full transition ${
+                      active ? 'bg-rose-500/15' : ''
+                    }`}
+                  >
+                    <item.icon className="w-4 h-4" />
+                  </div>
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen((prev) => !prev)}
+              className={`relative flex flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-bold transition cursor-pointer ${
+                mobileNavOpen || isMoreTabActive
+                  ? 'text-rose-600'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <div
+                className={`relative px-3 py-1 rounded-full transition ${
+                  mobileNavOpen || isMoreTabActive ? 'bg-rose-500/15' : ''
+                }`}
+              >
+                <Menu className="w-4 h-4" />
+                {companionConnected && (
+                  <span className="absolute top-0.5 right-2 w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                )}
+              </div>
+              <span>Menu</span>
+            </button>
+          </div>
+        </nav>,
+        document.body
+      )}
+
+      {/* MOBILE SLIDE-OVER NAVIGATION DRAWER */}
+      {mobileNavOpen &&
+        createPortal(
+          <div className="lg:hidden fixed inset-0 z-[80] flex">
+            <div
+              className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs animate-fade-in"
+              onClick={() => setMobileNavOpen(false)}
+            />
+            <div
+              data-mobile-drawer="true"
+              className="relative z-10 w-72 max-w-[84vw] h-[100dvh] bg-white border-r border-slate-200 flex flex-col justify-between shadow-2xl pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+            >
+              <div className="flex flex-col min-h-0 flex-1">
+                {/* User Header */}
+                <div className="p-4 border-b border-slate-200/80 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInspectedMemberId(null);
+                      setActiveTab('profile');
+                      setMobileNavOpen(false);
+                    }}
+                    className="flex items-center gap-2.5 min-w-0 text-left cursor-pointer"
+                  >
+                    {ownExtProfile.avatar_url ? (
+                      <img
+                        src={ownExtProfile.avatar_url}
+                        alt={ownExtProfile.full_name}
+                        className="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-sm font-extrabold text-rose-700 shrink-0">
+                        {avatarInitial}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-sm font-extrabold text-slate-900 truncate">
+                        {ownExtProfile.full_name}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[11px] font-mono text-rose-600">
+                        <span>{stats.stage.code}</span>
+                        <span className="text-slate-400">•</span>
+                        <span className="text-emerald-600 inline-flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          Cloud
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMobileNavOpen(false)}
+                    aria-label="Tutup menu"
+                    className="p-2 rounded-xl bg-slate-100 text-slate-600 hover:text-slate-900 cursor-pointer shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* All 8 Navigation Tabs */}
+                <div className="p-3 space-y-1 overflow-y-auto flex-1">
+                  <div className="px-2 pb-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                    Semua Menu Dashboard
+                  </div>
+                  {navTabs.map((tab) => {
+                    const active = activeTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveTab(tab.id);
+                          setMobileNavOpen(false);
+                        }}
+                        className={`w-full py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 transition cursor-pointer ${
+                          active
+                            ? 'bg-gradient-to-r from-rose-600 to-rose-500 text-white shadow-xs'
+                            : 'text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="inline-flex items-center gap-2.5">
+                          <tab.icon className="w-4 h-4 shrink-0" />
+                          <span>{tab.label}</span>
+                        </span>
+                        {tab.dot && (
+                          <span
+                            className={`w-2 h-2 rounded-full animate-pulse ${
+                              active ? 'bg-white' : 'bg-emerald-500'
+                            }`}
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Drawer Footer Links */}
+              <div className="p-3 border-t border-slate-200/80 space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileNavOpen(false);
+                    setShortcutsModalOpen(true);
+                  }}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-100 text-xs font-bold text-slate-700 flex items-center gap-2 cursor-pointer"
+                >
+                  <Zap className="w-4 h-4 text-rose-600" />
+                  <span>Pintasan &amp; Portal Web</span>
+                </button>
+                <Link
+                  to="/settings"
+                  onClick={() => setMobileNavOpen(false)}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-100 text-xs font-bold text-slate-700 flex items-center gap-2"
+                >
+                  <Settings className="w-4 h-4 text-rose-600" />
+                  <span>Pengaturan &amp; Background</span>
+                </Link>
+                <div className="grid grid-cols-2 gap-1.5 pt-1">
+                  <Link
+                    to="/"
+                    onClick={() => setMobileNavOpen(false)}
+                    className="py-2 px-3 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5"
+                  >
+                    <Home className="w-3.5 h-3.5" />
+                    <span>Beranda</span>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileNavOpen(false);
+                      void signOut();
+                    }}
+                    className="py-2 px-3 rounded-xl bg-white border border-slate-200 text-xs font-bold text-rose-600 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Keluar</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

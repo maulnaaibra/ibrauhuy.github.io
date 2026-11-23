@@ -13,6 +13,7 @@ import {
   LogIn,
   LogOut,
   Mail,
+  Menu,
   MonitorSmartphone,
   Settings,
   Sparkles,
@@ -20,6 +21,7 @@ import {
   Trophy,
   User as UserIcon,
   Users,
+  X,
   Zap,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -50,6 +52,7 @@ export const LandingPage: React.FC = () => {
   const isCloudLoggedIn = Boolean(user);
 
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -221,13 +224,25 @@ export const LandingPage: React.FC = () => {
         className="pointer-events-none absolute top-28 right-[10%] w-[360px] h-[260px] bg-sky-200/30 blur-3xl rounded-full animate-float-reverse"
       />
 
-      <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-slate-200/80 transition-colors">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-rose-500 to-rose-700 flex items-center justify-center font-extrabold text-white shadow-sm shadow-rose-500/25">
+      <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-slate-200/80 transition-colors pt-[env(safe-area-inset-top)]">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              aria-label="Menu Navigasi Beranda"
+              className="md:hidden p-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 hover:text-rose-600 transition cursor-pointer shrink-0"
+            >
+              {mobileMenuOpen ? (
+                <X className="w-4 h-4" />
+              ) : (
+                <Menu className="w-4 h-4" />
+              )}
+            </button>
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-rose-500 to-rose-700 flex items-center justify-center font-extrabold text-white shadow-sm shadow-rose-500/25 shrink-0">
               I
             </div>
-            <span className="font-extrabold text-base tracking-tight text-slate-900">
+            <span className="font-extrabold text-sm sm:text-base tracking-tight text-slate-900 truncate">
               ImmersionTrack
             </span>
           </div>
@@ -256,26 +271,92 @@ export const LandingPage: React.FC = () => {
             </a>
           </nav>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <Link
               to="/settings"
-              className="px-3 sm:px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-rose-50 border border-slate-200 hover:border-rose-300 text-xs sm:text-sm font-bold text-slate-700 hover:text-rose-700 inline-flex items-center gap-1.5 transition"
+              title="Pengaturan & Background"
+              className="p-2 sm:px-3.5 sm:py-2 rounded-xl bg-slate-100 hover:bg-rose-50 border border-slate-200 hover:border-rose-300 text-xs sm:text-sm font-bold text-slate-700 hover:text-rose-700 inline-flex items-center gap-1.5 transition"
             >
-              <Settings className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+              <Settings className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-rose-600 shrink-0" />
               <span className="hidden sm:inline">Pengaturan &amp; Background</span>
-              <span className="sm:hidden">Pengaturan</span>
             </Link>
 
             <button
               type="button"
               onClick={handleOpenDashboard}
-              className="btn-crimson px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 cursor-pointer"
+              className="btn-crimson px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 cursor-pointer"
             >
-              <span>Ke Dashboard Anda</span>
+              <span className="hidden sm:inline">Ke Dashboard Anda</span>
+              <span className="sm:hidden">Dashboard</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
+
+        {/* Mobile Navigation Dropdown */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-slate-200/80 px-4 py-3 space-y-2 bg-white/95 backdrop-blur-md">
+            <div className="grid grid-cols-2 gap-1.5 text-xs font-bold">
+              <a
+                href="#preview"
+                onClick={() => setMobileMenuOpen(false)}
+                className="px-3 py-2 rounded-xl bg-slate-50 text-slate-700 hover:text-rose-600"
+              >
+                Ringkasan
+              </a>
+              <a
+                href="#kalkulator"
+                onClick={() => setMobileMenuOpen(false)}
+                className="px-3 py-2 rounded-xl bg-slate-50 text-slate-700 hover:text-rose-600"
+              >
+                Kalkulator JLPT
+              </a>
+              <a
+                href="#katalog"
+                onClick={() => setMobileMenuOpen(false)}
+                className="px-3 py-2 rounded-xl bg-slate-50 text-slate-700 hover:text-rose-600"
+              >
+                Katalog Media
+              </a>
+              <a
+                href="#fitur"
+                onClick={() => setMobileMenuOpen(false)}
+                className="px-3 py-2 rounded-xl bg-slate-50 text-slate-700 hover:text-rose-600"
+              >
+                Fitur Utama
+              </a>
+              <a
+                href="#komunitas"
+                onClick={() => setMobileMenuOpen(false)}
+                className="px-3 py-2 rounded-xl bg-slate-50 text-slate-700 hover:text-rose-600"
+              >
+                Komunitas
+              </a>
+              <Link
+                to="/settings"
+                onClick={() => setMobileMenuOpen(false)}
+                className="px-3 py-2 rounded-xl bg-slate-50 text-slate-700 hover:text-rose-600 inline-flex items-center gap-1.5"
+              >
+                <Settings className="w-3.5 h-3.5 text-rose-600" />
+                <span>Pengaturan</span>
+              </Link>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                setIsSignUp(false);
+                setShowAuthModal(true);
+              }}
+              className="w-full py-2.5 px-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-extrabold text-rose-700 flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>
+                {isCloudLoggedIn ? 'Akun & Ganti Login' : 'Masuk / Daftar Akun'}
+              </span>
+            </button>
+          </div>
+        )}
       </header>
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-14 pb-20 space-y-24 relative z-10">

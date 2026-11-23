@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Bookmark,
   BookOpen,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Clock,
   Copy,
   Download,
@@ -124,6 +127,7 @@ const READER_THEME_STYLES: Record<
 const READER_SHORTCUTS: Array<{ keys: string[]; desc: string }> = [
   { keys: ['Space', 'Enter', 'PageDown'], desc: 'Halaman / Paragraf VN berikutnya' },
   { keys: ['Backspace', 'PageUp'], desc: 'Halaman / Paragraf VN sebelumnya' },
+  { keys: ['Swipe Kiri / Kanan'], desc: 'Geser layar di HP untuk pindah slide / halaman' },
   { keys: ['→ / J'], desc: 'Maju (Horizontal) / Mundur (Vertikal)' },
   { keys: ['← / K'], desc: 'Mundur (Horizontal) / Maju (Vertikal)' },
   { keys: ['['], desc: 'Bab sebelumnya' },
@@ -137,7 +141,7 @@ const READER_SHORTCUTS: Array<{ keys: string[]; desc: string }> = [
   { keys: ['C'], desc: 'Buka Daftar Bab & Bookmark' },
   { keys: ['H'], desc: 'Buka Riwayat Paragraf (Backlog Mode VN)' },
   { keys: ['S'], desc: 'Buka Pengaturan Reader' },
-  { keys: ['M'], desc: 'Mode Fokus / Zen (sembunyikan toolbar)' },
+  { keys: ['M'], desc: 'Mode Fullscreen / Fokus (sembunyikan toolbar)' },
   { keys: ['?'], desc: 'Tampilkan panduan shortcut ini' },
   { keys: ['Esc'], desc: 'Tutup panel / keluar dari Reader' },
 ];
@@ -145,6 +149,7 @@ const READER_SHORTCUTS: Array<{ keys: string[]; desc: string }> = [
 export const JapaneseNovelReaderModal: React.FC<
   JapaneseNovelReaderModalProps
 > = ({ target, onClose, onLogReadingSession, onBookLibraryChanged }) => {
+  const readerRootRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const vnVerticalViewportRef = useRef<HTMLDivElement | null>(null);
@@ -152,6 +157,9 @@ export const JapaneseNovelReaderModal: React.FC<
   const articleRef = useRef<HTMLElement | null>(null);
   const progressTimerRef = useRef<number | null>(null);
   const pendingJumpToEndRef = useRef(false);
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(
+    null
+  );
 
   const [activeKey, setActiveKey] = useState(target.storageKey);
   const [book, setBook] = useState<StoredNovelBook | null>(null);
@@ -167,6 +175,7 @@ export const JapaneseNovelReaderModal: React.FC<
   const [showBacklog, setShowBacklog] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [zenMode, setZenMode] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const [scrollPct, setScrollPct] = useState(0);
   const [pageInfo, setPageInfo] = useState<{ current: number; total: number }>({
@@ -299,8 +308,57 @@ export const JapaneseNovelReaderModal: React.FC<
 
   const handleCloseReader = useCallback(async () => {
     await persistCurrentProgress();
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch {
+        // ignore fullscreen exit error
+      }
+    }
     onClose();
   }, [persistCurrentProgress, onClose]);
+
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onFsChange = () => {
+      const fsActive = Boolean(document.fullscreenElement);
+      setIsFullscreen(fsActive);
+      if (!fsActive) {
+        setZenMode(false);
+      }
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener('fullscreenchange', onFsChange);
+    };
+  }, []);
+
+  const handleToggleFullscreen = useCallback(async () => {
+    const isCurrentlyFsOrZen = Boolean(document.fullscreenElement) || zenMode;
+    if (isCurrentlyFsOrZen) {
+      setZenMode(false);
+      if (document.fullscreenElement) {
+        try {
+          await document.exitFullscreen();
+        } catch {
+          // ignore
+        }
+      }
+      return;
+    }
+
+    setShowSettings(false);
+    setShowToc(false);
+    setShowBacklog(false);
+    setZenMode(true);
+    try {
+      await readerRootRef.current?.requestFullscreen?.();
+    } catch {
+      // Fallback gracefully to full-viewport 100dvh edge-to-edge Zen Mode (e.g. iOS Safari)
+    }
+  }, [zenMode]);
 
   const handleSwitchChapter = useCallback(
     (
@@ -742,8 +800,7 @@ export const JapaneseNovelReaderModal: React.FC<
         setShowSettings((prev) => !prev);
       } else if (lower === 'm') {
         e.preventDefault();
-        setZenMode((prev) => !prev);
-        setShowSettings(false);
+        void handleToggleFullscreen();
       }
     };
 
@@ -765,6 +822,7 @@ export const JapaneseNovelReaderModal: React.FC<
     handleStepBackward,
     handleSwitchChapter,
     handleAddBookmark,
+    handleToggleFullscreen,
     updatePrefs,
   ]);
 
@@ -822,6 +880,43 @@ export const JapaneseNovelReaderModal: React.FC<
     if (!el || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
     e.preventDefault();
     el.scrollLeft -= e.deltaY;
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length !== 1) {
+      touchStartRef.current = null;
+      return;
+    }
+    const t = e.touches[0];
+    touchStartRef.current = { x: t.clientX, y: t.clientY, time: Date.now() };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start || !book || e.changedTouches.length !== 1) return;
+
+    // Never turn page if user just selected text for Yomitan / copy
+    const activeSel = window.getSelection()?.toString().trim();
+    if (activeSel) return;
+
+    const elapsed = Date.now() - start.time;
+    if (elapsed > 800) return;
+
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+
+    if (Math.abs(dx) < 48 || Math.abs(dy) > Math.abs(dx) * 0.85) return;
+
+    const swipedLeft = dx < 0;
+    if (prefs.writingMode === 'vertical') {
+      if (swipedLeft) handleStepBackward();
+      else handleStepForward();
+    } else {
+      if (swipedLeft) handleStepForward();
+      else handleStepBackward();
+    }
   };
 
   const handleMouseOrKeySelection = () => {
@@ -962,9 +1057,12 @@ export const JapaneseNovelReaderModal: React.FC<
       ? 'jp-writing-vertical'
       : 'jp-writing-horizontal';
 
-  return (
+  const isFullscreenOrZen = isFullscreen || zenMode;
+
+  return createPortal(
     <div
-      className={`fixed inset-0 z-50 flex flex-col ${themeStyle.shell}`}
+      ref={readerRootRef}
+      className={`fixed inset-0 z-[100] w-screen h-[100dvh] flex flex-col overflow-hidden ${themeStyle.shell}`}
       onDragOver={(e) => {
         e.preventDefault();
         setDraggingOver(true);
@@ -994,224 +1092,342 @@ export const JapaneseNovelReaderModal: React.FC<
 
       {/* Drag & drop overlay */}
       {draggingOver && (
-        <div className="fixed inset-0 z-[70] bg-sky-500/20 backdrop-blur-sm border-4 border-dashed border-sky-400 flex items-center justify-center pointer-events-none">
+        <div className="fixed inset-0 z-[120] bg-sky-500/20 backdrop-blur-sm border-4 border-dashed border-sky-400 flex items-center justify-center pointer-events-none">
           <div className="px-6 py-4 rounded-2xl bg-[#0b121c]/95 text-white font-bold text-sm shadow-2xl border border-sky-400/50">
             Lepaskan file .EPUB / .TXT di sini untuk langsung membaca
           </div>
         </div>
       )}
 
-      {/* ZEN MODE EXIT BUTTON */}
-      {zenMode && book && (
-        <button
-          type="button"
-          onClick={() => setZenMode(false)}
-          title="Keluar dari Mode Fokus (M)"
-          className={`fixed top-3 right-3 z-40 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold inline-flex items-center gap-1 opacity-45 hover:opacity-100 transition cursor-pointer ${themeStyle.subtleBtn}`}
-        >
-          <Minimize2 className="w-3.5 h-3.5" />
-          <span>Keluar Fokus (M)</span>
-        </button>
+      {/* FULLSCREEN / ZEN MODE FLOATING CONTROLS (Yomitan-safe, non-blocking) */}
+      {isFullscreenOrZen && book && (
+        <>
+          <button
+            type="button"
+            onClick={() => void handleToggleFullscreen()}
+            title="Keluar Fullscreen (M)"
+            className={`fixed top-[max(0.75rem,env(safe-area-inset-top))] right-3 z-[110] px-3 py-1.5 rounded-xl border text-xs font-extrabold inline-flex items-center gap-1.5 opacity-80 hover:opacity-100 backdrop-blur-md shadow-lg transition cursor-pointer ${themeStyle.subtleBtn}`}
+          >
+            <Minimize2 className="w-3.5 h-3.5" />
+            <span>Keluar Fullscreen</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={
+              prefs.writingMode === 'vertical'
+                ? handleStepForward
+                : handleStepBackward
+            }
+            aria-label={
+              prefs.writingMode === 'vertical'
+                ? 'Halaman Berikutnya'
+                : 'Halaman Sebelumnya'
+            }
+            className={`fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-3 z-[110] px-3.5 py-2.5 rounded-2xl border text-xs font-extrabold inline-flex items-center gap-1 opacity-75 active:opacity-100 hover:opacity-100 backdrop-blur-md shadow-lg transition cursor-pointer ${themeStyle.subtleBtn}`}
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span>{prefs.writingMode === 'vertical' ? 'Lanjut' : 'Prev'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={
+              prefs.writingMode === 'vertical'
+                ? handleStepBackward
+                : handleStepForward
+            }
+            aria-label={
+              prefs.writingMode === 'vertical'
+                ? 'Halaman Sebelumnya'
+                : 'Halaman Berikutnya'
+            }
+            className={`fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-3 z-[110] px-3.5 py-2.5 rounded-2xl border text-xs font-extrabold inline-flex items-center gap-1 opacity-75 active:opacity-100 hover:opacity-100 backdrop-blur-md shadow-lg transition cursor-pointer ${themeStyle.subtleBtn}`}
+          >
+            <span>{prefs.writingMode === 'vertical' ? 'Prev' : 'Lanjut'}</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </>
       )}
 
       {/* TOP TOOLBAR */}
-      {!zenMode && (
+      {!isFullscreenOrZen && (
         <header
-          className={`shrink-0 px-3 sm:px-5 py-2 border-b backdrop-blur-md flex items-center justify-between gap-2 z-20 pt-[max(0.5rem,env(safe-area-inset-top))] ${themeStyle.toolbar}`}
+          className={`shrink-0 border-b backdrop-blur-md z-20 pt-[max(0.5rem,env(safe-area-inset-top))] ${themeStyle.toolbar}`}
         >
-          <div className="flex items-center gap-2 min-w-0">
-            <button
-              type="button"
-              onClick={() => void handleCloseReader()}
-              className={`px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-extrabold inline-flex items-center gap-1 transition cursor-pointer shrink-0 ${themeStyle.subtleBtn}`}
-            >
-              <ChevronLeft className="w-4 h-4" />
-              <span>Tutup</span>
-            </button>
+          {/* Row 1: Primary Bar (Zero Overlap on Mobile) */}
+          <div className="px-3 sm:px-5 py-2 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => void handleCloseReader()}
+                className={`px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-extrabold inline-flex items-center gap-1 transition cursor-pointer shrink-0 ${themeStyle.subtleBtn}`}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span>Tutup</span>
+              </button>
 
-            <div className="min-w-0">
-              <div className="text-xs sm:text-sm font-extrabold truncate">
-                {book?.title || target.title}
+              <div className="min-w-0 flex-1">
+                <div className="text-xs sm:text-sm font-extrabold truncate">
+                  {book?.title || target.title}
+                </div>
+                <div className={`text-[10px] sm:text-[11px] truncate ${themeStyle.mutedText}`}>
+                  {book ? (
+                    <span>
+                      Bab {book.currentChapter + 1}/{book.chapters.length} •{' '}
+                      {readingProgressStats.bookPct}% (
+                      {readingProgressStats.totalChars.toLocaleString('id-ID')}{' '}
+                      huruf)
+                    </span>
+                  ) : (
+                    <span>Reader DOM Native • Yomitan Ready</span>
+                  )}
+                </div>
               </div>
-              <div className={`text-[10px] sm:text-[11px] truncate ${themeStyle.mutedText}`}>
-                {book ? (
-                  <span>
-                    Bab {book.currentChapter + 1}/{book.chapters.length} •{' '}
-                    {readingProgressStats.bookPct}% buku (
-                    {readingProgressStats.totalChars.toLocaleString('id-ID')}{' '}
-                    huruf)
-                  </span>
+            </div>
+
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+              {book && (
+                <>
+                  {/* Desktop Reading Mode Switcher: Scroll | Halaman | VN */}
+                  <div
+                    className={`hidden md:inline-flex items-center p-0.5 rounded-xl border ${themeStyle.subtleBtn}`}
+                  >
+                    {(
+                      [
+                        { id: 'scroll', label: 'Scroll' },
+                        { id: 'paginated', label: 'Halaman' },
+                        { id: 'vn', label: 'Mode VN' },
+                      ] as const
+                    ).map((rm) => (
+                      <button
+                        key={rm.id}
+                        type="button"
+                        onClick={() => updatePrefs({ readingMode: rm.id })}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                          prefs.readingMode === rm.id
+                            ? 'bg-sky-500 text-slate-950'
+                            : 'opacity-75 hover:opacity-100'
+                        }`}
+                      >
+                        {rm.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Desktop Quick Vertical / Horizontal toggle */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updatePrefs({
+                        writingMode:
+                          prefs.writingMode === 'vertical'
+                            ? 'horizontal'
+                            : 'vertical',
+                      })
+                    }
+                    title="Ganti Arah Baca: Vertikal 縦書き / Horizontal (T)"
+                    className={`hidden md:inline-flex px-2.5 py-1.5 rounded-xl border text-xs font-extrabold transition cursor-pointer ${
+                      prefs.writingMode === 'vertical'
+                        ? 'bg-sky-500 text-slate-950 border-sky-400'
+                        : themeStyle.subtleBtn
+                    }`}
+                  >
+                    {prefs.writingMode === 'vertical' ? '縦書き' : '横書き'}
+                  </button>
+
+                  {/* Live Timer & Save to Log */}
+                  <button
+                    type="button"
+                    onClick={handleLogCurrentSession}
+                    title="Catat durasi baca saat ini ke Immersion Log"
+                    className="px-2 sm:px-2.5 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-300 text-xs font-mono font-bold inline-flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                    <span>{formatElapsed(elapsedSec)}</span>
+                    <Save className="w-3 h-3 hidden sm:inline shrink-0" />
+                  </button>
+
+                  {/* Desktop Bookmark */}
+                  <button
+                    type="button"
+                    onClick={() => void handleAddBookmark()}
+                    title="Simpan Bookmark (B)"
+                    className={`hidden md:inline-flex p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold items-center gap-1 transition cursor-pointer ${themeStyle.subtleBtn}`}
+                  >
+                    <Bookmark className="w-3.5 h-3.5 text-sky-400" />
+                  </button>
+
+                  {/* TOC + Bookmarks Drawer */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowToc((prev) => !prev);
+                      setShowSettings(false);
+                      setShowBacklog(false);
+                    }}
+                    title="Daftar Bab & Bookmark (C)"
+                    className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer ${themeStyle.subtleBtn}`}
+                  >
+                    <List className="w-3.5 h-3.5" />
+                    <span className="hidden lg:inline">Bab</span>
+                  </button>
+
+                  {/* Real Fullscreen / Zen Mode — VISIBLE ON MOBILE & DESKTOP */}
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleFullscreen()}
+                    title="Mode Fullscreen / Fokus (M)"
+                    aria-label="Fullscreen"
+                    className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer ${themeStyle.subtleBtn}`}
+                  >
+                    <Maximize2 className="w-3.5 h-3.5 text-sky-400" />
+                    <span className="hidden xl:inline">Fullscreen</span>
+                  </button>
+                </>
+              )}
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importing}
+                title="Pilih / Ganti file EPUB atau TXT"
+                className={`hidden md:inline-flex p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold items-center gap-1 transition cursor-pointer ${themeStyle.subtleBtn}`}
+              >
+                {importing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <span>Reader DOM Native • Yomitan Ready</span>
+                  <Upload className="w-3.5 h-3.5" />
                 )}
-              </div>
+                <span className="hidden xl:inline">
+                  {book ? 'Ganti EPUB' : 'Pilih EPUB'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSettings((prev) => !prev);
+                  setShowToc(false);
+                  setShowBacklog(false);
+                }}
+                title="Pengaturan Baca, Mode VN & Animasi (S)"
+                className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer ${
+                  showSettings
+                    ? 'bg-sky-500 text-slate-950 border-sky-400'
+                    : themeStyle.subtleBtn
+                }`}
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Tampilan</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowShortcuts((prev) => !prev)}
+                title="Panduan Shortcut Keyboard (?)"
+                className={`hidden sm:inline-flex p-1.5 rounded-xl border text-xs font-bold items-center transition cursor-pointer ${themeStyle.subtleBtn}`}
+              >
+                <Keyboard className="w-3.5 h-3.5" />
+              </button>
+
+              <a
+                href={directYatsuUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Buka di Yatsu Reader"
+                className="hidden md:inline-flex btn-crimson px-3 py-1.5 rounded-xl text-xs font-extrabold items-center gap-1 cursor-pointer"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Yatsu</span>
+              </a>
             </div>
           </div>
 
-          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-wrap justify-end">
-            {book && (
-              <>
-                {/* 1-Click Reading Mode Switcher: Scroll | Halaman | VN */}
-                <div
-                  className={`hidden md:inline-flex items-center p-0.5 rounded-xl border ${themeStyle.subtleBtn}`}
-                >
-                  {(
-                    [
-                      { id: 'scroll', label: 'Scroll' },
-                      { id: 'paginated', label: 'Halaman' },
-                      { id: 'vn', label: 'Mode VN' },
-                    ] as const
-                  ).map((rm) => (
-                    <button
-                      key={rm.id}
-                      type="button"
-                      onClick={() => updatePrefs({ readingMode: rm.id })}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
-                        prefs.readingMode === rm.id
-                          ? 'bg-sky-500 text-slate-950'
-                          : 'opacity-75 hover:opacity-100'
-                      }`}
-                    >
-                      {rm.label}
-                    </button>
-                  ))}
-                </div>
+          {/* Row 2: Clean Mobile-Only Quick Controls Strip */}
+          {book && (
+            <div className="md:hidden px-3 pb-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              <div
+                className={`inline-flex items-center p-0.5 rounded-lg border shrink-0 ${themeStyle.subtleBtn}`}
+              >
+                {(
+                  [
+                    { id: 'scroll', label: 'Scroll' },
+                    { id: 'paginated', label: 'Hal' },
+                    { id: 'vn', label: 'VN' },
+                  ] as const
+                ).map((rm) => (
+                  <button
+                    key={rm.id}
+                    type="button"
+                    onClick={() => updatePrefs({ readingMode: rm.id })}
+                    className={`px-2 py-0.5 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                      prefs.readingMode === rm.id
+                        ? 'bg-sky-500 text-slate-950'
+                        : 'opacity-75'
+                    }`}
+                  >
+                    {rm.label}
+                  </button>
+                ))}
+              </div>
 
-                {/* Quick Vertical / Horizontal toggle */}
-                <button
-                  type="button"
-                  onClick={() =>
-                    updatePrefs({
-                      writingMode:
-                        prefs.writingMode === 'vertical'
-                          ? 'horizontal'
-                          : 'vertical',
-                    })
-                  }
-                  title="Ganti Arah Baca: Vertikal 縦書き / Horizontal (T)"
-                  className={`px-2.5 py-1.5 rounded-xl border text-xs font-extrabold transition cursor-pointer ${
-                    prefs.writingMode === 'vertical'
-                      ? 'bg-sky-500 text-slate-950 border-sky-400'
-                      : themeStyle.subtleBtn
-                  }`}
-                >
-                  {prefs.writingMode === 'vertical' ? '縦書き' : '横書き'}
-                </button>
+              <button
+                type="button"
+                onClick={() =>
+                  updatePrefs({
+                    writingMode:
+                      prefs.writingMode === 'vertical'
+                        ? 'horizontal'
+                        : 'vertical',
+                  })
+                }
+                className={`px-2.5 py-1 rounded-lg border text-[11px] font-extrabold shrink-0 cursor-pointer ${
+                  prefs.writingMode === 'vertical'
+                    ? 'bg-sky-500 text-slate-950 border-sky-400'
+                    : themeStyle.subtleBtn
+                }`}
+              >
+                {prefs.writingMode === 'vertical' ? '縦書き' : '横書き'}
+              </button>
 
-                {/* Live Timer & Save to Log */}
-                <button
-                  type="button"
-                  onClick={handleLogCurrentSession}
-                  title="Catat durasi baca saat ini ke Immersion Log"
-                  className="px-2.5 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-300 text-xs font-mono font-bold inline-flex items-center gap-1 transition cursor-pointer"
-                >
-                  <Clock className="w-3.5 h-3.5 shrink-0" />
-                  <span>{formatElapsed(elapsedSec)}</span>
-                  <Save className="w-3 h-3 hidden sm:inline shrink-0" />
-                </button>
+              <button
+                type="button"
+                onClick={() => void handleAddBookmark()}
+                className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${themeStyle.subtleBtn}`}
+              >
+                <Bookmark className="w-3 h-3 text-sky-400" />
+                <span>Bookmark</span>
+              </button>
 
-                {/* Bookmark Current Position */}
-                <button
-                  type="button"
-                  onClick={() => void handleAddBookmark()}
-                  title="Simpan Bookmark (B)"
-                  className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer ${themeStyle.subtleBtn}`}
-                >
-                  <Bookmark className="w-3.5 h-3.5 text-sky-400" />
-                </button>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importing}
+                className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${themeStyle.subtleBtn}`}
+              >
+                <Upload className="w-3 h-3" />
+                <span>EPUB</span>
+              </button>
 
-                {/* TOC + Bookmarks Drawer */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowToc((prev) => !prev);
-                    setShowSettings(false);
-                    setShowBacklog(false);
-                  }}
-                  title="Daftar Bab & Bookmark (C)"
-                  className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer ${themeStyle.subtleBtn}`}
-                >
-                  <List className="w-3.5 h-3.5" />
-                  <span className="hidden lg:inline">Bab</span>
-                </button>
-
-                {/* Zen / Focus Mode */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setZenMode(true);
-                    setShowSettings(false);
-                  }}
-                  title="Mode Fokus / Zen (M)"
-                  className={`hidden sm:inline-flex p-1.5 rounded-xl border text-xs font-bold transition cursor-pointer ${themeStyle.subtleBtn}`}
-                >
-                  <Maximize2 className="w-3.5 h-3.5" />
-                </button>
-              </>
-            )}
-
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importing}
-              title="Pilih / Ganti file EPUB atau TXT"
-              className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer ${themeStyle.subtleBtn}`}
-            >
-              {importing ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Upload className="w-3.5 h-3.5" />
-              )}
-              <span className="hidden xl:inline">
-                {book ? 'Ganti EPUB' : 'Pilih EPUB'}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setShowSettings((prev) => !prev);
-                setShowToc(false);
-                setShowBacklog(false);
-              }}
-              title="Pengaturan Baca, Mode VN & Animasi (S)"
-              className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer ${
-                showSettings
-                  ? 'bg-sky-500 text-slate-950 border-sky-400'
-                  : themeStyle.subtleBtn
-              }`}
-            >
-              <Settings2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Tampilan</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowShortcuts((prev) => !prev)}
-              title="Panduan Shortcut Keyboard (?)"
-              className={`p-1.5 rounded-xl border text-xs font-bold inline-flex items-center transition cursor-pointer ${themeStyle.subtleBtn}`}
-            >
-              <Keyboard className="w-3.5 h-3.5" />
-            </button>
-
-            <a
-              href={directYatsuUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Buka di Yatsu Reader"
-              className="btn-crimson px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Yatsu</span>
-            </a>
-          </div>
+              <a
+                href={directYatsuUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-crimson px-2.5 py-1 rounded-lg text-[11px] font-extrabold inline-flex items-center gap-1 shrink-0"
+              >
+                <ExternalLink className="w-3 h-3" />
+                <span>Yatsu</span>
+              </a>
+            </div>
+          )}
         </header>
       )}
 
       {/* SETTINGS POPOVER */}
       {showSettings && (
         <div
-          className={`fixed top-14 right-3 sm:right-5 z-40 w-[21rem] max-w-[calc(100vw-1.5rem)] max-h-[calc(100dvh-5rem)] overflow-y-auto rounded-2xl border p-4 shadow-2xl space-y-4 animate-scale-in ${themeStyle.panel}`}
+          className={`fixed top-14 right-3 sm:right-5 z-[110] w-[21rem] max-w-[calc(100vw-1.5rem)] max-h-[calc(100dvh-5rem)] overflow-y-auto rounded-2xl border p-4 shadow-2xl space-y-4 animate-scale-in ${themeStyle.panel}`}
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold uppercase tracking-wider">
@@ -1613,11 +1829,11 @@ export const JapaneseNovelReaderModal: React.FC<
       {showToc && book && (
         <>
           <div
-            className="fixed inset-0 z-30 bg-black/45"
+            className="fixed inset-0 z-[105] bg-black/50"
             onClick={() => setShowToc(false)}
           />
           <aside
-            className={`fixed top-12 bottom-0 left-0 z-40 w-80 max-w-[88vw] border-r p-4 flex flex-col gap-3 shadow-2xl ${themeStyle.panel}`}
+            className={`fixed inset-y-0 left-0 z-[110] w-80 max-w-[88vw] border-r p-4 pt-[max(1rem,env(safe-area-inset-top))] flex flex-col gap-3 shadow-2xl ${themeStyle.panel}`}
           >
             <div className="flex items-center justify-between gap-2 pb-2 border-b border-white/10">
               <div className="min-w-0">
@@ -1738,11 +1954,11 @@ export const JapaneseNovelReaderModal: React.FC<
       {showBacklog && book && (
         <>
           <div
-            className="fixed inset-0 z-30 bg-black/45"
+            className="fixed inset-0 z-[105] bg-black/50"
             onClick={() => setShowBacklog(false)}
           />
           <aside
-            className={`fixed top-12 bottom-0 right-0 z-40 w-96 max-w-[92vw] border-l p-4 flex flex-col gap-3 shadow-2xl ${themeStyle.panel}`}
+            className={`fixed inset-y-0 right-0 z-[110] w-96 max-w-[92vw] border-l p-4 pt-[max(1rem,env(safe-area-inset-top))] flex flex-col gap-3 shadow-2xl ${themeStyle.panel}`}
           >
             <div className="flex items-center justify-between gap-2 pb-2 border-b border-white/10">
               <div className="min-w-0">
@@ -1800,7 +2016,7 @@ export const JapaneseNovelReaderModal: React.FC<
       {/* SHORTCUTS CHEATSHEET MODAL */}
       {showShortcuts && (
         <div
-          className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
           onClick={() => setShowShortcuts(false)}
         >
           <div
@@ -1894,12 +2110,14 @@ export const JapaneseNovelReaderModal: React.FC<
         ) : book && activeChapter && prefs.readingMode === 'vn' ? (
           /* VISUAL NOVEL (VN) MODE STAGE — Horizontal & Vertical Tategaki + Animations */
           <div
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
             onMouseUp={handleMouseOrKeySelection}
             onKeyUp={handleMouseOrKeySelection}
             className="flex-1 min-h-0 flex flex-col justify-between p-3 sm:p-6 overflow-hidden"
           >
             {/* Compact VN Controls Bar */}
-            {!zenMode && (
+            {!isFullscreenOrZen && (
               <div className="max-w-4xl w-full mx-auto mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <button
@@ -2065,34 +2283,36 @@ export const JapaneseNovelReaderModal: React.FC<
             )}
 
             {/* VN Stepper Footer Bar */}
-            <div className="max-w-3xl w-full mx-auto pt-3 flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={handleStepBackward}
-                className={`px-4 py-2.5 rounded-xl border text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer ${themeStyle.subtleBtn}`}
-              >
-                <ChevronLeft className="w-4 h-4" />
-                <span>Mundur</span>
-              </button>
+            {!isFullscreenOrZen && (
+              <div className="max-w-3xl w-full mx-auto pt-3 flex items-center justify-between gap-2 pb-[env(safe-area-inset-bottom)]">
+                <button
+                  type="button"
+                  onClick={handleStepBackward}
+                  className={`px-4 py-2.5 rounded-xl border text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer ${themeStyle.subtleBtn}`}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span>Mundur</span>
+                </button>
 
-              <div className={`text-[11px] hidden sm:block ${themeStyle.mutedText}`}>
-                Tekan <kbd className="px-1.5 py-0.5 rounded bg-white/10 font-mono">Space</kbd> /{' '}
-                <kbd className="px-1.5 py-0.5 rounded bg-white/10 font-mono">Enter</kbd> /{' '}
-                <kbd className="px-1.5 py-0.5 rounded bg-white/10 font-mono">
-                  {prefs.writingMode === 'vertical' ? '←' : '→'}
-                </kbd>{' '}
-                untuk lanjut • Hover kata dengan Yomitan
+                <div className={`text-[11px] hidden sm:block ${themeStyle.mutedText}`}>
+                  Tekan <kbd className="px-1.5 py-0.5 rounded bg-white/10 font-mono">Space</kbd> /{' '}
+                  <kbd className="px-1.5 py-0.5 rounded bg-white/10 font-mono">Enter</kbd> /{' '}
+                  <kbd className="px-1.5 py-0.5 rounded bg-white/10 font-mono">
+                    {prefs.writingMode === 'vertical' ? '←' : '→'}
+                  </kbd>{' '}
+                  atau swipe di HP untuk lanjut
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleStepForward}
+                  className="btn-crimson px-5 sm:px-7 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>Lanjut</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
-
-              <button
-                type="button"
-                onClick={handleStepForward}
-                className="btn-crimson px-5 sm:px-7 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <span>Lanjut</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+            )}
           </div>
         ) : book && activeChapter ? (
           /* SCROLL / PAGINATED READING VIEWPORT (Horizontal & True Vertical Tategaki) */
@@ -2100,6 +2320,8 @@ export const JapaneseNovelReaderModal: React.FC<
             ref={scrollContainerRef}
             onScroll={handleScroll}
             onWheel={handleWheel}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
             onMouseUp={handleMouseOrKeySelection}
             onKeyUp={handleMouseOrKeySelection}
             className={`flex-1 min-h-0 ${
@@ -2353,57 +2575,87 @@ export const JapaneseNovelReaderModal: React.FC<
         </div>
       )}
 
-      {/* BOTTOM CHAPTER & STATS NAVIGATION BAR */}
-      {!zenMode && book && activeChapter && (
-        <footer
-          className={`shrink-0 px-3 sm:px-5 py-2 border-t flex items-center justify-between gap-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] ${themeStyle.toolbar}`}
-        >
-          <button
-            type="button"
-            disabled={book.currentChapter <= 0}
-            onClick={() => handleSwitchChapter(book.currentChapter - 1)}
-            className={`px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1 disabled:opacity-40 cursor-pointer shrink-0 ${themeStyle.subtleBtn}`}
+      {/* BOTTOM SLIDE / PAGE & CHAPTER NAVIGATION BAR */}
+      {!isFullscreenOrZen &&
+        book &&
+        activeChapter &&
+        prefs.readingMode !== 'vn' && (
+          <footer
+            className={`shrink-0 px-2.5 sm:px-5 py-2 border-t flex items-center justify-between gap-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] ${themeStyle.toolbar}`}
           >
-            <ChevronLeft className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Bab Sebelumnya</span>
-          </button>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                disabled={book.currentChapter <= 0}
+                onClick={() => handleSwitchChapter(book.currentChapter - 1)}
+                title="Bab Sebelumnya ([)"
+                className={`p-2 rounded-xl border text-xs font-bold disabled:opacity-35 cursor-pointer ${themeStyle.subtleBtn}`}
+              >
+                <ChevronsLeft className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleStepBackward}
+                title="Halaman / Slide Sebelumnya"
+                className={`px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer ${themeStyle.subtleBtn}`}
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span>Prev</span>
+              </button>
+            </div>
 
-          <div className={`text-[11px] font-mono text-center truncate px-2 flex items-center justify-center gap-2 ${themeStyle.mutedText}`}>
-            <span className="truncate max-w-[14rem] sm:max-w-xs">
-              {activeChapter.title}
-            </span>
-            <span>•</span>
-            {prefs.readingMode === 'vn' ? (
-              <span>
-                P{Math.min(vnIndex + 1, chapterParagraphs.length)}/
-                {chapterParagraphs.length}
+            <button
+              type="button"
+              onClick={() => {
+                setShowToc(true);
+                setShowSettings(false);
+                setShowBacklog(false);
+              }}
+              title="Buka Daftar Bab & Bookmark"
+              className={`min-w-0 flex-1 text-[11px] font-mono text-center truncate px-2 py-1 rounded-lg hover:bg-white/10 transition cursor-pointer flex items-center justify-center gap-1.5 ${themeStyle.mutedText}`}
+            >
+              <span className="truncate max-w-[9rem] sm:max-w-xs font-semibold">
+                Bab {book.currentChapter + 1}/{book.chapters.length}
               </span>
-            ) : prefs.readingMode === 'paginated' ? (
-              <span>
-                Hal {pageInfo.current}/{pageInfo.total}
-              </span>
-            ) : (
-              <span>{scrollPct}%</span>
-            )}
-            {readingProgressStats.charsPerHour > 0 && (
-              <span className="hidden md:inline text-sky-400">
-                • ~{readingProgressStats.charsPerHour.toLocaleString('id-ID')}{' '}
-                huruf/jam
-              </span>
-            )}
-          </div>
+              <span>•</span>
+              {prefs.readingMode === 'paginated' ? (
+                <span>
+                  Hal {pageInfo.current}/{pageInfo.total}
+                </span>
+              ) : (
+                <span>{scrollPct}%</span>
+              )}
+              {readingProgressStats.charsPerHour > 0 && (
+                <span className="hidden md:inline text-sky-400">
+                  • ~{readingProgressStats.charsPerHour.toLocaleString('id-ID')}{' '}
+                  huruf/jam
+                </span>
+              )}
+            </button>
 
-          <button
-            type="button"
-            disabled={book.currentChapter >= book.chapters.length - 1}
-            onClick={() => handleSwitchChapter(book.currentChapter + 1)}
-            className={`px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1 disabled:opacity-40 cursor-pointer shrink-0 ${themeStyle.subtleBtn}`}
-          >
-            <span className="hidden sm:inline">Bab Berikutnya</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        </footer>
-      )}
-    </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={handleStepForward}
+                title="Halaman / Slide Berikutnya"
+                className="btn-crimson px-2.5 sm:px-3.5 py-1.5 rounded-xl text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer"
+              >
+                <span>Lanjut</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                disabled={book.currentChapter >= book.chapters.length - 1}
+                onClick={() => handleSwitchChapter(book.currentChapter + 1)}
+                title="Bab Berikutnya (])"
+                className={`p-2 rounded-xl border text-xs font-bold disabled:opacity-35 cursor-pointer ${themeStyle.subtleBtn}`}
+              >
+                <ChevronsRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </footer>
+        )}
+    </div>,
+    document.body
   );
 };
