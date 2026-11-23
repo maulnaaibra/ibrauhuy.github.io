@@ -7,6 +7,24 @@ export interface StoredNovelChapter {
   charCount: number;
 }
 
+export interface NovelBookmark {
+  id: string;
+  chapterIndex: number;
+  chapterTitle: string;
+  scrollRatio: number;
+  vnIndex?: number;
+  excerpt: string;
+  createdAt: number;
+}
+
+export interface ChapterParagraphBlock {
+  id: string;
+  html: string;
+  text: string;
+  charCount: number;
+  isMediaOnly: boolean;
+}
+
 export interface StoredNovelBook {
   storageKey: string;
   catalogItemId?: string;
@@ -17,6 +35,8 @@ export interface StoredNovelBook {
   totalChars: number;
   currentChapter: number;
   scrollRatio: number;
+  vnIndex?: number;
+  bookmarks?: NovelBookmark[];
   updatedAt: number;
 }
 
@@ -24,20 +44,43 @@ export type StoredNovelSummary = Omit<StoredNovelBook, 'chapters'> & {
   chapterCount: number;
 };
 
+export type ReaderMode = 'scroll' | 'paginated' | 'vn';
+export type VnAnimationStyle =
+  | 'fade-up'
+  | 'typewriter'
+  | 'slide'
+  | 'blur-in'
+  | 'none';
+export type VnDisplayStyle = 'card' | 'stream';
+
 export interface ReaderPreferences {
+  readingMode: ReaderMode;
   writingMode: 'horizontal' | 'vertical';
   furigana: 'show' | 'hover' | 'hide';
   fontSize: number;
   fontFamily: 'serif' | 'sans';
   theme: 'navy' | 'amoled' | 'sepia' | 'light';
+  lineHeight: number;
+  maxWidth: 'narrow' | 'medium' | 'wide';
+  indentParagraphs: boolean;
+  vnParagraphsPerStep: number;
+  vnAnimation: VnAnimationStyle;
+  vnDisplayStyle: VnDisplayStyle;
 }
 
 export const DEFAULT_READER_PREFS: ReaderPreferences = {
+  readingMode: 'scroll',
   writingMode: 'horizontal',
   furigana: 'show',
   fontSize: 20,
   fontFamily: 'serif',
   theme: 'navy',
+  lineHeight: 1.95,
+  maxWidth: 'medium',
+  indentParagraphs: true,
+  vnParagraphsPerStep: 2,
+  vnAnimation: 'fade-up',
+  vnDisplayStyle: 'card',
 };
 
 const READER_PREFS_STORAGE_KEY = 'immersiontrack_reader_prefs_v1';
@@ -53,6 +96,10 @@ export function loadReaderPrefs(): ReaderPreferences {
     const raw = localStorage.getItem(READER_PREFS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<ReaderPreferences>;
+      const readingMode: ReaderMode =
+        parsed.readingMode === 'paginated' || parsed.readingMode === 'vn'
+          ? parsed.readingMode
+          : 'scroll';
       const writingMode =
         parsed.writingMode === 'vertical' ? 'vertical' : 'horizontal';
       const furigana =
@@ -70,7 +117,47 @@ export function loadReaderPrefs(): ReaderPreferences {
         parsed.theme === 'light'
           ? parsed.theme
           : 'navy';
-      return { writingMode, furigana, fontSize, fontFamily, theme };
+      const lineHeight =
+        typeof parsed.lineHeight === 'number' &&
+        Number.isFinite(parsed.lineHeight)
+          ? Math.min(2.4, Math.max(1.6, Math.round(parsed.lineHeight * 20) / 20))
+          : DEFAULT_READER_PREFS.lineHeight;
+      const maxWidth: ReaderPreferences['maxWidth'] =
+        parsed.maxWidth === 'narrow' || parsed.maxWidth === 'wide'
+          ? parsed.maxWidth
+          : 'medium';
+      const indentParagraphs =
+        typeof parsed.indentParagraphs === 'boolean'
+          ? parsed.indentParagraphs
+          : DEFAULT_READER_PREFS.indentParagraphs;
+      const vnParagraphsPerStep =
+        typeof parsed.vnParagraphsPerStep === 'number' &&
+        Number.isFinite(parsed.vnParagraphsPerStep)
+          ? Math.min(8, Math.max(1, Math.round(parsed.vnParagraphsPerStep)))
+          : DEFAULT_READER_PREFS.vnParagraphsPerStep;
+      const vnAnimation: VnAnimationStyle =
+        parsed.vnAnimation === 'typewriter' ||
+        parsed.vnAnimation === 'slide' ||
+        parsed.vnAnimation === 'blur-in' ||
+        parsed.vnAnimation === 'none'
+          ? parsed.vnAnimation
+          : 'fade-up';
+      const vnDisplayStyle: VnDisplayStyle =
+        parsed.vnDisplayStyle === 'stream' ? 'stream' : 'card';
+      return {
+        readingMode,
+        writingMode,
+        furigana,
+        fontSize,
+        fontFamily,
+        theme,
+        lineHeight,
+        maxWidth,
+        indentParagraphs,
+        vnParagraphsPerStep,
+        vnAnimation,
+        vnDisplayStyle,
+      };
     }
   } catch {
     // ignore storage errors
@@ -256,7 +343,8 @@ export async function listStoredNovelBooks(): Promise<StoredNovelSummary[]> {
 export async function updateStoredNovelProgress(
   storageKey: string,
   currentChapter: number,
-  scrollRatio: number
+  scrollRatio: number,
+  vnIndex?: number
 ): Promise<void> {
   try {
     const existing = await getStoredNovelBook(storageKey);
@@ -265,11 +353,42 @@ export async function updateStoredNovelProgress(
       ...existing,
       currentChapter,
       scrollRatio,
+      ...(typeof vnIndex === 'number' ? { vnIndex } : {}),
       updatedAt: Date.now(),
     });
   } catch {
     // ignore background progress persistence errors
   }
+}
+
+export async function addStoredNovelBookmark(
+  storageKey: string,
+  bookmark: NovelBookmark
+): Promise<NovelBookmark[]> {
+  const existing = await getStoredNovelBook(storageKey);
+  if (!existing) return [];
+  const next = [bookmark, ...(existing.bookmarks ?? [])].slice(0, 80);
+  await saveStoredNovelBook({
+    ...existing,
+    bookmarks: next,
+    updatedAt: Date.now(),
+  });
+  return next;
+}
+
+export async function deleteStoredNovelBookmark(
+  storageKey: string,
+  bookmarkId: string
+): Promise<NovelBookmark[]> {
+  const existing = await getStoredNovelBook(storageKey);
+  if (!existing) return [];
+  const next = (existing.bookmarks ?? []).filter((b) => b.id !== bookmarkId);
+  await saveStoredNovelBook({
+    ...existing,
+    bookmarks: next,
+    updatedAt: Date.now(),
+  });
+  return next;
 }
 
 export async function deleteStoredNovelBook(storageKey: string): Promise<void> {
@@ -343,6 +462,99 @@ function computeJapaneseCharCount(container: Element): number {
   const clone = container.cloneNode(true) as Element;
   clone.querySelectorAll('rt, rp').forEach((node) => node.remove());
   return (clone.textContent ?? '').replace(/\s+/g, '').length;
+}
+
+function extractCleanTextExcerpt(container: Element): string {
+  const clone = container.cloneNode(true) as Element;
+  clone.querySelectorAll('rt, rp').forEach((node) => node.remove());
+  return (clone.textContent ?? '').replace(/\s+/g, ' ').trim();
+}
+
+const CONTAINER_WRAPPER_TAGS = new Set([
+  'DIV',
+  'SECTION',
+  'ARTICLE',
+  'MAIN',
+  'ASIDE',
+  'HEADER',
+  'FOOTER',
+  'BLOCKQUOTE',
+  'BODY',
+]);
+
+const BLOCK_CHILD_SELECTOR =
+  ':scope > p, :scope > div, :scope > section, :scope > article, :scope > blockquote, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > ul, :scope > ol, :scope > li, :scope > figure';
+
+export function extractChapterParagraphs(
+  chapterHtml: string
+): ChapterParagraphBlock[] {
+  if (!chapterHtml.trim()) return [];
+  const doc = new DOMParser().parseFromString(chapterHtml, 'text/html');
+  const body = doc.body;
+  if (!body) return [];
+
+  const blocks: ChapterParagraphBlock[] = [];
+
+  const pushElement = (el: Element) => {
+    const hasMedia =
+      el.tagName === 'IMG' ||
+      el.tagName === 'SVG' ||
+      el.querySelector('img[src], svg image[href]') !== null;
+    const charCount = computeJapaneseCharCount(el);
+    if (charCount === 0 && !hasMedia) return;
+
+    const text = extractCleanTextExcerpt(el);
+    const wrappedHtml =
+      el.tagName === 'IMG' || el.tagName === 'SVG'
+        ? `<div class="jp-vn-media">${el.outerHTML}</div>`
+        : el.outerHTML;
+
+    blocks.push({
+      id: `p-${blocks.length}`,
+      html: wrappedHtml,
+      text: text.slice(0, 140),
+      charCount,
+      isMediaOnly: charCount === 0 && hasMedia,
+    });
+  };
+
+  const walk = (container: Element) => {
+    const children = Array.from(container.children);
+    if (children.length === 0) {
+      pushElement(container);
+      return;
+    }
+
+    for (const child of children) {
+      const tagUpper = child.tagName.toUpperCase();
+      if (
+        CONTAINER_WRAPPER_TAGS.has(tagUpper) &&
+        child.querySelector(BLOCK_CHILD_SELECTOR) !== null
+      ) {
+        walk(child);
+      } else {
+        pushElement(child);
+      }
+    }
+  };
+
+  walk(body);
+
+  if (blocks.length === 0) {
+    const fallbackChars = computeJapaneseCharCount(body);
+    const hasMedia = body.querySelector('img[src], svg image[href]') !== null;
+    if (fallbackChars > 0 || hasMedia) {
+      blocks.push({
+        id: 'p-0',
+        html: body.innerHTML,
+        text: extractCleanTextExcerpt(body).slice(0, 140),
+        charCount: fallbackChars,
+        isMediaOnly: fallbackChars === 0 && hasMedia,
+      });
+    }
+  }
+
+  return blocks;
 }
 
 function parseXmlOrHtmlDocument(raw: string): Document {
