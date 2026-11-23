@@ -33,6 +33,9 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  Video,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -43,7 +46,9 @@ import {
 } from '../lib/appearance';
 import {
   addStoredNovelBookmark,
+  buildYouTubeBgEmbedUrl,
   DEFAULT_READER_PREFS,
+  deleteReaderBgVideoBlob,
   deleteStoredNovelBook,
   deleteStoredNovelBookmark,
   extractChapterParagraphs,
@@ -51,14 +56,18 @@ import {
   getLibraryStorageInfo,
   getStoredNovelBook,
   listStoredNovelBooks,
+  loadReaderBgVideoBlob,
   loadReaderPrefs,
   loadYatsuBookLinks,
   makeLibraryStorageKey,
   normalizeYatsuUrl,
   parseNovelFile,
+  parseReaderBackgroundMedia,
+  READER_BG_VIDEO_SENTINEL,
   requestPersistentLibraryStorage,
   resolveYatsuUrl,
   saveNovelProgressSync,
+  saveReaderBgVideoBlob,
   saveReaderPrefs,
   saveStoredNovelBook,
   saveYatsuBookLink,
@@ -205,6 +214,8 @@ export const JapaneseNovelReaderModal: React.FC<
   const addBookInputRef = useRef<HTMLInputElement | null>(null);
   const backupInputRef = useRef<HTMLInputElement | null>(null);
   const bgFileInputRef = useRef<HTMLInputElement | null>(null);
+  const bgVideoRef = useRef<HTMLVideoElement | null>(null);
+  const bgYtIframeRef = useRef<HTMLIFrameElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const vnVerticalViewportRef = useRef<HTMLDivElement | null>(null);
   const vnStreamEndRef = useRef<HTMLDivElement | null>(null);
@@ -241,8 +252,9 @@ export const JapaneseNovelReaderModal: React.FC<
   );
   const [bgUrlDraft, setBgUrlDraft] = useState<string>(() => {
     const saved = loadReaderPrefs().bgImageUrl;
-    return saved.startsWith('data:') ? '' : saved;
+    return saved.startsWith('data:') || saved.startsWith('idb:') ? '' : saved;
   });
+  const [localVideoObjectUrl, setLocalVideoObjectUrl] = useState('');
   const [appWallpaperUrl, setAppWallpaperUrl] = useState<string>(
     () => loadAppearanceSettings().customImageUrl
   );
@@ -347,6 +359,29 @@ export const JapaneseNovelReaderModal: React.FC<
     });
   }, []);
 
+  useEffect(() => {
+    if (
+      prefs.bgMode !== 'custom' ||
+      prefs.bgImageUrl !== READER_BG_VIDEO_SENTINEL
+    ) {
+      setLocalVideoObjectUrl('');
+      return;
+    }
+    let cancelled = false;
+    let createdUrl = '';
+    void loadReaderBgVideoBlob().then((blob) => {
+      if (cancelled || !blob) return;
+      createdUrl = URL.createObjectURL(blob);
+      setLocalVideoObjectUrl(createdUrl);
+    });
+    return () => {
+      cancelled = true;
+      if (createdUrl) {
+        URL.revokeObjectURL(createdUrl);
+      }
+    };
+  }, [prefs.bgMode, prefs.bgImageUrl]);
+
   const updatePrefs = useCallback((patch: Partial<ReaderPreferences>): boolean => {
     const next = { ...prefsRef.current, ...patch };
     const saved = saveReaderPrefs(next);
@@ -362,6 +397,21 @@ export const JapaneseNovelReaderModal: React.FC<
     const file = e.target.files?.[0];
     if (!file) return;
     try {
+      if (file.type.startsWith('video/')) {
+        if (file.size > 60 * 1024 * 1024) {
+          toast.error(
+            'Ukuran video maksimal 60 MB agar pemutaran tetap lancar di HP & laptop.'
+          );
+          return;
+        }
+        await saveReaderBgVideoBlob(file);
+        updatePrefs({ bgMode: 'custom', bgImageUrl: READER_BG_VIDEO_SENTINEL });
+        setBgUrlDraft('');
+        toast.success('Video background kustom diterapkan!');
+        return;
+      }
+
+      await deleteReaderBgVideoBlob();
       let dataUrl = await compressImageToDataUrl(file, 1440);
       let saved = updatePrefs({ bgMode: 'custom', bgImageUrl: dataUrl });
       if (!saved) {
@@ -380,7 +430,7 @@ export const JapaneseNovelReaderModal: React.FC<
       toast.error(
         err instanceof Error
           ? err.message
-          : 'Gagal memasang gambar background reader.'
+          : 'Gagal memasang file background reader.'
       );
     } finally {
       e.target.value = '';
@@ -390,14 +440,25 @@ export const JapaneseNovelReaderModal: React.FC<
   const handleApplyBgUrl = (e: React.FormEvent) => {
     e.preventDefault();
     const clean = bgUrlDraft.trim();
-    if (!clean.startsWith('https://') && !clean.startsWith('http://')) {
+    const parsed = parseReaderBackgroundMedia(clean);
+    if (
+      parsed.kind === 'none' ||
+      (!clean.startsWith('https://') && !clean.startsWith('http://'))
+    ) {
       toast.error(
-        'Masukkan URL gambar yang valid (https://... atau http://...).'
+        'Masukkan URL Gambar, YouTube, atau Video (.mp4/.webm) yang valid.'
       );
       return;
     }
+    void deleteReaderBgVideoBlob();
     updatePrefs({ bgMode: 'custom', bgImageUrl: clean });
-    toast.success('URL background reader diterapkan!');
+    if (parsed.kind === 'youtube') {
+      toast.success('Video YouTube diterapkan sebagai background reader!');
+    } else if (parsed.kind === 'video') {
+      toast.success('Link video diterapkan sebagai background reader!');
+    } else {
+      toast.success('URL gambar background reader diterapkan!');
+    }
   };
 
   const computeScrollMetrics = useCallback(() => {
@@ -1392,26 +1453,99 @@ export const JapaneseNovelReaderModal: React.FC<
     return '';
   }, [prefs.bgMode, appWallpaperUrl, prefs.bgImageUrl]);
 
-  const safeBgUrl = useMemo(() => {
-    const raw = resolvedRawBgUrl.trim();
-    if (
-      !raw ||
-      (!raw.startsWith('https://') &&
-        !raw.startsWith('http://') &&
-        !raw.startsWith('data:image/'))
-    ) {
-      return '';
-    }
-    return raw.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  }, [resolvedRawBgUrl]);
+  const bgMedia = useMemo(
+    () => parseReaderBackgroundMedia(resolvedRawBgUrl),
+    [resolvedRawBgUrl]
+  );
 
-  const hasActiveBg = Boolean(safeBgUrl);
+  const safeBgUrl = useMemo(() => {
+    if (bgMedia.kind !== 'image') return '';
+    return bgMedia.url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  }, [bgMedia]);
+
+  const activeVideoSrc =
+    bgMedia.kind === 'local-video'
+      ? localVideoObjectUrl
+      : bgMedia.kind === 'video'
+        ? bgMedia.url
+        : '';
+
+  const isVideoBg =
+    (bgMedia.kind === 'youtube' && Boolean(bgMedia.youtubeId)) ||
+    Boolean(activeVideoSrc);
+
+  const hasActiveBg =
+    isVideoBg || (bgMedia.kind === 'image' && Boolean(safeBgUrl));
+
+  const ytEmbedUrl = useMemo(() => {
+    if (bgMedia.kind !== 'youtube' || !bgMedia.youtubeId) return '';
+    return buildYouTubeBgEmbedUrl(bgMedia.youtubeId, true);
+  }, [bgMedia.kind, bgMedia.youtubeId]);
+
+  const sendYtPlayerCommand = useCallback(
+    (func: string, args: unknown[] = []) => {
+      const win = bgYtIframeRef.current?.contentWindow;
+      if (!win) return;
+      win.postMessage(
+        JSON.stringify({ event: 'command', func, args }),
+        'https://www.youtube-nocookie.com'
+      );
+    },
+    []
+  );
+
+  useEffect(() => {
+    const vid = bgVideoRef.current;
+    if (vid) {
+      vid.muted = prefs.bgVideoMuted;
+      vid.volume = prefs.bgVideoVolume / 100;
+    }
+    if (bgMedia.kind === 'youtube') {
+      sendYtPlayerCommand('setVolume', [prefs.bgVideoVolume]);
+      sendYtPlayerCommand(prefs.bgVideoMuted ? 'mute' : 'unMute');
+      if (!prefs.bgVideoMuted) {
+        sendYtPlayerCommand('playVideo');
+      }
+    }
+  }, [
+    bgMedia.kind,
+    activeVideoSrc,
+    prefs.bgVideoMuted,
+    prefs.bgVideoVolume,
+    sendYtPlayerCommand,
+  ]);
+
+  const handleToggleVideoMute = useCallback(() => {
+    const nextMuted = !prefsRef.current.bgVideoMuted;
+    updatePrefs({ bgVideoMuted: nextMuted });
+    if (bgVideoRef.current) {
+      bgVideoRef.current.muted = nextMuted;
+      bgVideoRef.current.volume = prefsRef.current.bgVideoVolume / 100;
+      if (!nextMuted && bgVideoRef.current.paused) {
+        void bgVideoRef.current.play().catch(() => {});
+      }
+    }
+    if (bgMedia.kind === 'youtube') {
+      sendYtPlayerCommand('setVolume', [prefsRef.current.bgVideoVolume]);
+      sendYtPlayerCommand(nextMuted ? 'mute' : 'unMute');
+      if (!nextMuted) {
+        sendYtPlayerCommand('playVideo');
+      }
+    }
+  }, [bgMedia.kind, sendYtPlayerCommand, updatePrefs]);
+
   const bgPositionCss =
     prefs.bgPosition === 'top'
       ? 'center top'
       : prefs.bgPosition === 'bottom'
         ? 'center bottom'
         : 'center center';
+  const ytPositionTop =
+    prefs.bgPosition === 'top'
+      ? '38%'
+      : prefs.bgPosition === 'bottom'
+        ? '62%'
+        : '50%';
 
   const articleGlassStyle: React.CSSProperties = useMemo(() => {
     if (!hasActiveBg) return {};
@@ -1523,15 +1657,56 @@ export const JapaneseNovelReaderModal: React.FC<
           aria-hidden="true"
           className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none"
         >
-          <div
-            className="absolute -inset-8 bg-cover bg-no-repeat transition-[opacity,filter,background-position] duration-200"
-            style={{
-              backgroundImage: `url("${safeBgUrl}")`,
-              backgroundPosition: bgPositionCss,
-              filter: `blur(${prefs.bgBlur}px)`,
-              opacity: prefs.bgOpacity / 100,
-            }}
-          />
+          {bgMedia.kind === 'youtube' && bgMedia.youtubeId ? (
+            <div
+              className="absolute inset-0 overflow-hidden pointer-events-none transition-[opacity,filter] duration-200"
+              style={{
+                opacity: prefs.bgOpacity / 100,
+                filter: `blur(${prefs.bgBlur}px)`,
+              }}
+            >
+              <iframe
+                ref={bgYtIframeRef}
+                src={ytEmbedUrl}
+                title="Background Video Reader"
+                allow="autoplay; encrypted-media; picture-in-picture"
+                onLoad={() => {
+                  sendYtPlayerCommand('setVolume', [prefsRef.current.bgVideoVolume]);
+                  sendYtPlayerCommand(
+                    prefsRef.current.bgVideoMuted ? 'mute' : 'unMute'
+                  );
+                }}
+                className="jp-reader-yt-cover"
+                style={{ top: ytPositionTop }}
+              />
+            </div>
+          ) : activeVideoSrc ? (
+            <video
+              ref={bgVideoRef}
+              src={activeVideoSrc}
+              autoPlay
+              loop
+              muted={prefs.bgVideoMuted}
+              playsInline
+              preload="auto"
+              className="absolute -inset-8 w-[calc(100%+4rem)] h-[calc(100%+4rem)] object-cover pointer-events-none select-none transition-[opacity,filter,object-position] duration-200"
+              style={{
+                objectPosition: bgPositionCss,
+                filter: `blur(${prefs.bgBlur}px)`,
+                opacity: prefs.bgOpacity / 100,
+              }}
+            />
+          ) : (
+            <div
+              className="absolute -inset-8 bg-cover bg-no-repeat transition-[opacity,filter,background-position] duration-200"
+              style={{
+                backgroundImage: `url("${safeBgUrl}")`,
+                backgroundPosition: bgPositionCss,
+                filter: `blur(${prefs.bgBlur}px)`,
+                opacity: prefs.bgOpacity / 100,
+              }}
+            />
+          )}
         </div>
       )}
 
@@ -1575,7 +1750,7 @@ export const JapaneseNovelReaderModal: React.FC<
       <input
         ref={bgFileInputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,video/mp4,video/webm,video/ogg"
         onChange={handleUploadReaderBg}
         className="hidden"
       />
@@ -1831,6 +2006,33 @@ export const JapaneseNovelReaderModal: React.FC<
                 <span className="hidden xl:inline">+ EPUB</span>
               </button>
 
+              {isVideoBg && (
+                <button
+                  type="button"
+                  onClick={handleToggleVideoMute}
+                  title={
+                    prefs.bgVideoMuted
+                      ? 'Aktifkan Suara Video Background'
+                      : 'Bisukan Suara Video Background'
+                  }
+                  aria-label="Audio Background Video"
+                  className={`hidden md:inline-flex p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold items-center gap-1 transition cursor-pointer ${
+                    !prefs.bgVideoMuted
+                      ? 'bg-emerald-500/20 border-emerald-400/45 text-emerald-300'
+                      : themeStyle.subtleBtn
+                  }`}
+                >
+                  {prefs.bgVideoMuted ? (
+                    <VolumeX className="w-3.5 h-3.5 shrink-0" />
+                  ) : (
+                    <Volume2 className="w-3.5 h-3.5 shrink-0" />
+                  )}
+                  <span className="hidden xl:inline">
+                    {prefs.bgVideoMuted ? 'Bisu' : 'Suara'}
+                  </span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => {
@@ -1843,7 +2045,7 @@ export const JapaneseNovelReaderModal: React.FC<
                     setShowBacklog(false);
                   }
                 }}
-                title="Atur Background, Blur & Opacity Reader"
+                title="Atur Background, Video, Blur & Opacity Reader"
                 aria-label="Background Reader"
                 className={`hidden md:inline-flex p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold items-center gap-1 transition cursor-pointer ${
                   showSettings && settingsTab === 'background'
@@ -1962,6 +2164,25 @@ export const JapaneseNovelReaderModal: React.FC<
                 <Upload className="w-3 h-3" />
                 <span>+ EPUB</span>
               </button>
+
+              {isVideoBg && (
+                <button
+                  type="button"
+                  onClick={handleToggleVideoMute}
+                  className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${
+                    !prefs.bgVideoMuted
+                      ? 'bg-emerald-500/20 border-emerald-400/45 text-emerald-300'
+                      : themeStyle.subtleBtn
+                  }`}
+                >
+                  {prefs.bgVideoMuted ? (
+                    <VolumeX className="w-3 h-3" />
+                  ) : (
+                    <Volume2 className="w-3 h-3" />
+                  )}
+                  <span>{prefs.bgVideoMuted ? 'Bisu' : 'Suara'}</span>
+                </button>
+              )}
 
               <button
                 type="button"
@@ -2630,7 +2851,31 @@ export const JapaneseNovelReaderModal: React.FC<
                   <div
                     className={`relative h-20 rounded-xl overflow-hidden border border-current/15 ${themeStyle.articleBg}`}
                   >
-                    {hasActiveBg && (
+                    {bgMedia.kind === 'youtube' && bgMedia.youtubeId ? (
+                      <div
+                        className="absolute -inset-4 bg-cover bg-no-repeat"
+                        style={{
+                          backgroundImage: `url("https://i.ytimg.com/vi/${bgMedia.youtubeId}/hqdefault.jpg")`,
+                          backgroundPosition: bgPositionCss,
+                          filter: `blur(${prefs.bgBlur}px)`,
+                          opacity: prefs.bgOpacity / 100,
+                        }}
+                      />
+                    ) : activeVideoSrc ? (
+                      <video
+                        src={activeVideoSrc}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="absolute -inset-4 w-[calc(100%+2rem)] h-[calc(100%+2rem)] object-cover"
+                        style={{
+                          objectPosition: bgPositionCss,
+                          filter: `blur(${prefs.bgBlur}px)`,
+                          opacity: prefs.bgOpacity / 100,
+                        }}
+                      />
+                    ) : hasActiveBg ? (
                       <div
                         className="absolute -inset-4 bg-cover bg-no-repeat"
                         style={{
@@ -2640,7 +2885,7 @@ export const JapaneseNovelReaderModal: React.FC<
                           opacity: prefs.bgOpacity / 100,
                         }}
                       />
-                    )}
+                    ) : null}
                     <div className="relative z-10 h-full px-3 flex items-center justify-between gap-2">
                       <div
                         className="px-3 py-1.5 rounded-lg border text-xs font-bold"
@@ -2667,7 +2912,13 @@ export const JapaneseNovelReaderModal: React.FC<
                       </div>
                       <span className="px-2 py-0.5 rounded-md bg-black/55 text-white font-mono text-[10px]">
                         {hasActiveBg
-                          ? `Blur ${prefs.bgBlur}px • ${prefs.bgOpacity}%`
+                          ? `${
+                              bgMedia.kind === 'youtube'
+                                ? 'YT • '
+                                : isVideoBg
+                                  ? 'Video • '
+                                  : ''
+                            }Blur ${prefs.bgBlur}px • ${prefs.bgOpacity}%`
                           : 'Polos'}
                       </span>
                     </div>
@@ -2682,17 +2933,18 @@ export const JapaneseNovelReaderModal: React.FC<
                         className="btn-crimson flex-1 py-2 px-3 rounded-xl text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <Upload className="w-3.5 h-3.5" />
-                        <span>Unggah Gambar</span>
+                        <span>Unggah Gambar / Video</span>
                       </button>
                       {prefs.bgImageUrl.trim() && (
                         <button
                           type="button"
                           onClick={() => {
                             setBgUrlDraft('');
+                            void deleteReaderBgVideoBlob();
                             updatePrefs({ bgMode: 'none', bgImageUrl: '' });
                             toast.success('Background kustom reader dihapus.');
                           }}
-                          title="Hapus gambar background kustom"
+                          title="Hapus background kustom"
                           className={`p-2 rounded-xl border text-xs font-bold text-red-400 cursor-pointer ${themeStyle.subtleBtn}`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -2700,22 +2952,89 @@ export const JapaneseNovelReaderModal: React.FC<
                       )}
                     </div>
 
-                    <form onSubmit={handleApplyBgUrl} className="flex gap-1.5">
-                      <input
-                        type="url"
-                        placeholder="Tempel URL gambar (https://...)"
-                        value={bgUrlDraft}
-                        onChange={(e) => setBgUrlDraft(e.target.value)}
-                        className="flex-1 min-w-0 px-2.5 py-1.5 rounded-xl bg-black/20 border border-current/15 text-xs focus:outline-none focus:border-sky-400"
-                      />
-                      <button
-                        type="submit"
-                        className={`px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer shrink-0 ${themeStyle.subtleBtn}`}
-                      >
-                        Pakai
-                      </button>
+                    <form onSubmit={handleApplyBgUrl} className="space-y-1">
+                      <div className="flex gap-1.5">
+                        <input
+                          type="url"
+                          placeholder="Tempel URL Gambar, YouTube, atau .MP4 (https://...)"
+                          value={bgUrlDraft}
+                          onChange={(e) => setBgUrlDraft(e.target.value)}
+                          className="flex-1 min-w-0 px-2.5 py-1.5 rounded-xl bg-black/20 border border-current/15 text-xs focus:outline-none focus:border-sky-400"
+                        />
+                        <button
+                          type="submit"
+                          className={`px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer shrink-0 ${themeStyle.subtleBtn}`}
+                        >
+                          Pakai
+                        </button>
+                      </div>
+                      <p className={`text-[10px] leading-snug ${themeStyle.mutedText}`}>
+                        Mendukung link YouTube, video .mp4 / .webm, unggah file
+                        video lokal, atau link gambar.
+                      </p>
                     </form>
                   </div>
+
+                  {/* Audio Controls for Video / YouTube Background */}
+                  {isVideoBg && (
+                    <div className="p-3 rounded-xl bg-sky-500/10 border border-sky-400/25 space-y-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={`text-[11px] font-extrabold inline-flex items-center gap-1.5 ${themeStyle.accentText}`}
+                        >
+                          <Video className="w-3.5 h-3.5 shrink-0" />
+                          <span>Audio Video Background</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleToggleVideoMute}
+                          className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer ${
+                            !prefs.bgVideoMuted
+                              ? 'bg-emerald-500/20 border-emerald-400/45 text-emerald-300'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          {prefs.bgVideoMuted ? (
+                            <VolumeX className="w-3 h-3" />
+                          ) : (
+                            <Volume2 className="w-3 h-3" />
+                          )}
+                          <span>
+                            {prefs.bgVideoMuted ? 'Bisu (Autoplay)' : 'Suara Aktif'}
+                          </span>
+                        </button>
+                      </div>
+
+                      <label className="block space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className={`font-bold ${themeStyle.mutedText}`}>
+                            Volume Suara Video
+                          </span>
+                          <span className={`font-mono font-bold ${themeStyle.accentText}`}>
+                            {prefs.bgVideoVolume}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={5}
+                          value={prefs.bgVideoVolume}
+                          onChange={(e) =>
+                            updatePrefs({ bgVideoVolume: Number(e.target.value) })
+                          }
+                          className="w-full h-2 accent-sky-400 cursor-pointer"
+                        />
+                      </label>
+
+                      {bgMedia.kind === 'youtube' && (
+                        <p className={`text-[10px] leading-snug ${themeStyle.mutedText}`}>
+                          Jika video YouTube tidak berputar atau hitam, pemilik video
+                          membatasi embed — gunakan link YouTube lain atau file .mp4.
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Quick Glass & Blur Presets */}
                   <div className="space-y-1.5">
@@ -2883,6 +3202,7 @@ export const JapaneseNovelReaderModal: React.FC<
                 type="button"
                 onClick={() => {
                   setBgUrlDraft('');
+                  void deleteReaderBgVideoBlob();
                   updatePrefs(DEFAULT_READER_PREFS);
                 }}
                 className={`text-[11px] font-bold hover:underline inline-flex items-center gap-1 cursor-pointer ${themeStyle.accentText}`}

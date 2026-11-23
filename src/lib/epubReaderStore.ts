@@ -71,6 +71,20 @@ export type VnAnimationStyle =
 export type VnDisplayStyle = 'card' | 'stream';
 export type ReaderBgMode = 'none' | 'app' | 'custom';
 export type ReaderBgPosition = 'top' | 'center' | 'bottom';
+export type ReaderBgMediaKind =
+  | 'none'
+  | 'image'
+  | 'video'
+  | 'youtube'
+  | 'local-video';
+
+export interface ParsedReaderBgMedia {
+  kind: ReaderBgMediaKind;
+  url: string;
+  youtubeId?: string;
+}
+
+export const READER_BG_VIDEO_SENTINEL = 'idb:reader-bg-video';
 
 export interface ReaderPreferences {
   readingMode: ReaderMode;
@@ -93,6 +107,8 @@ export interface ReaderPreferences {
   bgOpacity: number;
   bgPanelOpacity: number;
   bgPosition: ReaderBgPosition;
+  bgVideoMuted: boolean;
+  bgVideoVolume: number;
 }
 
 export const DEFAULT_READER_PREFS: ReaderPreferences = {
@@ -116,6 +132,8 @@ export const DEFAULT_READER_PREFS: ReaderPreferences = {
   bgOpacity: 45,
   bgPanelOpacity: 72,
   bgPosition: 'center',
+  bgVideoMuted: true,
+  bgVideoVolume: 40,
 };
 
 const READER_PREFS_STORAGE_KEY = 'immersiontrack_reader_prefs_v1';
@@ -214,6 +232,15 @@ export function loadReaderPrefs(): ReaderPreferences {
         parsed.bgPosition === 'top' || parsed.bgPosition === 'bottom'
           ? parsed.bgPosition
           : 'center';
+      const bgVideoMuted =
+        typeof parsed.bgVideoMuted === 'boolean'
+          ? parsed.bgVideoMuted
+          : DEFAULT_READER_PREFS.bgVideoMuted;
+      const bgVideoVolume =
+        typeof parsed.bgVideoVolume === 'number' &&
+        Number.isFinite(parsed.bgVideoVolume)
+          ? Math.min(100, Math.max(0, Math.round(parsed.bgVideoVolume)))
+          : DEFAULT_READER_PREFS.bgVideoVolume;
       return {
         readingMode,
         writingMode,
@@ -235,6 +262,8 @@ export function loadReaderPrefs(): ReaderPreferences {
         bgOpacity,
         bgPanelOpacity,
         bgPosition,
+        bgVideoMuted,
+        bgVideoVolume,
       };
     }
   } catch {
@@ -249,6 +278,164 @@ export function saveReaderPrefs(prefs: ReaderPreferences): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+const YOUTUBE_ID_PATTERN = /^[a-zA-Z0-9_-]{11}$/;
+
+function extractYouTubeVideoId(url: URL): string | null {
+  const host = url.hostname.toLowerCase().replace(/^www\./, '');
+  if (host === 'youtu.be') {
+    const first = url.pathname.split('/').filter(Boolean)[0] ?? '';
+    return YOUTUBE_ID_PATTERN.test(first) ? first : null;
+  }
+  if (
+    host === 'youtube.com' ||
+    host === 'm.youtube.com' ||
+    host === 'music.youtube.com' ||
+    host === 'youtube-nocookie.com'
+  ) {
+    const vParam = url.searchParams.get('v')?.trim() ?? '';
+    if (YOUTUBE_ID_PATTERN.test(vParam)) return vParam;
+    const segments = url.pathname.split('/').filter(Boolean);
+    if (
+      segments.length >= 2 &&
+      (segments[0] === 'shorts' ||
+        segments[0] === 'live' ||
+        segments[0] === 'embed' ||
+        segments[0] === 'v') &&
+      YOUTUBE_ID_PATTERN.test(segments[1])
+    ) {
+      return segments[1];
+    }
+  }
+  return null;
+}
+
+export function parseReaderBackgroundMedia(rawUrl: string): ParsedReaderBgMedia {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return { kind: 'none', url: '' };
+  if (trimmed === READER_BG_VIDEO_SENTINEL) {
+    return { kind: 'local-video', url: trimmed };
+  }
+  if (trimmed.startsWith('data:image/')) {
+    return { kind: 'image', url: trimmed };
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { kind: 'none', url: '' };
+    }
+    const ytId = extractYouTubeVideoId(parsed);
+    if (ytId) {
+      return { kind: 'youtube', url: trimmed, youtubeId: ytId };
+    }
+    if (/\.(mp4|webm|ogg|ogv|m4v|mov)$/i.test(parsed.pathname)) {
+      return { kind: 'video', url: trimmed };
+    }
+    return { kind: 'image', url: trimmed };
+  } catch {
+    return { kind: 'none', url: '' };
+  }
+}
+
+export function buildYouTubeBgEmbedUrl(
+  videoId: string,
+  muted: boolean
+): string {
+  const params = new URLSearchParams({
+    autoplay: '1',
+    mute: muted ? '1' : '0',
+    loop: '1',
+    playlist: videoId,
+    controls: '0',
+    rel: '0',
+    modestbranding: '1',
+    iv_load_policy: '3',
+    playsinline: '1',
+    disablekb: '1',
+    fs: '0',
+    enablejsapi: '1',
+  });
+  return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
+}
+
+const MEDIA_DB_NAME = 'immersiontrack_reader_media_db';
+const MEDIA_STORE_NAME = 'blobs';
+const READER_BG_VIDEO_KEY = 'reader_bg_video';
+
+function openReaderMediaDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('Browser tidak mendukung IndexedDB.'));
+      return;
+    }
+    const req = indexedDB.open(MEDIA_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) {
+        db.createObjectStore(MEDIA_STORE_NAME);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () =>
+      reject(req.error ?? new Error('Gagal membuka database media reader.'));
+  });
+}
+
+export async function saveReaderBgVideoBlob(blob: Blob): Promise<void> {
+  const db = await openReaderMediaDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(MEDIA_STORE_NAME, 'readwrite');
+    tx.objectStore(MEDIA_STORE_NAME).put(blob, READER_BG_VIDEO_KEY);
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error ?? new Error('Gagal menyimpan video background.'));
+    };
+  });
+}
+
+export async function loadReaderBgVideoBlob(): Promise<Blob | null> {
+  try {
+    const db = await openReaderMediaDb();
+    return await new Promise<Blob | null>((resolve) => {
+      const tx = db.transaction(MEDIA_STORE_NAME, 'readonly');
+      const req = tx.objectStore(MEDIA_STORE_NAME).get(READER_BG_VIDEO_KEY);
+      req.onsuccess = () => {
+        db.close();
+        resolve(req.result instanceof Blob ? req.result : null);
+      };
+      req.onerror = () => {
+        db.close();
+        resolve(null);
+      };
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteReaderBgVideoBlob(): Promise<void> {
+  try {
+    const db = await openReaderMediaDb();
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(MEDIA_STORE_NAME, 'readwrite');
+      tx.objectStore(MEDIA_STORE_NAME).delete(READER_BG_VIDEO_KEY);
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve();
+      };
+    });
+  } catch {
+    // ignore storage errors
   }
 }
 

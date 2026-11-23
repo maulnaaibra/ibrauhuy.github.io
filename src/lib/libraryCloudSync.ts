@@ -63,7 +63,11 @@ function sanitizeReaderPrefsForCloud(
   prefs: ReaderPreferences
 ): Partial<ReaderPreferences> {
   const { bgImageUrl, ...rest } = prefs;
-  if (bgImageUrl && !bgImageUrl.startsWith('data:')) {
+  if (
+    bgImageUrl &&
+    !bgImageUrl.startsWith('data:') &&
+    !bgImageUrl.startsWith('idb:')
+  ) {
     return { ...rest, bgImageUrl };
   }
   return rest;
@@ -272,10 +276,18 @@ export async function importFullLibraryBackup(
 
   if (payload.readerPrefs && typeof payload.readerPrefs === 'object') {
     const currentPrefs = loadReaderPrefs();
-    const nextBgImageUrl =
-      currentPrefs.bgImageUrl && currentPrefs.bgImageUrl.startsWith('data:')
-        ? currentPrefs.bgImageUrl
-        : payload.readerPrefs.bgImageUrl ?? currentPrefs.bgImageUrl;
+    const keepCurrentBg =
+      Boolean(currentPrefs.bgImageUrl) &&
+      (currentPrefs.bgImageUrl.startsWith('data:') ||
+        currentPrefs.bgImageUrl.startsWith('idb:'));
+    const incomingBg =
+      payload.readerPrefs.bgImageUrl &&
+      !payload.readerPrefs.bgImageUrl.startsWith('idb:')
+        ? payload.readerPrefs.bgImageUrl
+        : undefined;
+    const nextBgImageUrl = keepCurrentBg
+      ? currentPrefs.bgImageUrl
+      : incomingBg ?? currentPrefs.bgImageUrl;
     saveReaderPrefs({
       ...currentPrefs,
       ...payload.readerPrefs,
