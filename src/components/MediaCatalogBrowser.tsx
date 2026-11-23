@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Bookmark,
+  BookOpen,
   Check,
   CheckCircle2,
   Clock,
@@ -32,6 +33,14 @@ import {
   type EpubMoeVolume,
 } from '../lib/mediaLinks';
 import {
+  listStoredNovelBooks,
+  loadYatsuBookLinks,
+  normalizeYatsuUrl,
+  removeYatsuBookLink,
+  resolveYatsuUrl,
+  saveYatsuBookLink,
+} from '../lib/epubReaderStore';
+import {
   fetchEnrichedCinematicMedia,
   loadUserWatchlist,
   loadWatchedEpisodesMap,
@@ -44,6 +53,10 @@ import {
   notifyCompanionMediaLaunch,
 } from '../lib/companionClient';
 import { resolveCoverUrl } from '../lib/mediaCovers';
+import {
+  JapaneseNovelReaderModal,
+  type NovelReaderTarget,
+} from './JapaneseNovelReaderModal';
 import { MediaCover } from './MediaCover';
 import { getCategoryMeta, type PrimaryMediaCategory } from '../types';
 
@@ -218,6 +231,40 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
   const [liveResults, setLiveResults] = useState<SheetCatalogItem[]>([]);
   const [searchingLive, setSearchingLive] = useState(false);
 
+  const [readerTarget, setReaderTarget] = useState<NovelReaderTarget | null>(
+    null
+  );
+  const [storedBooksMap, setStoredBooksMap] = useState<
+    Record<
+      string,
+      { totalChars: number; currentChapter: number; chapterCount: number }
+    >
+  >({});
+  const [yatsuLinks, setYatsuLinks] = useState<Record<string, string>>(
+    loadYatsuBookLinks
+  );
+  const [yatsuInputDraft, setYatsuInputDraft] = useState('');
+
+  const refreshStoredBooks = useCallback(async () => {
+    const items = await listStoredNovelBooks();
+    const map: Record<
+      string,
+      { totalChars: number; currentChapter: number; chapterCount: number }
+    > = {};
+    for (const item of items) {
+      map[item.storageKey] = {
+        totalChars: item.totalChars,
+        currentChapter: item.currentChapter,
+        chapterCount: item.chapterCount,
+      };
+    }
+    setStoredBooksMap(map);
+  }, []);
+
+  useEffect(() => {
+    void refreshStoredBooks();
+  }, [refreshStoredBooks]);
+
   const mediaIdFromUrl = searchParams.get('media');
 
   const selectedDetail = useMemo<SheetCatalogItem | null>(() => {
@@ -231,6 +278,14 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
     }
     return null;
   }, [mediaIdFromUrl, liveResults, cachedLiveDetail]);
+
+  useEffect(() => {
+    if (!selectedDetail) {
+      setYatsuInputDraft('');
+      return;
+    }
+    setYatsuInputDraft(yatsuLinks[`catalog:${selectedDetail.id}`] ?? '');
+  }, [selectedDetail, yatsuLinks]);
 
   const setSelectedDetail = useCallback(
     (item: SheetCatalogItem | null) => {
@@ -326,7 +381,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
 
   // Keyboard shortcuts inside Cinematic Showcase View (Esc / Backspace = Back, P = Play, L = Add to List)
   useEffect(() => {
-    if (!selectedDetail) return;
+    if (!selectedDetail || readerTarget) return;
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
@@ -341,7 +396,21 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
       ) {
         e.preventDefault();
         const dest = getCatalogMediaDestinations(selectedDetail);
-        window.open(dest.primary.url, '_blank', 'noopener,noreferrer');
+        if (selectedDetail.section === 'Novels') {
+          const dlUrl =
+            dest.volumes && dest.volumes.length > 0
+              ? `https://epub.moe/books/${dest.volumes[0].md5}/download`
+              : dest.quickSecondary?.url;
+          setReaderTarget({
+            storageKey: `catalog:${selectedDetail.id}`,
+            catalogItemId: selectedDetail.id,
+            title: selectedDetail.title,
+            downloadUrl: dlUrl,
+            volumes: dest.volumes,
+          });
+        } else {
+          window.open(dest.primary.url, '_blank', 'noopener,noreferrer');
+        }
       } else if (
         (e.key === 'l' || e.key === 'L') &&
         !e.ctrlKey &&
@@ -360,7 +429,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedDetail, setSelectedDetail]);
+  }, [selectedDetail, setSelectedDetail, readerTarget]);
 
   // Live API Search (AniList Anime/Manga/Novel + VNDB)
   useEffect(() => {
@@ -543,6 +612,17 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
     }
   };
 
+  const readerModal = readerTarget ? (
+    <JapaneseNovelReaderModal
+      target={readerTarget}
+      onClose={() => setReaderTarget(null)}
+      onLogReadingSession={(title, mins) =>
+        onStartMedia(title, 'light_novel', mins)
+      }
+      onBookLibraryChanged={() => void refreshStoredBooks()}
+    />
+  ) : null;
+
   // ============================================================================
   // CINEMATIC SHOWCASE & TIMELINE VIEW (Movy / Netflix Theater Layout)
   // Rendered when user clicks any media item instead of jumping directly out!
@@ -605,6 +685,12 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
       totalEpisodes > 0
         ? Array.from({ length: Math.min(totalEpisodes, 48) }, (_, i) => i + 1)
         : [];
+
+    const isNovel = selectedDetail.section === 'Novels';
+    const novelStorageKey = `catalog:${selectedDetail.id}`;
+    const hasSavedBook = Boolean(storedBooksMap[novelStorageKey]);
+    const linkedYatsuBookUrl = yatsuLinks[novelStorageKey];
+    const yatsuTargetUrl = resolveYatsuUrl(novelStorageKey, yatsuLinks);
 
     return (
       <div className="rounded-2xl sm:rounded-3xl bg-[#09090d] text-white overflow-hidden shadow-2xl border border-white/10 animate-fade-in">
@@ -766,34 +852,79 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
 
               {/* Primary Action Buttons Row (Exact Match to Screenshot: Play | + Add to List | Download | + Log) */}
               <div className="flex items-center gap-2 sm:gap-3 flex-wrap pt-2">
-                <a
-                  href={playUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() =>
-                    handleExternalLaunch(
-                      selectedDetail.title,
-                      dest.primary.siteName,
-                      selectedDetail.category,
-                      playUrl
-                    )
-                  }
-                  className="px-5 sm:px-7 py-2.5 sm:py-3 rounded-xl bg-white hover:bg-slate-200 text-slate-950 font-extrabold text-xs sm:text-sm inline-flex items-center gap-2 shadow-xl transition cursor-pointer"
-                >
-                  <Play className="w-4 h-4 fill-slate-950 text-slate-950" />
-                  <span>
-                    {selectedDetail.section === 'Novels' ||
-                    selectedDetail.section === 'Manga'
-                      ? 'Baca'
-                      : 'Play'}{' '}
-                    {selectedDetail.section === 'Anime' && watchedEps.length > 0
-                      ? `Ep ${Math.min(
-                          totalEpisodes || 99,
-                          Math.max(...watchedEps) + 1
-                        )}`
-                      : `(${dest.primary.siteName})`}
-                  </span>
-                </a>
+                {isNovel ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setReaderTarget({
+                          storageKey: novelStorageKey,
+                          catalogItemId: selectedDetail.id,
+                          title: selectedDetail.title,
+                          downloadUrl: downloadOrSecondaryLink,
+                          volumes: dest.volumes,
+                        })
+                      }
+                      className="px-5 sm:px-7 py-2.5 sm:py-3 rounded-xl bg-white hover:bg-slate-200 text-slate-950 font-extrabold text-xs sm:text-sm inline-flex items-center gap-2 shadow-xl transition cursor-pointer"
+                    >
+                      <BookOpen className="w-4 h-4 text-slate-950 shrink-0" />
+                      <span>
+                        {hasSavedBook
+                          ? 'Lanjut Baca (Yomitan)'
+                          : 'Baca di Reader (Yomitan)'}
+                      </span>
+                    </button>
+
+                    <a
+                      href={yatsuTargetUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() =>
+                        handleExternalLaunch(
+                          selectedDetail.title,
+                          'Yatsu Reader',
+                          selectedDetail.category,
+                          yatsuTargetUrl
+                        )
+                      }
+                      className="px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 text-sky-200 font-bold text-xs sm:text-sm inline-flex items-center gap-2 transition cursor-pointer"
+                    >
+                      <ExternalLink className="w-4 h-4 shrink-0" />
+                      <span>
+                        {linkedYatsuBookUrl
+                          ? 'Baca di Yatsu (Langsung)'
+                          : 'Buka Yatsu Library'}
+                      </span>
+                    </a>
+                  </>
+                ) : (
+                  <a
+                    href={playUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() =>
+                      handleExternalLaunch(
+                        selectedDetail.title,
+                        dest.primary.siteName,
+                        selectedDetail.category,
+                        playUrl
+                      )
+                    }
+                    className="px-5 sm:px-7 py-2.5 sm:py-3 rounded-xl bg-white hover:bg-slate-200 text-slate-950 font-extrabold text-xs sm:text-sm inline-flex items-center gap-2 shadow-xl transition cursor-pointer"
+                  >
+                    <Play className="w-4 h-4 fill-slate-950 text-slate-950" />
+                    <span>
+                      {selectedDetail.section === 'Manga' ? 'Baca' : 'Play'}{' '}
+                      {selectedDetail.section === 'Anime' &&
+                      watchedEps.length > 0
+                        ? `Ep ${Math.min(
+                            totalEpisodes || 99,
+                            Math.max(...watchedEps) + 1
+                          )}`
+                        : `(${dest.primary.siteName})`}
+                    </span>
+                  </a>
+                )}
 
                 <button
                   type="button"
@@ -1032,52 +1163,145 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
               </div>
             )}
 
-            {/* Novel Yatsu Reader Volumes Timeline */}
+            {/* Novel Yatsu Direct Book Link Connector */}
+            {isNovel && (
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-sky-500/[0.08] border border-sky-400/25 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs font-bold text-sky-200 flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                    <span>
+                      Hubungkan Link Buku Yatsu (Opsional — agar tombol Yatsu
+                      langsung buka bukunya)
+                    </span>
+                  </div>
+                  {linkedYatsuBookUrl && (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/35 text-[10px] font-bold text-emerald-300">
+                      ✓ Link Yatsu Terpasang
+                    </span>
+                  )}
+                </div>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const normalized = normalizeYatsuUrl(yatsuInputDraft);
+                    if (!normalized) {
+                      toast.error(
+                        'Tempel link buku dari Yatsu, misalnya https://app.yatsu.moe/b?id=...'
+                      );
+                      return;
+                    }
+                    const next = saveYatsuBookLink(novelStorageKey, normalized);
+                    setYatsuLinks(next);
+                    setYatsuInputDraft(normalized);
+                    toast.success('Link buku Yatsu tersimpan!');
+                  }}
+                  className="flex flex-col sm:flex-row gap-2"
+                >
+                  <input
+                    type="text"
+                    value={yatsuInputDraft}
+                    onChange={(e) => setYatsuInputDraft(e.target.value)}
+                    placeholder="Tempel link https://app.yatsu.moe/b?id=... atau ID buku Yatsu"
+                    className="flex-1 min-w-0 px-3 py-1.5 rounded-xl bg-black/30 border border-white/15 text-xs text-white placeholder:text-white/40 focus:outline-none focus:border-sky-400"
+                  />
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="submit"
+                      className="btn-crimson px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer"
+                    >
+                      Simpan Link
+                    </button>
+                    {linkedYatsuBookUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = removeYatsuBookLink(novelStorageKey);
+                          setYatsuLinks(next);
+                          setYatsuInputDraft('');
+                          toast.success('Link Yatsu dihapus.');
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-white/80 cursor-pointer"
+                      >
+                        Hapus
+                      </button>
+                    )}
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* Novel Yomitan / Yatsu Reader Volumes Timeline */}
             {dest.volumes && dest.volumes.length > 0 && (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {dest.volumes.map((vol, idx) => (
-                  <div
-                    key={vol.md5}
-                    className="p-3.5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 flex items-center justify-between gap-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-[10px] font-mono uppercase tracking-wider text-rose-400">
-                        Volume {idx + 1}
+                {dest.volumes.map((vol, idx) => {
+                  const volKey = `vol:${vol.md5}`;
+                  const volSaved = Boolean(storedBooksMap[volKey]);
+                  const volYatsuUrl = yatsuLinks[volKey] || yatsuTargetUrl;
+                  return (
+                    <div
+                      key={vol.md5}
+                      className="p-3.5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 flex flex-col justify-between gap-2.5"
+                    >
+                      <div className="min-w-0 flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-[10px] font-mono uppercase tracking-wider text-rose-400">
+                            Volume {idx + 1}
+                          </div>
+                          <div className="text-xs font-bold text-white truncate">
+                            {vol.title}
+                          </div>
+                        </div>
+                        {volSaved && (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/35 text-[10px] font-bold text-emerald-300 shrink-0">
+                            ✓ Siap Baca
+                          </span>
+                        )}
                       </div>
-                      <div className="text-xs font-bold text-white truncate">
-                        {vol.title}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setReaderTarget({
+                              storageKey: volKey,
+                              catalogItemId: selectedDetail.id,
+                              title: vol.title,
+                              downloadUrl: `https://epub.moe/books/${vol.md5}/download`,
+                            })
+                          }
+                          className="flex-1 px-3 py-1.5 rounded-xl bg-white text-slate-950 text-xs font-extrabold hover:bg-slate-200 inline-flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <BookOpen className="w-3 h-3 text-slate-950" />
+                          <span>{volSaved ? 'Lanjut Baca' : 'Baca'}</span>
+                        </button>
+                        <a
+                          href={`https://epub.moe/books/${vol.md5}/download`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold inline-flex items-center gap-1"
+                        >
+                          <Download className="w-3 h-3" />
+                          EPUB
+                        </a>
+                        <a
+                          href={volYatsuUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() =>
+                            handleExternalLaunch(
+                              vol.title,
+                              'Yatsu Reader',
+                              selectedDetail.category,
+                              volYatsuUrl
+                            )
+                          }
+                          className="px-2.5 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/30 text-sky-200 text-xs font-bold inline-flex items-center gap-1"
+                        >
+                          Yatsu
+                        </a>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <a
-                        href="https://app.yatsu.moe/library"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() =>
-                          handleExternalLaunch(
-                            vol.title,
-                            'Yatsu Reader',
-                            selectedDetail.category,
-                            'https://app.yatsu.moe/library'
-                          )
-                        }
-                        className="px-3 py-1.5 rounded-xl bg-white text-slate-950 text-xs font-extrabold hover:bg-slate-200 inline-flex items-center gap-1"
-                      >
-                        <Play className="w-3 h-3 fill-slate-950" />
-                        Baca
-                      </a>
-                      <a
-                        href={`https://epub.moe/books/${vol.md5}/download`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold inline-flex items-center gap-1"
-                      >
-                        <Download className="w-3 h-3" />
-                        EPUB
-                      </a>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -1252,6 +1476,7 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
             )}
           </div>
         </div>
+        {readerModal}
       </div>
     );
   }
@@ -1287,6 +1512,21 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            {(section === 'Novels' || section === 'Semua') && (
+              <button
+                type="button"
+                onClick={() =>
+                  setReaderTarget({
+                    storageKey: 'local:quick-reader',
+                    title: 'Reader Novel EPUB (Support Yomitan)',
+                  })
+                }
+                className="btn-crimson px-3 py-1.5 rounded-xl text-xs font-extrabold inline-flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Reader Novel (Yomitan)</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -1490,6 +1730,12 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
                             {watchedCount} Ep
                           </span>
                         )}
+                        {item.section === 'Novels' &&
+                          Boolean(storedBooksMap[`catalog:${item.id}`]) && (
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-bold text-emerald-700">
+                              ✓ Siap Baca (Yomitan)
+                            </span>
+                          )}
                       </div>
                       <div className="block font-bold text-sm text-slate-900 leading-snug line-clamp-2 group-hover:text-rose-700 transition-colors">
                         {item.title}
@@ -1605,6 +1851,8 @@ export const MediaCatalogBrowser: React.FC<MediaCatalogBrowserProps> = ({
           </button>
         </div>
       )}
+
+      {readerModal}
     </div>
   );
 };
