@@ -42,13 +42,19 @@ import { COMMUNITY_LEADERBOARD } from '../lib/publicShowcase';
 import { loadUserGoals, saveUserGoals } from '../lib/demoData';
 import {
   ackCompanionSessions,
+  claimCompanionSessions,
   fetchCompanionStatus,
   loadCompanionSettings,
+  releaseCompanionClaim,
   saveCompanionSettings,
   type CompanionSettings,
   type CompanionStatus,
   type PendingTrackedSession,
 } from '../lib/companionClient';
+import {
+  fetchAnkiTodayStats,
+  loadAnkiSettings,
+} from '../lib/ankiConnect';
 import { MediaCover } from '../components/MediaCover';
 import { WallpaperNavbarButton } from '../components/WallpaperCustomizerPopover';
 import { useAuth } from '../context/AuthContext';
@@ -67,6 +73,7 @@ import {
   getMonthlyComparison,
   getReadingListeningBalance,
   getRecentMediaCards,
+  type JlptLevelSetting,
 } from '../utils/stats';
 import { LiveStopwatch } from '../components/LiveStopwatch';
 import { LogModal } from '../components/LogModal';
@@ -218,6 +225,9 @@ export const DashboardPage: React.FC = () => {
   );
   const [companionChecking, setCompanionChecking] = useState(false);
   const importedPendingIdsRef = useRef<Set<string>>(new Set());
+  const logsLoadedRef = useRef(false);
+  const isPollingCompanionRef = useRef(false);
+  const ankiSyncInFlightRef = useRef(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
@@ -268,8 +278,11 @@ export const DashboardPage: React.FC = () => {
       if (error) {
         toast.error('Gagal memuat riwayat belajar');
       } else {
-        setLogs((data as ImmersionLog[]) ?? []);
+        const loaded = (data as ImmersionLog[]) ?? [];
+        logsRef.current = loaded;
+        setLogs(loaded);
       }
+      logsLoadedRef.current = true;
       setGoals(loadUserGoals(user.id));
       setLoadingLogs(false);
     };
@@ -286,19 +299,54 @@ export const DashboardPage: React.FC = () => {
   }, [logs]);
 
   const importPendingSessions = useCallback(
-    async (sessions: PendingTrackedSession[], notify = false) => {
-      if (!user || sessions.length === 0) return;
+    async (
+      sessions: PendingTrackedSession[],
+      notify = false,
+      claimId?: string | null
+    ) => {
+      if (!user || sessions.length === 0) {
+        if (claimId) {
+          void releaseCompanionClaim(companionSettings.url, claimId).catch(() => {});
+        }
+        return;
+      }
 
       const freshSessions = sessions.filter(
         (s) => !importedPendingIdsRef.current.has(s.id)
       );
-      if (freshSessions.length === 0) return;
+      if (freshSessions.length === 0) {
+        if (claimId) {
+          void releaseCompanionClaim(companionSettings.url, claimId).catch(() => {});
+        }
+        return;
+      }
 
       freshSessions.forEach((s) => importedPendingIdsRef.current.add(s.id));
 
+      const ackedIds: string[] = [];
       let anyInsertedOrUpdated = false;
 
       for (const s of freshSessions) {
+        const isAnkiAutoTrack =
+          s.category === 'study' && s.title.toLowerCase().includes('anki');
+        const hasTodayAnkiConnectSync = logsRef.current.some(
+          (l) =>
+            l.logged_date === s.logged_date &&
+            l.category === 'study' &&
+            (l.notes ?? '').startsWith('AnkiConnect sync')
+        );
+
+        // If today's Anki is already synced accurately via AnkiConnect, ack & skip auto-tracked Anki chunks
+        if (isAnkiAutoTrack && hasTodayAnkiConnectSync) {
+          ackedIds.push(s.id);
+          continue;
+        }
+
+        const safeDuration = Math.min(
+          60,
+          Math.max(1, Math.round(Number(s.duration_minutes || 0)))
+        );
+
         const existingAutoLog = logsRef.current.find(
           (l) =>
             l.logged_date === s.logged_date &&
@@ -308,8 +356,7 @@ export const DashboardPage: React.FC = () => {
         );
 
         if (existingAutoLog) {
-          const nextDuration =
-            existingAutoLog.duration_minutes + s.duration_minutes;
+          const nextDuration = existingAutoLog.duration_minutes + safeDuration;
           const { data, error } = await supabase
             .from('immersion_logs')
             .update({ duration_minutes: nextDuration })
@@ -321,6 +368,7 @@ export const DashboardPage: React.FC = () => {
             importedPendingIdsRef.current.delete(s.id);
             continue;
           }
+          ackedIds.push(s.id);
           if (data) {
             const updatedRow = data as ImmersionLog;
             logsRef.current = logsRef.current.map((l) =>
@@ -338,7 +386,7 @@ export const DashboardPage: React.FC = () => {
               user_id: user.id,
               title: s.title,
               category: s.category,
-              duration_minutes: s.duration_minutes,
+              duration_minutes: safeDuration,
               cards_mined: s.cards_mined,
               notes: s.notes,
               logged_date: s.logged_date,
@@ -350,6 +398,7 @@ export const DashboardPage: React.FC = () => {
             importedPendingIdsRef.current.delete(s.id);
             continue;
           }
+          ackedIds.push(s.id);
           if (data) {
             const insertedRow = data as ImmersionLog;
             logsRef.current = [insertedRow, ...logsRef.current];
@@ -359,16 +408,25 @@ export const DashboardPage: React.FC = () => {
         }
       }
 
-      if (!anyInsertedOrUpdated) return;
-
-      try {
-        await ackCompanionSessions(
-          companionSettings.url,
-          freshSessions.map((s) => s.id)
-        );
-      } catch {
-        // ignore ack failure
+      if (ackedIds.length > 0) {
+        try {
+          await ackCompanionSessions(
+            companionSettings.url,
+            ackedIds,
+            claimId
+          );
+        } catch {
+          // ignore ack failure
+        }
+      } else if (claimId) {
+        try {
+          await releaseCompanionClaim(companionSettings.url, claimId);
+        } catch {
+          // ignore release failure
+        }
       }
+
+      if (!anyInsertedOrUpdated) return;
 
       if (notify) {
         if (freshSessions.length === 1) {
@@ -386,16 +444,33 @@ export const DashboardPage: React.FC = () => {
   );
 
   const pollCompanion = useCallback(async () => {
-    const status = await fetchCompanionStatus(companionSettings.url);
-    setCompanionStatus(status);
-    if (
-      status?.ok &&
-      companionSettings.autoSync &&
-      status.pending.length > 0
-    ) {
-      await importPendingSessions(status.pending, false);
-      const updated = await fetchCompanionStatus(companionSettings.url);
-      if (updated) setCompanionStatus(updated);
+    if (isPollingCompanionRef.current) return;
+    isPollingCompanionRef.current = true;
+    try {
+      const status = await fetchCompanionStatus(companionSettings.url);
+      setCompanionStatus(status);
+      if (
+        status?.ok &&
+        companionSettings.autoSync &&
+        logsLoadedRef.current &&
+        status.pendingCount > 0
+      ) {
+        const claimed = await claimCompanionSessions(companionSettings.url);
+        if (claimed && claimed.ok && claimed.sessions.length > 0) {
+          await importPendingSessions(
+            claimed.sessions,
+            false,
+            claimed.claimId
+          );
+        } else if (claimed === null && status.pending.length > 0) {
+          // Legacy v2.0 fallback when /claim is unavailable
+          await importPendingSessions(status.pending, false, null);
+        }
+        const updated = await fetchCompanionStatus(companionSettings.url);
+        if (updated) setCompanionStatus(updated);
+      }
+    } finally {
+      isPollingCompanionRef.current = false;
     }
   }, [companionSettings.url, companionSettings.autoSync, importPendingSessions]);
 
@@ -544,6 +619,16 @@ export const DashboardPage: React.FC = () => {
     setModalOpen(true);
   };
 
+  const ownExtProfile = useMemo(() => {
+    const base = loadExtendedProfileMeta(
+      user?.id ?? 'default',
+      profile,
+      user?.email,
+      user?.user_metadata
+    );
+    return extProfileOverride ?? base;
+  }, [user, profile, extProfileOverride]);
+
   const stats = useMemo(() => {
     const totalMinutes = logs.reduce((sum, l) => sum + l.duration_minutes, 0);
     const totalHours = totalMinutes / 60;
@@ -561,7 +646,7 @@ export const DashboardPage: React.FC = () => {
       100,
       Math.round((todayMinutes / Math.max(1, dailyGoal)) * 100)
     );
-    const stage = getImmersionStage(totalHours);
+    const stage = getImmersionStage(totalHours, ownExtProfile.jlpt_level);
     const monthly = getMonthlyComparison(logs);
     const balance = getReadingListeningBalance(logs);
     const recentMedia = getRecentMediaCards(logs, 6);
@@ -580,7 +665,7 @@ export const DashboardPage: React.FC = () => {
       balance,
       recentMedia,
     };
-  }, [logs, profile]);
+  }, [logs, profile, ownExtProfile.jlpt_level]);
 
   const rankedLeaderboard = useMemo(() => {
     const selfEntry = {
@@ -644,77 +729,179 @@ export const DashboardPage: React.FC = () => {
     setEditingLog(null);
   };
 
-  const handleSyncAnkiToday = async ({
-    deckName,
-    durationMinutes,
-    cardsMined,
-    reviewsToday,
-  }: {
-    deckName: string;
-    durationMinutes: number;
-    cardsMined: number;
-    reviewsToday: number;
-  }) => {
-    if (!user) return;
-    const todayStr = getLocalDateString();
-    const title = deckName === 'all' ? 'Anki Review' : `Anki — ${deckName}`;
-    const notes = `AnkiConnect sync: ${reviewsToday} review, +${cardsMined} kartu baru`;
+  const handleSyncAnkiToday = useCallback(
+    async ({
+      deckLabel,
+      durationMinutes,
+      cardsMined,
+      reviewsToday,
+      notesAdded = 0,
+      cardsIntroduced = 0,
+      usedExactTimer = false,
+      silent = false,
+    }: {
+      deckLabel: string;
+      durationMinutes: number;
+      cardsMined: number;
+      reviewsToday: number;
+      notesAdded?: number;
+      cardsIntroduced?: number;
+      usedExactTimer?: boolean;
+      silent?: boolean;
+    }) => {
+      if (!user) return;
+      const todayStr = getLocalDateString();
+      const title =
+        deckLabel === 'Semua Deck' ? 'Anki Review' : `Anki — ${deckLabel}`;
+      const methodLabel = usedExactTimer ? 'Revlog Asli' : 'Estimasi';
+      const notes = `AnkiConnect sync (${methodLabel}): ${reviewsToday.toLocaleString('id-ID')} review, +${notesAdded} ditambang, +${cardsIntroduced} baru (${deckLabel})`;
 
-    const existingToday = logs.find(
-      (l) =>
-        l.logged_date === todayStr &&
-        l.category === 'study' &&
-        l.title.startsWith('Anki')
-    );
-
-    if (existingToday) {
-      const { data, error } = await supabase
-        .from('immersion_logs')
-        .update({
-          title,
-          duration_minutes: durationMinutes,
-          cards_mined: cardsMined,
-          notes,
-        })
-        .eq('id', existingToday.id)
-        .select()
-        .single();
-
-      if (error) {
-        toast.error('Gagal memperbarui log Anki');
-        return;
-      }
-      setLogs((prev) =>
-        prev.map((l) =>
-          l.id === existingToday.id ? (data as ImmersionLog) : l
-        )
+      const matchingTodayAnkiLogs = logsRef.current.filter(
+        (l) =>
+          l.logged_date === todayStr &&
+          l.category === 'study' &&
+          ((l.notes ?? '').startsWith('AnkiConnect sync') ||
+            l.title.toLowerCase().startsWith('anki'))
       );
-      toast.success('Log Anki hari ini diperbarui!');
-    } else {
-      const { data, error } = await supabase
-        .from('immersion_logs')
-        .insert([
-          {
-            user_id: user.id,
+
+      const primaryLog =
+        matchingTodayAnkiLogs.find((l) =>
+          (l.notes ?? '').startsWith('AnkiConnect sync')
+        ) ?? matchingTodayAnkiLogs[0];
+      const duplicateIds = matchingTodayAnkiLogs
+        .filter((l) => primaryLog && l.id !== primaryLog.id)
+        .map((l) => l.id);
+
+      if (primaryLog) {
+        if (
+          primaryLog.title === title &&
+          primaryLog.duration_minutes === durationMinutes &&
+          primaryLog.cards_mined === cardsMined &&
+          primaryLog.notes === notes &&
+          duplicateIds.length === 0
+        ) {
+          if (!silent) {
+            toast.success('Statistik Anki hari ini sudah paling mutakhir.');
+          }
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from('immersion_logs')
+          .update({
             title,
-            category: 'study',
             duration_minutes: durationMinutes,
             cards_mined: cardsMined,
             notes,
-            logged_date: todayStr,
-          },
-        ])
-        .select()
-        .single();
+          })
+          .eq('id', primaryLog.id)
+          .select()
+          .single();
 
-      if (error) {
-        toast.error('Gagal menyimpan log Anki');
-        return;
+        if (error) {
+          if (!silent) toast.error('Gagal memperbarui log Anki');
+          return;
+        }
+
+        if (duplicateIds.length > 0) {
+          await supabase.from('immersion_logs').delete().in('id', duplicateIds);
+        }
+
+        const dupSet = new Set(duplicateIds);
+        const updated = data as ImmersionLog;
+        logsRef.current = logsRef.current
+          .filter((l) => !dupSet.has(l.id))
+          .map((l) => (l.id === primaryLog.id ? updated : l));
+        setLogs((prev) =>
+          prev
+            .filter((l) => !dupSet.has(l.id))
+            .map((l) => (l.id === primaryLog.id ? updated : l))
+        );
+        if (!silent) toast.success('Log Anki hari ini diperbarui dengan data akurat!');
+      } else {
+        const { data, error } = await supabase
+          .from('immersion_logs')
+          .insert([
+            {
+              user_id: user.id,
+              title,
+              category: 'study',
+              duration_minutes: durationMinutes,
+              cards_mined: cardsMined,
+              notes,
+              logged_date: todayStr,
+            },
+          ])
+          .select()
+          .single();
+
+        if (error) {
+          if (!silent) toast.error('Gagal menyimpan log Anki');
+          return;
+        }
+        const inserted = data as ImmersionLog;
+        logsRef.current = [inserted, ...logsRef.current];
+        setLogs((prev) => [inserted, ...prev]);
+        if (!silent) toast.success('Statistik Anki hari ini tersimpan ke log!');
       }
-      setLogs((prev) => [data as ImmersionLog, ...prev]);
-      toast.success('Statistik Anki hari ini tersimpan ke log!');
-    }
-  };
+    },
+    [user]
+  );
+
+  // Anki auto-sync loop (runs every 5 minutes when enabled)
+  useEffect(() => {
+    if (!user) return;
+
+    const runAutoAnkiSync = async () => {
+      if (!logsLoadedRef.current || ankiSyncInFlightRef.current) return;
+      const settings = loadAnkiSettings();
+      if (!settings.autoSync) return;
+
+      ankiSyncInFlightRef.current = true;
+      try {
+        const proxyUrl = companionStatus?.ok ? companionSettings.url : undefined;
+        const ankiStats = await fetchAnkiTodayStats(
+          settings.url,
+          settings,
+          settings.secondsPerReview,
+          proxyUrl
+        );
+        if (ankiStats.reviewsToday > 0 || ankiStats.newCardsToday > 0) {
+          await handleSyncAnkiToday({
+            deckLabel: ankiStats.selectedDeckLabel,
+            durationMinutes: Math.max(1, ankiStats.actualMinutes),
+            cardsMined: ankiStats.newCardsToday,
+            reviewsToday: ankiStats.reviewsToday,
+            notesAdded: ankiStats.notesAddedToday,
+            cardsIntroduced: ankiStats.cardsIntroducedToday,
+            usedExactTimer: ankiStats.usedExactTimer,
+            silent: true,
+          });
+        }
+      } catch {
+        // Silent in background if Anki is closed
+      } finally {
+        ankiSyncInFlightRef.current = false;
+      }
+    };
+
+    const timer = setInterval(() => {
+      void runAutoAnkiSync();
+    }, 5 * 60 * 1000);
+
+    const onSettingsChanged = () => {
+      const s = loadAnkiSettings();
+      if (s.autoSync) {
+        void runAutoAnkiSync();
+      }
+    };
+    window.addEventListener('immersiontrack:anki-settings', onSettingsChanged);
+
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('immersiontrack:anki-settings', onSettingsChanged);
+    };
+  }, [user, companionStatus?.ok, companionSettings.url, handleSyncAnkiToday]);
 
   const handleDeleteLog = async (id: string) => {
     const { error } = await supabase
@@ -725,7 +912,24 @@ export const DashboardPage: React.FC = () => {
       toast.error('Gagal menghapus sesi');
     } else {
       toast.success('Sesi dihapus');
+      logsRef.current = logsRef.current.filter((l) => l.id !== id);
       setLogs((prev) => prev.filter((l) => l.id !== id));
+    }
+  };
+
+  const handleDeleteMultipleLogs = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    const { error } = await supabase
+      .from('immersion_logs')
+      .delete()
+      .in('id', ids);
+    if (error) {
+      toast.error('Gagal menghapus sesi terpilih');
+    } else {
+      const idSet = new Set(ids);
+      toast.success(`${ids.length} sesi berhasil dihapus`);
+      logsRef.current = logsRef.current.filter((l) => !idSet.has(l.id));
+      setLogs((prev) => prev.filter((l) => !idSet.has(l.id)));
     }
   };
 
@@ -769,16 +973,6 @@ export const DashboardPage: React.FC = () => {
     );
   };
 
-  const ownExtProfile = useMemo(() => {
-    const base = loadExtendedProfileMeta(
-      user?.id ?? 'default',
-      profile,
-      user?.email,
-      user?.user_metadata
-    );
-    return extProfileOverride ?? base;
-  }, [user, profile, extProfileOverride]);
-
   const activeProfileSnapshot = useMemo(() => {
     if (inspectedMemberId) {
       const comm = buildCommunityMemberSnapshot(inspectedMemberId);
@@ -795,6 +989,25 @@ export const DashboardPage: React.FC = () => {
       await refreshProfile();
     }
     return res;
+  };
+
+  const handleQuickChangeJlptLevel = async (level: JlptLevelSetting) => {
+    const updated: ExtendedUserProfile = {
+      ...ownExtProfile,
+      jlpt_level: level,
+    };
+    setExtProfileOverride(updated);
+    const res = await saveExtendedProfileMeta(user?.id ?? 'default', updated);
+    if (res.ok) {
+      toast.success(
+        level === 'auto'
+          ? 'Level JLPT diatur ke Otomatis (berdasarkan jam)'
+          : `Level JLPT diatur ke ${level}`
+      );
+      await refreshProfile();
+    } else {
+      toast.error(res.error || 'Gagal menyimpan level JLPT');
+    }
   };
 
   const navTabs: Array<{
@@ -1028,11 +1241,16 @@ export const DashboardPage: React.FC = () => {
             </div>
 
             <div className="grid lg:grid-cols-3 gap-4 animate-fade-up delay-1">
-              <div className="card-pro p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                    Tahap Kemahiran (JLPT)
-                  </span>
+              <div className="card-pro p-5 space-y-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Level JLPT
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[10px] font-semibold text-slate-600">
+                      {stats.stage.isManual ? 'Manual' : 'Auto'}
+                    </span>
+                  </div>
                   <span className="inline-flex items-center gap-1 text-xs font-mono text-rose-600">
                     <Award className="w-3.5 h-3.5" />
                     {stats.totalHours.toFixed(1)} jam
@@ -1040,11 +1258,11 @@ export const DashboardPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <div className="flex items-baseline justify-between mb-2">
-                    <span className="text-xl font-extrabold text-slate-900">
+                  <div className="flex items-baseline justify-between mb-1.5 gap-2">
+                    <span className="text-lg sm:text-xl font-extrabold text-slate-900">
                       {stats.stage.label}
                     </span>
-                    <span className="text-xs font-mono text-slate-500">
+                    <span className="text-xs font-mono text-slate-500 shrink-0">
                       {stats.totalHours.toFixed(1)} / {stats.stage.nextTargetHours}j
                     </span>
                   </div>
@@ -1056,37 +1274,118 @@ export const DashboardPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                    <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600">
-                      <span>Listening</span>
-                      <span className="font-mono text-slate-900">
-                        {(stats.balance.listeningMin / 60).toFixed(1)}j
-                      </span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden mt-1.5">
-                      <div
-                        className="h-full bg-rose-600 rounded-full animate-bar"
-                        style={{
-                          width: `${stats.balance.listeningPct}%`,
-                        }}
-                      />
-                    </div>
+                {/* 1-Click JLPT Stage Selector */}
+                <div className="flex items-center gap-1 flex-wrap">
+                  {(
+                    [
+                      'N5',
+                      'N4',
+                      'N3',
+                      'N2',
+                      'N1',
+                      'Native',
+                      'auto',
+                    ] as const
+                  ).map((lvl) => {
+                    const selected =
+                      (ownExtProfile.jlpt_level ?? 'auto') === lvl;
+                    return (
+                      <button
+                        key={lvl}
+                        type="button"
+                        onClick={() => void handleQuickChangeJlptLevel(lvl)}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border transition cursor-pointer ${
+                          selected
+                            ? 'bg-rose-600 border-rose-600 text-white shadow-2xs'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-rose-300 hover:text-rose-600'
+                        }`}
+                      >
+                        {lvl === 'auto' ? 'Auto' : lvl}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Clean 3-Track Immersion Distribution */}
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-bold uppercase tracking-wider text-slate-500">
+                      Distribusi Input
+                    </span>
+                    <span className="font-mono font-semibold text-slate-600">
+                      L/R: {stats.balance.inputListeningPct}% /{' '}
+                      {stats.balance.inputReadingPct}%
+                    </span>
                   </div>
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                    <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600">
-                      <span>Reading</span>
-                      <span className="font-mono text-slate-900">
-                        {(stats.balance.readingMin / 60).toFixed(1)}j
-                      </span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden mt-1.5">
+
+                  <div className="h-2 rounded-full bg-slate-200 overflow-hidden flex">
+                    {stats.balance.listeningPct > 0 && (
                       <div
-                        className="h-full bg-rose-400 rounded-full animate-bar"
-                        style={{
-                          width: `${stats.balance.readingPct}%`,
-                        }}
+                        className="h-full bg-sky-400 transition-all duration-500"
+                        style={{ width: `${stats.balance.listeningPct}%` }}
+                        title={`Listening ${stats.balance.listeningPct}%`}
                       />
+                    )}
+                    {stats.balance.readingPct > 0 && (
+                      <div
+                        className="h-full bg-indigo-400 transition-all duration-500"
+                        style={{ width: `${stats.balance.readingPct}%` }}
+                        title={`Reading ${stats.balance.readingPct}%`}
+                      />
+                    )}
+                    {stats.balance.studyPct > 0 && (
+                      <div
+                        className="h-full bg-emerald-400 transition-all duration-500"
+                        style={{ width: `${stats.balance.studyPct}%` }}
+                        title={`Anki / Study ${stats.balance.studyPct}%`}
+                      />
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <div className="p-2 rounded-lg bg-slate-50 border border-slate-200/80">
+                      <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
+                        <span className="truncate">Listening</span>
+                      </div>
+                      <div className="mt-0.5 flex items-baseline justify-between gap-1 font-mono">
+                        <span className="text-xs font-bold text-slate-900">
+                          {(stats.balance.listeningMin / 60).toFixed(1)}j
+                        </span>
+                        <span className="text-[10px] text-slate-500">
+                          {stats.balance.listeningPct}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-2 rounded-lg bg-slate-50 border border-slate-200/80">
+                      <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
+                        <span className="truncate">Reading</span>
+                      </div>
+                      <div className="mt-0.5 flex items-baseline justify-between gap-1 font-mono">
+                        <span className="text-xs font-bold text-slate-900">
+                          {(stats.balance.readingMin / 60).toFixed(1)}j
+                        </span>
+                        <span className="text-[10px] text-slate-500">
+                          {stats.balance.readingPct}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-2 rounded-lg bg-slate-50 border border-slate-200/80">
+                      <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                        <span className="truncate">Anki/Study</span>
+                      </div>
+                      <div className="mt-0.5 flex items-baseline justify-between gap-1 font-mono">
+                        <span className="text-xs font-bold text-slate-900">
+                          {(stats.balance.studyMin / 60).toFixed(1)}j
+                        </span>
+                        <span className="text-[10px] text-slate-500">
+                          {stats.balance.studyPct}%
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1170,7 +1469,7 @@ export const DashboardPage: React.FC = () => {
                   Ringkasan Bulan Ini
                 </span>
                 <span className="text-xs text-slate-500 font-mono">
-                  Rasio Reading : Listening ={' '}
+                  Rasio Input Listening : Reading ={' '}
                   <strong className="text-slate-900">
                     {stats.balance.ratioLabel}
                   </strong>
@@ -1533,6 +1832,7 @@ export const DashboardPage: React.FC = () => {
               logs={logs}
               onEdit={openEditLogModal}
               onDelete={handleDeleteLog}
+              onDeleteMultiple={handleDeleteMultipleLogs}
             />
           </div>
         )}

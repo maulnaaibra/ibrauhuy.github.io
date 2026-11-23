@@ -393,10 +393,10 @@ export const ProfileDashboardSection: React.FC<
           <div className="flex items-center justify-between gap-2 flex-wrap relative z-10">
             <div className="flex items-center gap-2 text-white text-xs font-mono">
               <span className="px-2.5 py-0.5 rounded-md bg-black/45 backdrop-blur-xs border border-white/20 font-bold">
-                Target JLPT {activeProfile.jlpt_target}
+                Level {stats.stageCode}
               </span>
               <span className="px-2.5 py-0.5 rounded-md bg-black/45 backdrop-blur-xs border border-white/20 font-bold">
-                {stats.stageLabel} ({stats.stageCode})
+                Target JLPT {activeProfile.jlpt_target}
               </span>
             </div>
           </div>
@@ -930,7 +930,38 @@ export const ProfileDashboardSection: React.FC<
             </div>
           </div>
 
-          {/* JLPT Target, Favorite Media, Location, Discord, Daily Goal */}
+          {/* Current JLPT Level, JLPT Target, Location, Discord */}
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="text-xs font-bold text-slate-800">
+                Level JLPT Saat Ini (Tampil di Profil & Dashboard)
+              </label>
+              <span className="text-[11px] text-slate-500">
+                Pilih level manual atau <strong>Auto</strong> sesuai total jam
+              </span>
+            </div>
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+              {(
+                ['auto', 'N5', 'N4', 'N3', 'N2', 'N1', 'Native'] as const
+              ).map((lvl) => (
+                <button
+                  key={lvl}
+                  type="button"
+                  onClick={() =>
+                    setForm((prev) => ({ ...prev, jlpt_level: lvl }))
+                  }
+                  className={`py-2 rounded-xl text-xs font-mono font-bold border transition cursor-pointer ${
+                    (form.jlpt_level ?? 'auto') === lvl
+                      ? 'bg-rose-600 text-white border-rose-600'
+                      : 'bg-white text-slate-700 border-slate-200 hover:border-rose-300'
+                  }`}
+                >
+                  {lvl === 'auto' ? 'Auto' : lvl}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -1134,18 +1165,23 @@ export const ProfileDashboardSection: React.FC<
           </div>
         </div>
 
-        <div className="card-pro p-5 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Tahap Kemahiran
-            </span>
+        <div className="card-pro p-5 space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Level JLPT
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px] font-semibold text-slate-600">
+                {stats.stageIsManual ? 'Manual' : 'Auto'}
+              </span>
+            </div>
             <Award className="w-4 h-4 text-rose-600" />
           </div>
-          <div className="flex items-baseline justify-between">
+          <div className="flex items-baseline justify-between gap-2">
             <span className="text-lg font-extrabold text-slate-900">
               {stats.stageLabel}
             </span>
-            <span className="text-xs font-mono text-rose-600 font-bold">
+            <span className="text-xs font-mono text-rose-600 font-bold shrink-0">
               {stats.stageProgressPct}%
             </span>
           </div>
@@ -1155,22 +1191,142 @@ export const ProfileDashboardSection: React.FC<
               style={{ width: `${stats.stageProgressPct}%` }}
             />
           </div>
+          {isOwnProfile && onSaveProfile && (
+            <div className="flex items-center gap-1 flex-wrap pt-0.5">
+              {(['N5', 'N4', 'N3', 'N2', 'N1', 'Native', 'auto'] as const).map(
+                (lvl) => {
+                  const selected =
+                    (activeProfile.jlpt_level ?? 'auto') === lvl;
+                  return (
+                    <button
+                      key={lvl}
+                      type="button"
+                      onClick={async () => {
+                        const updated = { ...activeProfile, jlpt_level: lvl };
+                        setForm(updated);
+                        const res = await onSaveProfile(updated);
+                        if (res.ok) {
+                          toast.success(
+                            lvl === 'auto'
+                              ? 'Level JLPT diubah ke Auto'
+                              : `Level JLPT diubah ke ${lvl}`
+                          );
+                        }
+                      }}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border transition cursor-pointer ${
+                        selected
+                          ? 'bg-rose-600 border-rose-600 text-white'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-rose-300'
+                      }`}
+                    >
+                      {lvl === 'auto' ? 'Auto' : lvl}
+                    </button>
+                  );
+                }
+              )}
+            </div>
+          )}
         </div>
 
-        <div className="card-pro p-5 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Listening vs Reading
-            </span>
-            <BookOpen className="w-4 h-4 text-rose-600" />
-          </div>
-          <div className="text-lg font-extrabold font-mono text-slate-900">
-            {stats.listeningHours}j L • {stats.readingHours}j R
-          </div>
-          <div className="text-xs font-medium text-slate-500">
-            +{stats.totalCards.toLocaleString('id-ID')} kartu Anki ditambang
-          </div>
-        </div>
+        {(() => {
+          const splitSum = Math.max(
+            0.01,
+            stats.listeningHours + stats.readingHours + stats.studyHours
+          );
+          const lPct =
+            stats.listeningPct ??
+            Math.round((stats.listeningHours / splitSum) * 100);
+          const rPct =
+            stats.readingPct ??
+            Math.round((stats.readingHours / splitSum) * 100);
+          const sPct = stats.studyPct ?? Math.max(0, 100 - lPct - rPct);
+          const inputSum = stats.listeningHours + stats.readingHours;
+          const inLPct =
+            stats.inputListeningPct ??
+            (inputSum > 0
+              ? Math.round((stats.listeningHours / inputSum) * 100)
+              : 0);
+          const inRPct =
+            stats.inputReadingPct ??
+            (inputSum > 0 ? Math.max(0, 100 - inLPct) : 0);
+
+          return (
+            <div className="card-pro p-5 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  Distribusi Input
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[10px] font-mono font-bold text-slate-700">
+                  L/R {inLPct}%/{inRPct}%
+                </span>
+              </div>
+
+              <div className="h-2 rounded-full bg-slate-200 overflow-hidden flex">
+                {lPct > 0 && (
+                  <div
+                    className="h-full bg-sky-400"
+                    style={{ width: `${lPct}%` }}
+                  />
+                )}
+                {rPct > 0 && (
+                  <div
+                    className="h-full bg-indigo-400"
+                    style={{ width: `${rPct}%` }}
+                  />
+                )}
+                {sPct > 0 && (
+                  <div
+                    className="h-full bg-emerald-400"
+                    style={{ width: `${sPct}%` }}
+                  />
+                )}
+              </div>
+
+              <div className="space-y-1 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1.5 text-slate-600 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-sky-400" />
+                    Listening
+                  </span>
+                  <span className="font-mono font-bold text-slate-900">
+                    {stats.listeningHours}j{' '}
+                    <span className="text-slate-500 font-normal">({lPct}%)</span>
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1.5 text-slate-600 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                    Reading
+                  </span>
+                  <span className="font-mono font-bold text-slate-900">
+                    {stats.readingHours}j{' '}
+                    <span className="text-slate-500 font-normal">({rPct}%)</span>
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1.5 text-slate-600 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    Anki / Study
+                  </span>
+                  <span className="font-mono font-bold text-slate-900">
+                    {stats.studyHours}j{' '}
+                    <span className="text-slate-500 font-normal">({sPct}%)</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-1 border-t border-slate-100 flex items-center justify-between text-[11px] font-medium text-slate-500">
+                <span className="inline-flex items-center gap-1">
+                  <BookOpen className="w-3 h-3 text-rose-600" />
+                  Kartu Anki
+                </span>
+                <span className="font-mono font-bold text-slate-900">
+                  +{stats.totalCards.toLocaleString('id-ID')}
+                </span>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Media Showcase & Unlocked Achievements */}

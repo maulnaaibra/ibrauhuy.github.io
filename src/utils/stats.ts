@@ -7,56 +7,67 @@ import {
   type SkillTrack,
 } from '../types';
 
+export type JlptLevelCode = 'N5' | 'N4' | 'N3' | 'N2' | 'N1' | 'Native';
+export type JlptLevelSetting = 'auto' | JlptLevelCode;
+
 export interface ImmersionStageInfo {
-  code: 'N5' | 'N4' | 'N3' | 'N2' | 'N1' | 'Native';
+  code: JlptLevelCode;
   label: string;
   prevTargetHours: number;
   nextTargetHours: number;
   nextStageName: string;
   progressPct: number;
   remainingHours: number;
+  isManual: boolean;
+  estimatedCode: JlptLevelCode;
 }
 
-const IMMERSION_STAGES: Array<{
+export const JLPT_STAGES: Array<{
   minHours: number;
   nextHours: number;
-  code: ImmersionStageInfo['code'];
+  code: JlptLevelCode;
   label: string;
+  shortDesc: string;
   nextStageName: string;
 }> = [
   {
     minHours: 0,
     nextHours: 150,
     code: 'N5',
-    label: 'Tahap N5 · Dasar',
+    label: 'JLPT N5 · Pemula',
+    shortDesc: 'Pemula',
     nextStageName: 'JLPT N5',
   },
   {
     minHours: 150,
     nextHours: 400,
     code: 'N4',
-    label: 'Tahap N4 · Percakapan',
+    label: 'JLPT N4 · Dasar',
+    shortDesc: 'Dasar',
     nextStageName: 'JLPT N4',
   },
   {
     minHours: 400,
     nextHours: 950,
     code: 'N3',
-    label: 'Tahap N3 · Menengah',
+    label: 'JLPT N3 · Menengah',
+    shortDesc: 'Menengah',
     nextStageName: 'JLPT N3',
   },
   {
     minHours: 950,
     nextHours: 1600,
     code: 'N2',
-    label: 'Tahap N2 · Mahir',
+    label: 'JLPT N2 · Mahir',
+    shortDesc: 'Mahir',
     nextStageName: 'JLPT N2',
   },
   {
     minHours: 1600,
     nextHours: 2600,
     code: 'N1',
-    label: 'Tahap N1 · Fasih',
+    label: 'JLPT N1 · Fasih',
+    shortDesc: 'Fasih',
     nextStageName: 'JLPT N1',
   },
   {
@@ -64,22 +75,48 @@ const IMMERSION_STAGES: Array<{
     nextHours: 2600,
     code: 'Native',
     label: 'Native Fluency',
+    shortDesc: 'Native',
     nextStageName: 'Native',
   },
 ];
 
-export const getImmersionStage = (totalHours: number): ImmersionStageInfo => {
+export const getImmersionStage = (
+  totalHours: number,
+  manualLevel?: JlptLevelSetting | null
+): ImmersionStageInfo => {
   const safeHours = Math.max(0, totalHours);
-  const stage =
-    [...IMMERSION_STAGES]
+  const autoStage =
+    [...JLPT_STAGES]
       .reverse()
-      .find((s) => safeHours >= s.minHours) ?? IMMERSION_STAGES[0];
+      .find((s) => safeHours >= s.minHours) ?? JLPT_STAGES[0];
 
-  const span = stage.nextHours - stage.minHours;
-  const progressPct =
-    span <= 0
-      ? 100
-      : Math.min(100, Math.round(((safeHours - stage.minHours) / span) * 100));
+  const manualStage =
+    manualLevel && manualLevel !== 'auto'
+      ? JLPT_STAGES.find((s) => s.code === manualLevel)
+      : undefined;
+
+  const isManual = Boolean(manualStage);
+  const stage = manualStage ?? autoStage;
+
+  let progressPct = 0;
+  if (stage.code === 'Native') {
+    progressPct =
+      safeHours >= stage.nextHours
+        ? 100
+        : Math.min(100, Math.round((safeHours / stage.nextHours) * 100));
+  } else if (isManual && safeHours < stage.minHours) {
+    progressPct = Math.min(
+      100,
+      Math.round((safeHours / Math.max(1, stage.nextHours)) * 100)
+    );
+  } else {
+    const span = stage.nextHours - stage.minHours;
+    progressPct =
+      span <= 0
+        ? 100
+        : Math.min(100, Math.round(((safeHours - stage.minHours) / span) * 100));
+  }
+
   const remainingHours = Math.max(
     0,
     Number((stage.nextHours - safeHours).toFixed(1))
@@ -93,6 +130,8 @@ export const getImmersionStage = (totalHours: number): ImmersionStageInfo => {
     nextStageName: stage.nextStageName,
     progressPct,
     remainingHours,
+    isManual,
+    estimatedCode: autoStage.code,
   };
 };
 
@@ -317,38 +356,60 @@ export const getMonthlyComparison = (logs: ImmersionLog[]) => {
   };
 };
 
+function allocateExactPercentages(values: number[]): number[] {
+  const total = values.reduce((s, v) => s + v, 0);
+  if (total <= 0) return values.map(() => 0);
+  const raw = values.map((v) => (v / total) * 100);
+  const floored = raw.map((x) => Math.floor(x));
+  let remainder = 100 - floored.reduce((s, v) => s + v, 0);
+  const order = raw
+    .map((x, idx) => ({ idx, frac: x - Math.floor(x) }))
+    .sort((a, b) => b.frac - a.frac);
+  for (let i = 0; i < remainder; i++) {
+    floored[order[i % order.length].idx] += 1;
+  }
+  return floored;
+}
+
 export const getReadingListeningBalance = (logs: ImmersionLog[]) => {
   let readingMin = 0;
   let listeningMin = 0;
   let studyMin = 0;
 
   for (const log of logs) {
+    const mins = Math.max(0, log.duration_minutes || 0);
     const track = getCategoryMeta(log.category).track;
-    if (track === 'reading') readingMin += log.duration_minutes;
-    else if (track === 'listening') listeningMin += log.duration_minutes;
-    else studyMin += log.duration_minutes;
+    if (track === 'reading') readingMin += mins;
+    else if (track === 'listening') listeningMin += mins;
+    else studyMin += mins;
   }
 
   const totalMin = readingMin + listeningMin + studyMin;
-  const readingPct = totalMin ? Math.round((readingMin / totalMin) * 100) : 0;
-  const listeningPct = totalMin ? Math.round((listeningMin / totalMin) * 100) : 0;
-  const studyPct = totalMin ? Math.max(0, 100 - readingPct - listeningPct) : 0;
+  const [listeningPct, readingPct, studyPct] = allocateExactPercentages([
+    listeningMin,
+    readingMin,
+    studyMin,
+  ]);
 
-  let ratioLabel = '0 : 0';
-  const inputTotal = readingMin + listeningMin;
-  if (inputTotal > 0) {
-    const rPart = Math.max(0, Math.round((readingMin / inputTotal) * 5));
-    const lPart = Math.max(0, 5 - rPart);
-    ratioLabel = `${rPart} : ${lPart}`;
-  }
+  const inputTotal = listeningMin + readingMin;
+  const [inputListeningPct, inputReadingPct] = allocateExactPercentages([
+    listeningMin,
+    readingMin,
+  ]);
+
+  const ratioLabel =
+    inputTotal > 0 ? `${inputListeningPct}% : ${inputReadingPct}%` : '0% : 0%';
 
   return {
     readingMin,
     listeningMin,
     studyMin,
+    totalMin,
     readingPct,
     listeningPct,
     studyPct,
+    inputListeningPct,
+    inputReadingPct,
     ratioLabel,
   };
 };

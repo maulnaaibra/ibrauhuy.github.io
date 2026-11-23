@@ -29,9 +29,13 @@ import {
   parseWorkspaceBackup,
   saveUserGoals,
 } from '../lib/demoData';
+import {
+  loadExtendedProfileMeta,
+  saveExtendedProfileMeta,
+} from '../lib/profileMeta';
 import { useAuth } from '../context/AuthContext';
 import type { ImmersionLog, Profile } from '../types';
-import { getLocalDateString } from '../utils/stats';
+import { getLocalDateString, type JlptLevelSetting } from '../utils/stats';
 
 const LANGUAGE_PRESETS = [
   'Japanese',
@@ -45,12 +49,16 @@ const GOAL_PRESETS = [30, 60, 90, 120, 180];
 interface SettingsFormProps {
   initialProfile: Profile | null;
   userId: string;
+  userEmail?: string | null;
+  userMetadata?: Record<string, unknown> | null;
   onRefreshProfile: () => Promise<void>;
 }
 
 const SettingsForm: React.FC<SettingsFormProps> = ({
   initialProfile,
   userId,
+  userEmail,
+  userMetadata,
   onRefreshProfile,
 }) => {
   const [fullName, setFullName] = useState(
@@ -62,25 +70,37 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
   const [dailyGoal, setDailyGoal] = useState(
     () => initialProfile?.daily_goal_minutes ?? 90
   );
+  const [jlptLevel, setJlptLevel] = useState<JlptLevelSetting>(
+    () =>
+      loadExtendedProfileMeta(userId, initialProfile, userEmail, userMetadata)
+        .jlpt_level
+  );
   const [saving, setSaving] = useState(false);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
 
-    const payload = {
-      full_name: fullName.trim() || null,
-      target_language: targetLanguage.trim() || 'Japanese',
-      daily_goal_minutes: Math.max(5, Number(dailyGoal)),
-    };
+    const ext = loadExtendedProfileMeta(
+      userId,
+      initialProfile,
+      userEmail,
+      userMetadata
+    );
+    const cleanName = fullName.trim() || ext.full_name;
+    const cleanLang = targetLanguage.trim() || 'Japanese';
+    const cleanGoal = Math.max(5, Number(dailyGoal));
 
-    const { error } = await supabase.from('profiles').upsert({
-      id: userId,
-      ...payload,
+    const res = await saveExtendedProfileMeta(userId, {
+      ...ext,
+      full_name: cleanName,
+      target_language: cleanLang,
+      daily_goal_minutes: cleanGoal,
+      jlpt_level: jlptLevel,
     });
 
-    if (error) {
-      toast.error('Gagal menyimpan pengaturan');
+    if (!res.ok) {
+      toast.error(res.error || 'Gagal menyimpan pengaturan');
     } else {
       await onRefreshProfile();
       toast.success('Pengaturan profil diperbarui!');
@@ -166,6 +186,35 @@ const SettingsForm: React.FC<SettingsFormProps> = ({
           onChange={(e) => setDailyGoal(Number(e.target.value))}
           className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white transition"
         />
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-xs font-semibold text-slate-600">
+            Level JLPT Saat Ini
+          </label>
+          <span className="text-[11px] text-slate-500">
+            Pilih manual atau Auto dari jam
+          </span>
+        </div>
+        <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+          {(['auto', 'N5', 'N4', 'N3', 'N2', 'N1', 'Native'] as const).map(
+            (lvl) => (
+              <button
+                key={lvl}
+                type="button"
+                onClick={() => setJlptLevel(lvl)}
+                className={`py-2 rounded-xl text-xs font-mono font-bold border transition cursor-pointer ${
+                  jlptLevel === lvl
+                    ? 'bg-rose-600 text-white border-rose-600'
+                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-rose-300'
+                }`}
+              >
+                {lvl === 'auto' ? 'Auto' : lvl}
+              </button>
+            )
+          )}
+        </div>
       </div>
 
       <button
@@ -375,6 +424,8 @@ export const SettingsPage: React.FC = () => {
               key={`${profile?.id ?? 'none'}-${profile?.daily_goal_minutes ?? 'init'}-${profile?.target_language ?? ''}`}
               initialProfile={profile}
               userId={user.id}
+              userEmail={user.email}
+              userMetadata={user.user_metadata}
               onRefreshProfile={refreshProfile}
             />
           )}

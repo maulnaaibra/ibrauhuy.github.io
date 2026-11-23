@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   BookOpen,
@@ -47,7 +47,9 @@ import {
 } from '../lib/companionClient';
 import {
   checkAnkiConnection,
+  detectJapaneseDecks,
   fetchAnkiTodayStats,
+  getTopLevelDeck,
   loadAnkiSettings,
   saveAnkiSettings,
   type AnkiConnectionCheck,
@@ -70,10 +72,14 @@ interface DevicesSectionProps {
   onRefreshCompanion: () => Promise<void>;
   onImportPending: (sessions: PendingTrackedSession[]) => Promise<void>;
   onSyncAnkiToday: (payload: {
-    deckName: string;
+    deckLabel: string;
     durationMinutes: number;
     cardsMined: number;
     reviewsToday: number;
+    notesAdded?: number;
+    cardsIntroduced?: number;
+    usedExactTimer?: boolean;
+    silent?: boolean;
   }) => Promise<void>;
 }
 
@@ -376,7 +382,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
       '@echo off',
       'title ImmersionTrack Windows Companion Auto-Starter',
       'echo ========================================================',
-      'echo   Menyiapkan ImmersionTrack Windows Companion Agent v2.0',
+      'echo   Menyiapkan ImmersionTrack Windows Companion Agent v2.1',
       'echo ========================================================',
       'set "REPO_AGENT=C:\\Users\\mmaul\\immersion-vite\\companion\\tracker-agent.mjs"',
       'set "REPO_VBS=C:\\Users\\mmaul\\immersion-vite\\companion\\start-hidden.vbs"',
@@ -405,42 +411,139 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
     );
   };
 
-  const updateAnkiSetting = (patch: Partial<AnkiSettings>) => {
+  const updateAnkiSetting = useCallback((patch: Partial<AnkiSettings>) => {
     setAnkiSettings((prev) => {
       const next = { ...prev, ...patch };
       saveAnkiSettings(next);
       return next;
     });
+  }, []);
+
+  const topLevelDecks = useMemo(() => {
+    const raw = ankiCheck?.decks ?? [];
+    return Array.from(new Set(raw.map(getTopLevelDeck)));
+  }, [ankiCheck?.decks]);
+
+  const ankiSummaryByDeck = useMemo(() => {
+    const map = new Map<string, { reviews: number; minutes: number }>();
+    for (const item of ankiStats?.allDecksSummary ?? []) {
+      map.set(item.deck, { reviews: item.reviews, minutes: item.minutes });
+    }
+    return map;
+  }, [ankiStats?.allDecksSummary]);
+
+  const handleTestAnki = useCallback(
+    async (silent = false) => {
+      setCheckingAnki(true);
+      const activeProxy = companionStatus?.ok ? companionUrl : undefined;
+      const check = await checkAnkiConnection(ankiSettings.url, activeProxy);
+      setAnkiCheck(check);
+
+      if (check.connected) {
+        try {
+          const stats = await fetchAnkiTodayStats(
+            ankiSettings.url,
+            ankiSettings,
+            ankiSettings.secondsPerReview,
+            activeProxy
+          );
+          setAnkiStats(stats);
+          if (!silent) {
+            toast.success(
+              `AnkiConnect v${check.version} terhubung${
+                check.viaProxy ? ' (via Proxy Agent)' : ''
+              }!`
+            );
+          }
+        } catch {
+          if (!silent) {
+            toast.success(`AnkiConnect v${check.version} terhubung!`);
+          }
+        }
+      } else {
+        setAnkiStats(null);
+        if (!silent) {
+          toast.error(check.error || 'AnkiConnect belum merespons');
+        }
+      }
+      setCheckingAnki(false);
+    },
+    [companionStatus?.ok, companionUrl, ankiSettings]
+  );
+
+  // Auto-probe Anki once on mount or when companion connects
+  const initialAnkiProbeRef = useRef<string | null>(null);
+  useEffect(() => {
+    const probeKey = `${ankiSettings.url}::${companionStatus?.ok ? 'proxy' : 'direct'}`;
+    if (initialAnkiProbeRef.current === probeKey) return;
+    if (ankiCheck?.connected) {
+      initialAnkiProbeRef.current = probeKey;
+      return;
+    }
+    initialAnkiProbeRef.current = probeKey;
+    void handleTestAnki(true);
+  }, [
+    ankiSettings.url,
+    companionStatus?.ok,
+    ankiCheck?.connected,
+    handleTestAnki,
+  ]);
+
+  // Live refresh Anki stats whenever deck filter / introduced-cards / rollover setting changes
+  useEffect(() => {
+    if (!ankiCheck?.connected) return;
+    let active = true;
+    const activeProxy = companionStatus?.ok ? companionUrl : undefined;
+    void fetchAnkiTodayStats(
+      ankiSettings.url,
+      ankiSettings,
+      ankiSettings.secondsPerReview,
+      activeProxy
+    )
+      .then((stats) => {
+        if (active) setAnkiStats(stats);
+      })
+      .catch(() => {
+        // ignore transient refresh failure
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    ankiCheck?.connected,
+    companionStatus?.ok,
+    companionUrl,
+    ankiSettings,
+  ]);
+
+  const handleToggleDeckSelection = (deckName: string) => {
+    const current = ankiSettings.selectedDecks ?? [];
+    const exists = current.includes(deckName);
+    const nextDecks = exists
+      ? current.filter((d) => d !== deckName)
+      : [...current, deckName];
+    updateAnkiSetting({
+      selectedDecks: nextDecks,
+      selectedDeck: nextDecks.length === 1 ? nextDecks[0] : 'all',
+    });
   };
 
-  const handleTestAnki = async () => {
-    setCheckingAnki(true);
-    const activeProxy = companionStatus?.ok ? companionUrl : undefined;
-    const check = await checkAnkiConnection(ankiSettings.url, activeProxy);
-    setAnkiCheck(check);
-
-    if (check.connected) {
-      try {
-        const stats = await fetchAnkiTodayStats(
-          ankiSettings.url,
-          ankiSettings.selectedDeck,
-          ankiSettings.secondsPerReview,
-          activeProxy
-        );
-        setAnkiStats(stats);
-        toast.success(
-          `AnkiConnect v${check.version} terhubung${
-            check.viaProxy ? ' (via Proxy Agent)' : ''
-          }!`
-        );
-      } catch {
-        toast.success(`AnkiConnect v${check.version} terhubung!`);
-      }
-    } else {
-      setAnkiStats(null);
-      toast.error(check.error || 'AnkiConnect belum merespons');
+  const handleSelectJapaneseDecks = () => {
+    const jpDecks = detectJapaneseDecks(ankiCheck?.decks ?? []);
+    if (jpDecks.length === 0) {
+      toast('Tidak menemukan deck khusus Jepang; menggunakan Semua Deck.');
+      updateAnkiSetting({ selectedDecks: [], selectedDeck: 'all' });
+      return;
     }
-    setCheckingAnki(false);
+    updateAnkiSetting({
+      selectedDecks: jpDecks,
+      selectedDeck: jpDecks.length === 1 ? jpDecks[0] : 'all',
+    });
+    toast.success(`${jpDecks.length} deck bahasa Jepang dipilih!`);
+  };
+
+  const handleSelectAllDecks = () => {
+    updateAnkiSetting({ selectedDecks: [], selectedDeck: 'all' });
   };
 
   const handleSyncAnki = async () => {
@@ -449,21 +552,24 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
     try {
       const stats = await fetchAnkiTodayStats(
         ankiSettings.url,
-        ankiSettings.selectedDeck,
+        ankiSettings,
         ankiSettings.secondsPerReview,
         activeProxy
       );
       setAnkiStats(stats);
       if (stats.reviewsToday === 0 && stats.newCardsToday === 0) {
-        toast('Belum ada review atau kartu baru Anki hari ini.');
+        toast('Belum ada review atau kartu baru Anki di deck terpilih hari ini.');
         setSyncingAnki(false);
         return;
       }
       await onSyncAnkiToday({
-        deckName: ankiSettings.selectedDeck,
-        durationMinutes: Math.max(1, stats.estimatedMinutes),
+        deckLabel: stats.selectedDeckLabel,
+        durationMinutes: Math.max(1, stats.actualMinutes),
         cardsMined: stats.newCardsToday,
         reviewsToday: stats.reviewsToday,
+        notesAdded: stats.notesAddedToday,
+        cardsIntroduced: stats.cardsIntroducedToday,
+        usedExactTimer: stats.usedExactTimer,
       });
     } catch {
       toast.error('Gagal mengambil statistik Anki hari ini');
@@ -544,7 +650,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     Terhubung • {companionStatus?.deviceName} (v
-                    {companionStatus?.version ?? '2.0'})
+                    {companionStatus?.version ?? '2.1'})
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-[11px] font-medium text-slate-600">
@@ -602,6 +708,16 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
 
         {connected && companionStatus && (
           <div className="space-y-5 pt-3 border-t border-slate-100">
+            {(!companionStatus.version ||
+              companionStatus.version < '2.1.0') && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  Companion Agent versi lama ({companionStatus.version ?? '2.0'}
+                  ) masih aktif. Restart Agent agar mode anti-ghost-tracking &amp;
+                  atomic claim v2.1 aktif.
+                </span>
+              </div>
+            )}
             <div className="grid lg:grid-cols-2 gap-4">
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
                 <div className="flex items-center justify-between text-xs gap-2 flex-wrap">
@@ -782,8 +898,8 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                     className="accent-sky-400 w-4 h-4 rounded"
                   />
                   <span>
-                    <strong>Track Aplikasi Immersion di Background</strong>{' '}
-                    (Fushi, Anki, MPV, Browser)
+                    <strong>Track Media Pasif di Background</strong>{' '}
+                    (Anime/Video/Audio; Anki &amp; bacaan hanya saat jendela aktif)
                   </span>
                 </label>
               </div>
@@ -860,6 +976,11 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                               {win.isForeground && (
                                 <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-semibold shrink-0">
                                   Foreground
+                                </span>
+                              )}
+                              {win.isMinimized && (
+                                <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 text-[10px] font-semibold shrink-0">
+                                  Minimized
                                 </span>
                               )}
                               {win.isTracked && (
@@ -1146,13 +1267,13 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                 </code>
               </p>
               <p>
-                3. Agent v2.0 sudah otomatis mendeteksi aplikasi seperti{' '}
+                3. Agent v2.1 sudah otomatis mendeteksi aplikasi seperti{' '}
                 <strong>Fushi</strong>, <strong>Anki</strong>,{' '}
                 <strong>MPV / VLC</strong>, <strong>Bettermelon</strong>,{' '}
                 <strong>Yatsu Reader</strong>, <strong>Epub.moe</strong>,{' '}
                 <strong>Cinejoy</strong>,{' '}
-                <strong>MangaDex</strong>, dan <strong>YouTube</strong> baik di
-                jendela depan maupun saat sedang dibuka di background.
+                <strong>MangaDex</strong>, dan <strong>YouTube</strong>{' '}
+                dengan akurasi fokus &amp; anti-double-count saat sync.
               </p>
             </div>
           )}
@@ -1201,7 +1322,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
             <button
               type="button"
               disabled={checkingAnki}
-              onClick={handleTestAnki}
+              onClick={() => void handleTestAnki(false)}
               className="btn-crimson px-3.5 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
             >
               <RefreshCw
@@ -1212,23 +1333,95 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
           </div>
 
           {ankiCheck?.connected && (
-            <div className="space-y-3 pt-1">
+            <div className="space-y-3.5 pt-1">
+              {/* Deck Scope Controls */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Filter Deck Anki ({(ankiSettings.selectedDecks ?? []).length === 0 ? 'Semua Deck' : `${ankiSettings.selectedDecks.length} Terpilih`})
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleSelectJapaneseDecks}
+                      className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-600 border border-rose-200 text-[11px] font-bold text-rose-700 hover:text-white transition cursor-pointer"
+                    >
+                      Pilih Deck Jepang
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSelectAllDecks}
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold transition cursor-pointer ${
+                        (ankiSettings.selectedDecks ?? []).length === 0
+                          ? 'bg-slate-900 border-slate-900 text-white'
+                          : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Semua
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                  {topLevelDecks.map((deck) => {
+                    const selected = (ankiSettings.selectedDecks ?? []).includes(
+                      deck
+                    );
+                    const todayInfo = ankiSummaryByDeck.get(deck);
+                    return (
+                      <button
+                        key={deck}
+                        type="button"
+                        onClick={() => handleToggleDeckSelection(deck)}
+                        className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1.5 transition cursor-pointer ${
+                          selected
+                            ? 'bg-rose-600 border-rose-600 text-white shadow-2xs'
+                            : todayInfo
+                              ? 'bg-emerald-50/70 border-emerald-200 text-slate-800 hover:border-rose-300'
+                              : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                        }`}
+                      >
+                        <span className="truncate max-w-44">{deck}</span>
+                        {todayInfo && (
+                          <span
+                            className={`text-[10px] font-mono ${
+                              selected ? 'text-white/90' : 'text-emerald-700'
+                            }`}
+                          >
+                            ({todayInfo.reviews} • {todayInfo.minutes}m)
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label className="block text-[11px] text-slate-500 mb-1">
-                    Filter Deck Kartu Baru
+                    Rollover Jam Hari Baru
                   </label>
                   <select
-                    value={ankiSettings.selectedDeck}
-                    onChange={(e) =>
-                      updateAnkiSetting({ selectedDeck: e.target.value })
-                    }
+                    value={String(ankiSettings.rolloverHour)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      updateAnkiSetting({
+                        rolloverHour: v === 'auto' ? 'auto' : Number(v),
+                      });
+                    }}
                     className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-rose-500"
                   >
-                    <option value="all">Semua Deck</option>
-                    {(ankiCheck.decks ?? []).map((deck) => (
-                      <option key={deck} value={deck}>
-                        {deck}
+                    <option value="auto">
+                      Auto (Terdeteksi{' '}
+                      {ankiStats
+                        ? `${String(ankiStats.detectedRolloverHour).padStart(2, '0')}:00`
+                        : 'Anki'}
+                      )
+                    </option>
+                    {[0, 1, 2, 3, 4, 5, 6].map((h) => (
+                      <option key={h} value={String(h)}>
+                        {String(h).padStart(2, '0')}:00 WIB
                       </option>
                     ))}
                   </select>
@@ -1236,7 +1429,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
 
                 <div>
                   <label className="block text-[11px] text-slate-500 mb-1">
-                    Estimasi Detik / Review
+                    Fallback Detik / Review
                   </label>
                   <input
                     type="number"
@@ -1253,26 +1446,121 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                 </div>
               </div>
 
+              <div className="flex flex-col gap-1.5 text-xs text-slate-700">
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={ankiSettings.includeIntroducedCards}
+                    onChange={(e) =>
+                      updateAnkiSetting({
+                        includeIntroducedCards: e.target.checked,
+                      })
+                    }
+                    className="accent-sky-400 w-3.5 h-3.5 rounded"
+                  />
+                  <span>
+                    Hitung kartu baru yang dipelajari hari ini (
+                    <code className="font-mono text-[11px]">introduced:1</code>
+                    ) + catatan dibuat (
+                    <code className="font-mono text-[11px]">added:1</code>)
+                  </span>
+                </label>
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={ankiSettings.autoSync}
+                    onChange={(e) =>
+                      updateAnkiSetting({ autoSync: e.target.checked })
+                    }
+                    className="accent-sky-400 w-3.5 h-3.5 rounded"
+                  />
+                  <span>
+                    Auto-Sync statistik Anki otomatis setiap 5 menit (anti-duplikat)
+                  </span>
+                </label>
+              </div>
+
               {ankiStats && (
-                <div className="grid grid-cols-3 gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-center">
-                  <div>
-                    <div className="text-[11px] text-slate-500">Kartu Baru</div>
-                    <div className="text-lg font-bold font-mono text-rose-600">
-                      +{ankiStats.newCardsToday}
+                <div className="space-y-2.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-center">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase text-slate-500">
+                        Review
+                      </div>
+                      <div className="text-base font-extrabold font-mono text-slate-900">
+                        {ankiStats.reviewsToday.toLocaleString('id-ID')}
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono">
+                        {ankiStats.uniqueCardsReviewedToday} unik
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase text-slate-500">
+                        Durasi
+                      </div>
+                      <div className="text-base font-extrabold font-mono text-emerald-600">
+                        {ankiStats.actualMinutes}m
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono">
+                        {ankiStats.usedExactTimer ? 'Revlog Asli' : 'Estimasi'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase text-slate-500">
+                        Ditambang
+                      </div>
+                      <div className="text-base font-extrabold font-mono text-rose-600">
+                        +{ankiStats.notesAddedToday}
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono">
+                        added:1
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase text-slate-500">
+                        Dipelajari
+                      </div>
+                      <div className="text-base font-extrabold font-mono text-sky-600">
+                        +{ankiStats.cardsIntroducedToday}
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono">
+                        Log: +{ankiStats.newCardsToday}
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <div className="text-[11px] text-slate-500">Review</div>
-                    <div className="text-lg font-bold font-mono text-slate-900">
-                      {ankiStats.reviewsToday}
+
+                  {ankiStats.allDecksSummary.length > 0 && (
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                      <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        <span>Aktivitas Deck Hari Ini</span>
+                        <span className="font-mono">
+                          Rollover {String(ankiStats.detectedRolloverHour).padStart(2, '0')}:00
+                        </span>
+                      </div>
+                      <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
+                        {ankiStats.allDecksSummary.map((row) => {
+                          const included =
+                            (ankiSettings.selectedDecks ?? []).length === 0 ||
+                            ankiSettings.selectedDecks.includes(row.deck);
+                          return (
+                            <div
+                              key={row.deck}
+                              className={`flex items-center justify-between text-[11px] font-mono ${
+                                included
+                                  ? 'text-slate-800 font-semibold'
+                                  : 'text-slate-400 line-through'
+                              }`}
+                            >
+                              <span className="truncate pr-2">{row.deck}</span>
+                              <span className="shrink-0">
+                                {row.reviews} rev • {row.minutes}m
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-slate-500">Est. Waktu</div>
-                    <div className="text-lg font-bold font-mono text-emerald-600">
-                      {ankiStats.estimatedMinutes}m
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
 
@@ -1285,7 +1573,7 @@ export const DevicesSection: React.FC<DevicesSectionProps> = ({
                 <Sparkles className="w-4 h-4" />
                 {syncingAnki
                   ? 'Menyinkronkan...'
-                  : 'Sinkronkan Anki Hari Ini ke Log'}
+                  : 'Sinkronkan Statistik Anki Hari Ini'}
               </button>
             </div>
           )}

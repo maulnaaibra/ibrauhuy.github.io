@@ -222,6 +222,33 @@ let pendingSessions = readJsonSafe(PENDING_FILE, []);
 if (!Array.isArray(pendingSessions)) {
   pendingSessions = [];
 }
+const inFlightClaims = new Map(); // claimId -> { sessions, expiresAt }
+const CLAIM_TTL_MS = 30000;
+
+function reclaimExpiredClaims(forceAll = false) {
+  const now = Date.now();
+  let changed = false;
+  for (const [claimId, entry] of inFlightClaims.entries()) {
+    if (forceAll || entry.expiresAt <= now) {
+      inFlightClaims.delete(claimId);
+      if (Array.isArray(entry.sessions) && entry.sessions.length > 0) {
+        const existingIds = new Set(pendingSessions.map((p) => p.id));
+        for (const s of entry.sessions) {
+          if (!existingIds.has(s.id)) {
+            pendingSessions.push(s);
+            existingIds.add(s.id);
+          }
+        }
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    writeJsonSafe(PENDING_FILE, pendingSessions);
+  }
+}
+
+const PASSIVE_MEDIA_CATEGORIES = new Set(['anime', 'video', 'movie', 'audio']);
 
 let trackingEnabled = true;
 let lastWindow = {
@@ -334,7 +361,8 @@ function matchWindowRule(processName, windowTitle) {
 }
 
 function enqueuePendingMinutes(sessionObj, durationMinutes) {
-  if (!sessionObj || durationMinutes <= 0) return null;
+  const safeMinutes = Math.min(60, Math.max(0, Math.round(Number(durationMinutes || 0))));
+  if (!sessionObj || safeMinutes <= 0) return null;
   const now = new Date();
   const todayStr = getLocalDateString(now);
 
@@ -347,8 +375,8 @@ function enqueuePendingMinutes(sessionObj, durationMinutes) {
 
   let committed = null;
   if (existingIdx >= 0) {
-    pendingSessions[existingIdx].id = `pc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    pendingSessions[existingIdx].duration_minutes += durationMinutes;
+    // Keep existing id immutable so parallel claim/ack calls never lose or duplicate IDs
+    pendingSessions[existingIdx].duration_minutes += safeMinutes;
     pendingSessions[existingIdx].created_at = now.toISOString();
     committed = pendingSessions[existingIdx];
   } else {
@@ -356,7 +384,7 @@ function enqueuePendingMinutes(sessionObj, durationMinutes) {
       id: `pc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       title: sessionObj.title,
       category: sessionObj.category,
-      duration_minutes: durationMinutes,
+      duration_minutes: safeMinutes,
       cards_mined: 0,
       notes: `Auto-tracked dari ${DEVICE_NAME} (${sessionObj.process || 'Windows'})`,
       logged_date: todayStr,
@@ -368,7 +396,7 @@ function enqueuePendingMinutes(sessionObj, durationMinutes) {
 
   writeJsonSafe(PENDING_FILE, pendingSessions);
   console.log(
-    `[Checkpoint] +${durationMinutes}m | ${committed.category} | ${committed.title}`
+    `[Checkpoint] +${safeMinutes}m | ${committed.category} | ${committed.title}`
   );
   return committed;
 }
@@ -420,6 +448,7 @@ function selectTargetWindow(fgProc, fgTitle, rawOpenWindows) {
       process: proc,
       title,
       isForeground: Boolean(w.isForeground),
+      isMinimized: Boolean(w.isMinimized),
       processDisabled: procDisabled,
       appEnabled: !procDisabled && Boolean(rule),
       matchedRule: rule ? rule.name : null,
@@ -468,41 +497,71 @@ function selectTargetWindow(fgProc, fgTitle, rawOpenWindows) {
   }
 
   // 2. Check if the foreground window itself matches an immersion rule
-  const fgRule = matchWindowRule(fgProc, fgTitle);
-  if (fgRule) {
-    lastFocusedImmersionKey = `${fgProc.toLowerCase()}::${fgRule.category}`;
-    return {
-      targetProc: fgProc,
-      targetTitle: fgTitle,
-      rule: fgRule,
-      source: 'foreground',
-      annotated,
-    };
+  if (fgTitle.trim().toLowerCase() !== 'fushi lookup') {
+    const fgRule = matchWindowRule(fgProc, fgTitle);
+    if (fgRule) {
+      lastFocusedImmersionKey = `${fgProc.toLowerCase()}::${fgRule.category}`;
+      return {
+        targetProc: fgProc,
+        targetTitle: fgTitle,
+        rule: fgRule,
+        source: 'foreground',
+        annotated,
+      };
+    }
   }
 
-  // 3. Background window detection (when user is viewing dashboard or multi-windowing)
+  // 3. Background window detection (strictly ignore minimized windows; non-passive study/reading apps only continue if viewing dashboard)
   if (config.trackBackgroundWindows !== false) {
-    const matchingOpen = annotated.filter((w) => w._rule !== null);
-    if (matchingOpen.length > 0) {
-      // Prefer the window that matches the most recently focused immersion app
+    const viewingDashboard = isTrackerDashboardWindow(fgTitle);
+    const nonMinimized = annotated.filter(
+      (w) =>
+        w._rule !== null &&
+        !w.isMinimized &&
+        w.title.trim().toLowerCase() !== 'fushi lookup'
+    );
+
+    // If user is simply checking the ImmersionTrack dashboard, preserve their most recently focused active app
+    if (viewingDashboard && lastFocusedImmersionKey) {
+      const recentMatch = nonMinimized.find(
+        (w) =>
+          `${w.process.toLowerCase()}::${w._rule.category}` ===
+          lastFocusedImmersionKey
+      );
+      if (recentMatch) {
+        return {
+          targetProc: recentMatch.process,
+          targetTitle: recentMatch.title,
+          rule: recentMatch._rule,
+          source: 'background',
+          annotated,
+        };
+      }
+    }
+
+    // Outside the dashboard, only allow genuine passive media (anime/video/movie/audio) in background
+    // Never ghost-track Anki, SRS, novel/manga readers, or VN windows while user works in unrelated apps
+    const passiveBackground = nonMinimized.filter((w) =>
+      PASSIVE_MEDIA_CATEGORIES.has(w._rule.category)
+    );
+    if (passiveBackground.length > 0) {
       let chosen = null;
       if (lastFocusedImmersionKey) {
-        chosen = matchingOpen.find(
+        chosen = passiveBackground.find(
           (w) =>
             `${w.process.toLowerCase()}::${w._rule.category}` ===
             lastFocusedImmersionKey
         );
       }
-      // Or prefer dedicated desktop immersion apps (fushi, mpv, vlc, anki, textractor, lunatranslator)
       if (!chosen) {
-        chosen = matchingOpen.find((w) =>
-          /^(fushi|mpv|vlc|potplayer|potplayer64|mpc-hc|mpc-be|anki|textractor|lunatranslator)$/i.test(
+        chosen = passiveBackground.find((w) =>
+          /^(mpv|vlc|potplayer|potplayer64|potplayermini64|mpc-hc|mpc-hc64|mpc-be|mpc-be64|spotify|foobar2000|musicbee)$/i.test(
             w.process
           )
         );
       }
       if (!chosen) {
-        chosen = matchingOpen[0];
+        chosen = passiveBackground[0];
       }
 
       return {
@@ -575,11 +634,18 @@ function handleWindowSample(sample) {
   };
 
   const idleLimit = Number(config.idleThresholdSeconds || 1800);
-  // Media/pinned sessions tolerate longer hands-free viewing
-  const effectiveIdleLimit =
-    source === 'pinned' || source === 'catalog'
-      ? Math.max(idleLimit, 5400)
-      : idleLimit;
+  // Strict idle limits for active study/reading vs passive media viewing
+  let effectiveIdleLimit = idleLimit;
+  if (source === 'pinned' || source === 'catalog') {
+    effectiveIdleLimit = Math.max(idleLimit, 5400);
+  } else if (rule?.category === 'study') {
+    effectiveIdleLimit = Math.min(idleLimit, 180);
+  } else if (
+    rule?.category &&
+    ['manga', 'light_novel', 'book', 'visual_novel'].includes(rule.category)
+  ) {
+    effectiveIdleLimit = Math.min(idleLimit, 300);
+  }
   const isIdle = idle >= effectiveIdleLimit;
 
   if (!trackingEnabled || isIdle || !rule) {
@@ -692,6 +758,7 @@ public class WinInfo {
   public string process;
   public string title;
   public bool isForeground;
+  public bool isMinimized;
 }
 
 public class SnapInfo {
@@ -725,6 +792,9 @@ public static class Win32Tracker {
 
   [DllImport("user32.dll")]
   private static extern bool IsWindowVisible(IntPtr hWnd);
+
+  [DllImport("user32.dll")]
+  private static extern bool IsIconic(IntPtr hWnd);
 
   public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
@@ -805,6 +875,7 @@ public static class Win32Tracker {
         info.process = wProc;
         info.title = wTitle;
         info.isForeground = (hWnd == fg);
+        info.isMinimized = IsIconic(hWnd);
         openList.Add(info);
         return true;
       }, IntPtr.Zero);
@@ -961,7 +1032,7 @@ function proxyToAnki(req, targetUrl, bodyStr, res) {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(bodyStr, 'utf8'),
       },
-      timeout: 3000,
+      timeout: 12000,
     },
     (proxyRes) => {
       let data = '';
@@ -1004,9 +1075,10 @@ const server = http.createServer(async (req, res) => {
   const reqPath = (req.url || '/').split('?')[0];
 
   if (req.method === 'GET' && reqPath === '/health') {
+    reclaimExpiredClaims();
     sendJson(req, res, 200, {
       ok: true,
-      version: '2.0.0',
+      version: '2.1.0',
       deviceName: DEVICE_NAME,
       platform: process.platform,
       trackingEnabled,
@@ -1017,9 +1089,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && reqPath === '/status') {
+    reclaimExpiredClaims();
     sendJson(req, res, 200, {
       ok: true,
-      version: '2.0.0',
+      version: '2.1.0',
       deviceName: DEVICE_NAME,
       trackingEnabled,
       uptimeSeconds: Math.round((Date.now() - STARTED_AT) / 1000),
@@ -1098,6 +1171,8 @@ const server = http.createServer(async (req, res) => {
           startedAt: nowIso,
           lastSeenAt: nowIso,
           activeSeconds: 1,
+          uncommittedSeconds: 1,
+          checkpointedMinutes: 0,
         };
       }
 
@@ -1159,6 +1234,8 @@ const server = http.createServer(async (req, res) => {
           startedAt: nowIso,
           lastSeenAt: nowIso,
           activeSeconds: 1,
+          uncommittedSeconds: 1,
+          checkpointedMinutes: 0,
         };
       }
 
@@ -1186,23 +1263,88 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && reqPath === '/pending') {
+    reclaimExpiredClaims();
     sendJson(req, res, 200, { ok: true, pending: pendingSessions });
+    return;
+  }
+
+  if (req.method === 'POST' && reqPath === '/claim') {
+    reclaimExpiredClaims();
+    if (pendingSessions.length === 0) {
+      sendJson(req, res, 200, { ok: true, claimId: null, sessions: [] });
+      return;
+    }
+    const sessions = pendingSessions.slice();
+    pendingSessions = [];
+    writeJsonSafe(PENDING_FILE, pendingSessions);
+    const claimId = `claim-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    inFlightClaims.set(claimId, {
+      sessions,
+      expiresAt: Date.now() + CLAIM_TTL_MS,
+    });
+    sendJson(req, res, 200, { ok: true, claimId, sessions });
     return;
   }
 
   if (req.method === 'POST' && reqPath === '/ack') {
     const raw = await readRequestBody(req);
     let ids = [];
+    let claimId = null;
     try {
       const parsed = JSON.parse(raw || '{}');
       if (Array.isArray(parsed.ids)) ids = parsed.ids;
+      if (typeof parsed.claimId === 'string' && parsed.claimId) {
+        claimId = parsed.claimId;
+      }
     } catch {
       ids = [];
     }
     const ackSet = new Set(ids);
+
+    if (claimId && inFlightClaims.has(claimId)) {
+      const claim = inFlightClaims.get(claimId);
+      inFlightClaims.delete(claimId);
+      const unacked = (claim?.sessions ?? []).filter((s) => !ackSet.has(s.id));
+      if (unacked.length > 0) {
+        const existingIds = new Set(pendingSessions.map((p) => p.id));
+        for (const s of unacked) {
+          if (!existingIds.has(s.id)) {
+            pendingSessions.push(s);
+          }
+        }
+      }
+    }
+
     pendingSessions = pendingSessions.filter((s) => !ackSet.has(s.id));
     writeJsonSafe(PENDING_FILE, pendingSessions);
     sendJson(req, res, 200, { ok: true, remaining: pendingSessions.length });
+    return;
+  }
+
+  if (req.method === 'POST' && reqPath === '/release') {
+    const raw = await readRequestBody(req);
+    let claimId = null;
+    try {
+      const parsed = JSON.parse(raw || '{}');
+      if (typeof parsed.claimId === 'string') claimId = parsed.claimId;
+    } catch {
+      claimId = null;
+    }
+    let restored = 0;
+    if (claimId && inFlightClaims.has(claimId)) {
+      const claim = inFlightClaims.get(claimId);
+      inFlightClaims.delete(claimId);
+      const existingIds = new Set(pendingSessions.map((p) => p.id));
+      for (const s of claim?.sessions ?? []) {
+        if (!existingIds.has(s.id)) {
+          pendingSessions.push(s);
+          existingIds.add(s.id);
+          restored++;
+        }
+      }
+      writeJsonSafe(PENDING_FILE, pendingSessions);
+    }
+    sendJson(req, res, 200, { ok: true, restored });
     return;
   }
 
@@ -1382,7 +1524,7 @@ server.on('error', (err) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`==============================================`);
-  console.log(` ImmersionTrack Background Agent v2.0 aktif!`);
+  console.log(` ImmersionTrack Background Agent v2.1 aktif!`);
   console.log(` Device : ${DEVICE_NAME}`);
   console.log(` API    : http://${HOST}:${PORT}`);
   console.log(` Rules  : ${RULES_FILE}`);
@@ -1390,6 +1532,7 @@ server.listen(PORT, HOST, () => {
 });
 
 function shutdown() {
+  reclaimExpiredClaims(true);
   commitActiveSession(false);
   if (watcher && !watcher.killed) {
     watcher.kill();

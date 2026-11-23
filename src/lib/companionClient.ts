@@ -34,6 +34,7 @@ export interface OpenWindowItem {
   process: string;
   title: string;
   isForeground: boolean;
+  isMinimized?: boolean;
   processDisabled?: boolean;
   appEnabled?: boolean;
   matchedRule: string | null;
@@ -262,14 +263,45 @@ export async function flushCompanionSession(
   });
 }
 
+export async function claimCompanionSessions(baseUrl: string): Promise<{
+  ok: boolean;
+  claimId: string | null;
+  sessions: PendingTrackedSession[];
+} | null> {
+  try {
+    return await fetchJsonWithTimeout(`${normalizeBaseUrl(baseUrl)}/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+  } catch {
+    return null;
+  }
+}
+
 export async function ackCompanionSessions(
   baseUrl: string,
-  ids: string[]
+  ids: string[],
+  claimId?: string | null
 ): Promise<{ ok: boolean; remaining: number }> {
   return fetchJsonWithTimeout(`${normalizeBaseUrl(baseUrl)}/ack`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ids }),
+    body: JSON.stringify({
+      ids,
+      ...(claimId ? { claimId } : {}),
+    }),
+  });
+}
+
+export async function releaseCompanionClaim(
+  baseUrl: string,
+  claimId: string
+): Promise<{ ok: boolean; restored: number }> {
+  return fetchJsonWithTimeout(`${normalizeBaseUrl(baseUrl)}/release`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ claimId }),
   });
 }
 

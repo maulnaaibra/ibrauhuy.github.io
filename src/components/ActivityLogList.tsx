@@ -1,12 +1,14 @@
 import React, { useMemo, useState } from 'react';
-import { Clock, Pencil, Search, Trash2 } from 'lucide-react';
+import { CheckSquare, Clock, Pencil, Search, Square, Trash2 } from 'lucide-react';
 import { MediaCover } from '../components/MediaCover';
 import { getCategoryMeta, type ImmersionLog } from '../types';
+import { getLocalDateString } from '../utils/stats';
 
 interface ActivityLogListProps {
   logs: ImmersionLog[];
   onEdit: (log: ImmersionLog) => void;
   onDelete: (id: string) => void;
+  onDeleteMultiple?: (ids: string[]) => Promise<void> | void;
   compact?: boolean;
   onViewAll?: () => void;
 }
@@ -15,13 +17,20 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
   logs,
   onEdit,
   onDelete,
+  onDeleteMultiple,
   compact = false,
   onViewAll,
 }) => {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [todayOnly, setTodayOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'newest' | 'duration' | 'cards'>('newest');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const todayStr = getLocalDateString();
 
   const availableCategories = useMemo(() => {
     const map = new Map<string, string>();
@@ -35,6 +44,9 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = logs.filter((l) => {
+      if (todayOnly && l.logged_date !== todayStr) {
+        return false;
+      }
       if (categoryFilter !== 'all' && l.category !== categoryFilter) {
         return false;
       }
@@ -57,9 +69,30 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
       }
       return b.created_at.localeCompare(a.created_at);
     });
-  }, [logs, search, categoryFilter, sortBy]);
+  }, [logs, search, categoryFilter, todayOnly, todayStr, sortBy]);
 
   const displayLogs = compact ? filtered.slice(0, 6) : filtered;
+
+  const toggleSelectId = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (!onDeleteMultiple || selectedIds.size === 0) return;
+    setBulkDeleting(true);
+    try {
+      await onDeleteMultiple(Array.from(selectedIds));
+      setSelectedIds(new Set());
+      setSelectMode(false);
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
 
   return (
     <div className="card-pro p-5 animate-fade-up">
@@ -111,32 +144,96 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
             </select>
           </div>
 
-          <div className="flex flex-wrap gap-1.5 text-xs">
-            <button
-              type="button"
-              onClick={() => setCategoryFilter('all')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
-                categoryFilter === 'all'
-                  ? 'bg-rose-600 text-white'
-                  : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200'
-              }`}
-            >
-              Semua
-            </button>
-            {availableCategories.map(([catKey, shortLabel]) => (
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex flex-wrap gap-1.5 text-xs">
               <button
-                key={catKey}
                 type="button"
-                onClick={() => setCategoryFilter(catKey)}
+                onClick={() => setTodayOnly((prev) => !prev)}
                 className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
-                  categoryFilter === catKey
+                  todayOnly
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200'
+                }`}
+              >
+                Hari Ini
+              </button>
+              <button
+                type="button"
+                onClick={() => setCategoryFilter('all')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
+                  categoryFilter === 'all'
                     ? 'bg-rose-600 text-white'
                     : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200'
                 }`}
               >
-                {shortLabel}
+                Semua
               </button>
-            ))}
+              {availableCategories.map(([catKey, shortLabel]) => (
+                <button
+                  key={catKey}
+                  type="button"
+                  onClick={() => setCategoryFilter(catKey)}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
+                    categoryFilter === catKey
+                      ? 'bg-rose-600 text-white'
+                      : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200'
+                  }`}
+                >
+                  {shortLabel}
+                </button>
+              ))}
+            </div>
+
+            {onDeleteMultiple && displayLogs.length > 0 && (
+              <div className="flex items-center gap-1.5 text-xs">
+                {!selectMode ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectMode(true);
+                      setSelectedIds(new Set());
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-rose-300 text-slate-600 hover:text-rose-600 font-bold transition cursor-pointer"
+                  >
+                    Pilih Massal
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedIds(new Set(displayLogs.map((l) => l.id)))
+                      }
+                      className="px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-700 font-bold cursor-pointer"
+                    >
+                      Pilih Terlihat ({displayLogs.length})
+                    </button>
+                    {selectedIds.size > 0 && (
+                      <button
+                        type="button"
+                        disabled={bulkDeleting}
+                        onClick={() => void handleBulkDelete()}
+                        className="px-2.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold cursor-pointer disabled:opacity-60"
+                      >
+                        {bulkDeleting
+                          ? 'Menghapus...'
+                          : `Hapus (${selectedIds.size})`}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectMode(false);
+                        setSelectedIds(new Set());
+                      }}
+                      className="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-600 font-bold cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -157,6 +254,20 @@ export const ActivityLogList: React.FC<ActivityLogListProps> = ({
                 className="py-3.5 px-2.5 -mx-2.5 rounded-xl hover:bg-slate-50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
               >
                 <div className="flex items-start gap-3.5 min-w-0">
+                  {selectMode && (
+                    <button
+                      type="button"
+                      onClick={() => toggleSelectId(log.id)}
+                      className="mt-2 p-1 rounded-md text-slate-500 hover:text-rose-600 cursor-pointer shrink-0"
+                      aria-label={`Pilih ${log.title}`}
+                    >
+                      {selectedIds.has(log.id) ? (
+                        <CheckSquare className="w-4 h-4 text-rose-600" />
+                      ) : (
+                        <Square className="w-4 h-4" />
+                      )}
+                    </button>
+                  )}
                   <MediaCover
                     title={log.title}
                     category={log.category}

@@ -15,6 +15,7 @@ import {
   getLocalDateString,
   getReadingListeningBalance,
   getRecentMediaCards,
+  type JlptLevelSetting,
 } from '../utils/stats';
 
 export type ProfileBannerThemeId =
@@ -296,6 +297,7 @@ export interface ExtendedUserProfile {
   banner_url?: string | null;
   banner_theme: ProfileBannerThemeId;
   bio: string;
+  jlpt_level: JlptLevelSetting;
   jlpt_target: 'N5' | 'N4' | 'N3' | 'N2' | 'N1';
   favorite_media: string;
   favorite_category: PrimaryMediaCategory;
@@ -321,9 +323,15 @@ export interface PublicProfileSnapshot {
     stageLabel: string;
     stageProgressPct: number;
     nextTargetHours: number;
+    stageIsManual?: boolean;
     listeningHours: number;
     readingHours: number;
     studyHours: number;
+    listeningPct?: number;
+    readingPct?: number;
+    studyPct?: number;
+    inputListeningPct?: number;
+    inputReadingPct?: number;
     ratioLabel: string;
   };
   topMedia: Array<{
@@ -351,6 +359,21 @@ export interface PublicProfileSnapshot {
 }
 
 const LOCAL_PROFILE_META_PREFIX = 'immersiontrack_profile_meta_v1_';
+
+export function normalizeJlptLevelSetting(raw: unknown): JlptLevelSetting {
+  if (
+    raw === 'auto' ||
+    raw === 'N5' ||
+    raw === 'N4' ||
+    raw === 'N3' ||
+    raw === 'N2' ||
+    raw === 'N1' ||
+    raw === 'Native'
+  ) {
+    return raw;
+  }
+  return 'auto';
+}
 
 export function sanitizeUsername(raw: string, fallbackName?: string): string {
   const base = (raw || fallbackName || 'learner')
@@ -415,6 +438,7 @@ export function loadExtendedProfileMeta(
       cached.bio ??
       (typeof meta.bio === 'string' ? meta.bio : '') ??
       'Belajar bahasa Jepang setiap hari melalui immersion anime, novel, dan Anki.',
+    jlpt_level: normalizeJlptLevelSetting(cached.jlpt_level ?? meta.jlpt_level),
     jlpt_target:
       cached.jlpt_target ||
       (meta.jlpt_target as ExtendedUserProfile['jlpt_target'] | undefined) ||
@@ -494,6 +518,7 @@ export async function saveExtendedProfileMeta(
     .update({
       username: cleaned.username,
       bio: cleaned.bio,
+      jlpt_level: cleaned.jlpt_level,
       jlpt_target: cleaned.jlpt_target,
       favorite_media: cleaned.favorite_media,
       banner_theme: cleaned.banner_theme,
@@ -521,6 +546,7 @@ export async function saveExtendedProfileMeta(
         username: cleaned.username,
         banner_theme: cleaned.banner_theme,
         bio: cleaned.bio,
+        jlpt_level: cleaned.jlpt_level,
         jlpt_target: cleaned.jlpt_target,
         favorite_media: cleaned.favorite_media,
         favorite_category: cleaned.favorite_category,
@@ -558,7 +584,7 @@ export function buildPublicProfileSnapshot(
   const totalCards = logs.reduce((acc, l) => acc + (l.cards_mined || 0), 0);
   const streak = calculateStreak(logs);
   const longestStreak = calculateLongestStreak(logs);
-  const stage = getImmersionStage(totalHours);
+  const stage = getImmersionStage(totalHours, extProfile.jlpt_level);
   const balance = getReadingListeningBalance(logs);
   const todayStr = getLocalDateString();
   const todayMinutes = logs
@@ -592,9 +618,15 @@ export function buildPublicProfileSnapshot(
       stageLabel: stage.label,
       stageProgressPct: stage.progressPct,
       nextTargetHours: stage.nextTargetHours,
+      stageIsManual: stage.isManual,
       listeningHours: Number((balance.listeningMin / 60).toFixed(1)),
       readingHours: Number((balance.readingMin / 60).toFixed(1)),
       studyHours: Number((balance.studyMin / 60).toFixed(1)),
+      listeningPct: balance.listeningPct,
+      readingPct: balance.readingPct,
+      studyPct: balance.studyPct,
+      inputListeningPct: balance.inputListeningPct,
+      inputReadingPct: balance.inputReadingPct,
       ratioLabel: balance.ratioLabel,
     },
     topMedia: recentMedia,
@@ -843,6 +875,7 @@ export function buildCommunityMemberSnapshot(
         BANNER_IMAGE_PRESETS[presetIndex % BANNER_IMAGE_PRESETS.length].url,
       banner_theme: PROFILE_BANNER_THEMES[themeIndex].id,
       bio: `Pelajar aktif ${member.targetLanguage} (${member.rankTitle}) • Fokus pada ${member.favoriteMedia}.`,
+      jlpt_level: 'auto',
       jlpt_target: member.totalHours > 1000 ? 'N1' : 'N2',
       favorite_media: topMedia[0].title,
       favorite_category: topMedia[0].category,
@@ -864,10 +897,16 @@ export function buildCommunityMemberSnapshot(
       stageLabel: stage.label,
       stageProgressPct: stage.progressPct,
       nextTargetHours: stage.nextTargetHours,
+      stageIsManual: false,
       listeningHours,
       readingHours,
       studyHours,
-      ratioLabel: '42% : 58%',
+      listeningPct: 54,
+      readingPct: 38,
+      studyPct: 8,
+      inputListeningPct: 59,
+      inputReadingPct: 41,
+      ratioLabel: '59% : 41%',
     },
     topMedia,
     recentLogs: topMedia.map((m, idx) => ({

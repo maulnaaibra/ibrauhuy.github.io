@@ -280,27 +280,71 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({ logs }) => {
           </div>
         </div>
 
-        <div className="card-pro p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-4">
-            Balance & Konsistensi
-          </p>
+        <div className="card-pro p-5 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              Distribusi Input & Konsistensi
+            </p>
+            <span className="text-xs font-mono font-bold text-slate-700">
+              L/R: {kpis.balance.inputListeningPct}% /{' '}
+              {kpis.balance.inputReadingPct}%
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-slate-200 overflow-hidden flex">
+            {kpis.balance.listeningPct > 0 && (
+              <div
+                className="h-full bg-sky-400"
+                style={{ width: `${kpis.balance.listeningPct}%` }}
+              />
+            )}
+            {kpis.balance.readingPct > 0 && (
+              <div
+                className="h-full bg-indigo-400"
+                style={{ width: `${kpis.balance.readingPct}%` }}
+              />
+            )}
+            {kpis.balance.studyPct > 0 && (
+              <div
+                className="h-full bg-emerald-400"
+                style={{ width: `${kpis.balance.studyPct}%` }}
+              />
+            )}
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
-              <div className="text-xs text-slate-500">Listening</div>
+              <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-sky-400" />
+                Listening
+              </div>
               <div className="text-xl font-bold font-mono text-slate-900 mt-1 tabular-nums">
-                {(kpis.balance.listeningMin / 60).toFixed(1)}j
+                {(kpis.balance.listeningMin / 60).toFixed(1)}j{' '}
+                <span className="text-xs font-normal text-slate-500">
+                  ({kpis.balance.listeningPct}%)
+                </span>
               </div>
             </div>
             <div>
-              <div className="text-xs text-slate-500">Reading</div>
+              <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                Reading
+              </div>
               <div className="text-xl font-bold font-mono text-slate-900 mt-1 tabular-nums">
-                {(kpis.balance.readingMin / 60).toFixed(1)}j
+                {(kpis.balance.readingMin / 60).toFixed(1)}j{' '}
+                <span className="text-xs font-normal text-slate-500">
+                  ({kpis.balance.readingPct}%)
+                </span>
               </div>
             </div>
             <div>
-              <div className="text-xs text-slate-500">Rasio R : L</div>
+              <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                Anki / Study
+              </div>
               <div className="text-xl font-bold font-mono text-slate-900 mt-1 tabular-nums">
-                {kpis.balance.ratioLabel}
+                {(kpis.balance.studyMin / 60).toFixed(1)}j{' '}
+                <span className="text-xs font-normal text-slate-500">
+                  ({kpis.balance.studyPct}%)
+                </span>
               </div>
             </div>
             <div>
