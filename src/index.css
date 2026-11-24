@@ -909,6 +909,18 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
   white-space: nowrap;
 }
 
+.jp-clean-mode .jp-chapter-divider {
+  margin-block: 1.5rem 0.9rem;
+  opacity: 0.55;
+}
+
+.jp-clean-mode .jp-chapter-badge {
+  border-color: rgba(148, 163, 184, 0.2);
+  background: transparent;
+  color: inherit;
+  opacity: 0.75;
+}
+
 /* Horizontal CSS multi-column Page mode: outer frame owns padding so viewport stays zero-pad */
 .jp-paged-h-viewport {
   width: 100%;
@@ -980,7 +992,7 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
 }
 
 .jp-novel-reader-content p {
-  margin-block-end: 0.9em;
+  margin-block-end: var(--jp-para-gap, 0.45em);
 }
 
 .jp-novel-reader-content.jp-indent-on p {

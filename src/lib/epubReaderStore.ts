@@ -93,10 +93,13 @@ export interface ReaderPreferences {
   furigana: 'show' | 'hover' | 'hide';
   fontSize: number;
   fontFamily: string;
-  theme: 'navy' | 'amoled' | 'sepia' | 'light';
+  theme: 'navy' | 'charcoal' | 'amoled' | 'sepia' | 'light';
   lineHeight: number;
   letterSpacing: number;
-  maxWidth: 'narrow' | 'medium' | 'wide' | 'full';
+  maxWidth: 'narrow' | 'medium' | 'wide' | 'full' | 'custom';
+  customMaxWidthPx: number;
+  paragraphSpacing: number;
+  cleanMode: boolean;
   indentParagraphs: boolean;
   vnParagraphsPerStep: number;
   vnAnimation: VnAnimationStyle;
@@ -122,6 +125,9 @@ export const DEFAULT_READER_PREFS: ReaderPreferences = {
   lineHeight: 1.95,
   letterSpacing: 0,
   maxWidth: 'medium',
+  customMaxWidthPx: 1040,
+  paragraphSpacing: 0.45,
+  cleanMode: false,
   indentParagraphs: true,
   vnParagraphsPerStep: 2,
   vnAnimation: 'fade-up',
@@ -171,6 +177,7 @@ export function loadReaderPrefs(): ReaderPreferences {
           ? parsed.fontFamily.trim()
           : DEFAULT_READER_PREFS.fontFamily;
       const theme =
+        parsed.theme === 'charcoal' ||
         parsed.theme === 'amoled' ||
         parsed.theme === 'sepia' ||
         parsed.theme === 'light'
@@ -179,7 +186,7 @@ export function loadReaderPrefs(): ReaderPreferences {
       const lineHeight =
         typeof parsed.lineHeight === 'number' &&
         Number.isFinite(parsed.lineHeight)
-          ? Math.min(2.4, Math.max(1.6, Math.round(parsed.lineHeight * 20) / 20))
+          ? Math.min(2.4, Math.max(1.35, Math.round(parsed.lineHeight * 20) / 20))
           : DEFAULT_READER_PREFS.lineHeight;
       const letterSpacing =
         typeof parsed.letterSpacing === 'number' &&
@@ -189,9 +196,27 @@ export function loadReaderPrefs(): ReaderPreferences {
       const maxWidth: ReaderPreferences['maxWidth'] =
         parsed.maxWidth === 'narrow' ||
         parsed.maxWidth === 'wide' ||
-        parsed.maxWidth === 'full'
+        parsed.maxWidth === 'full' ||
+        parsed.maxWidth === 'custom'
           ? parsed.maxWidth
           : 'medium';
+      const customMaxWidthPx =
+        typeof parsed.customMaxWidthPx === 'number' &&
+        Number.isFinite(parsed.customMaxWidthPx)
+          ? Math.min(1600, Math.max(480, Math.round(parsed.customMaxWidthPx)))
+          : DEFAULT_READER_PREFS.customMaxWidthPx;
+      const paragraphSpacing =
+        typeof parsed.paragraphSpacing === 'number' &&
+        Number.isFinite(parsed.paragraphSpacing)
+          ? Math.min(
+              1.2,
+              Math.max(0, Math.round(parsed.paragraphSpacing * 100) / 100)
+            )
+          : DEFAULT_READER_PREFS.paragraphSpacing;
+      const cleanMode =
+        typeof parsed.cleanMode === 'boolean'
+          ? parsed.cleanMode
+          : DEFAULT_READER_PREFS.cleanMode;
       const indentParagraphs =
         typeof parsed.indentParagraphs === 'boolean'
           ? parsed.indentParagraphs
@@ -257,6 +282,9 @@ export function loadReaderPrefs(): ReaderPreferences {
         lineHeight,
         letterSpacing,
         maxWidth,
+        customMaxWidthPx,
+        paragraphSpacing,
+        cleanMode,
         indentParagraphs,
         vnParagraphsPerStep,
         vnAnimation,

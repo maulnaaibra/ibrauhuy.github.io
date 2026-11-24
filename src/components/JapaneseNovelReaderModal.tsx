@@ -170,6 +170,21 @@ const READER_THEME_STYLES: Record<
     cardBorder: 'rgba(148, 179, 214, 0.24)',
     accentText: 'text-sky-300',
   },
+  charcoal: {
+    shell: 'bg-[#171717] text-[#e5e5e5]',
+    toolbar: 'bg-[#1c1c1c]/95 border-white/10 text-[#f0f0f0]',
+    toolbarGlass: 'bg-[#1c1c1c]/78 border-white/12 text-[#f0f0f0]',
+    panel: 'bg-[#1e1e1e] border-white/12 text-[#f0f0f0]',
+    subtleBtn:
+      'bg-white/8 hover:bg-white/14 border-white/12 text-[#e5e5e5]',
+    mutedText: 'text-[#a3a3a3]',
+    articleBg: 'bg-[#171717] text-[#e5e5e5]',
+    vnCard: 'bg-[#1d1d1d]/95 border-white/12 shadow-2xl',
+    cardRgb: '29, 29, 29',
+    surfaceRgb: '23, 23, 23',
+    cardBorder: 'rgba(255, 255, 255, 0.12)',
+    accentText: 'text-sky-300',
+  },
   amoled: {
     shell: 'bg-black text-[#e5e7eb]',
     toolbar: 'bg-[#09090b]/95 border-white/15 text-white',
@@ -235,6 +250,7 @@ const READER_SHORTCUTS: Array<{ keys: string[]; desc: string }> = [
   { keys: ['H'], desc: 'Buka Riwayat Paragraf (Backlog Mode VN)' },
   { keys: ['A'], desc: 'Buka panel Audiobook & AI Narator' },
   { keys: ['S'], desc: 'Buka Pengaturan Reader' },
+  { keys: ['Z'], desc: 'Aktif / matikan Mode Clean (bebas distraksi)' },
   { keys: ['M'], desc: 'Mode Fullscreen / Fokus (sembunyikan toolbar)' },
   { keys: ['?'], desc: 'Tampilkan panduan shortcut ini' },
   { keys: ['Esc'], desc: 'Tutup panel / keluar dari Reader' },
@@ -1568,6 +1584,9 @@ export const JapaneseNovelReaderModal: React.FC<
     prefs.lineHeight,
     prefs.letterSpacing,
     prefs.maxWidth,
+    prefs.customMaxWidthPx,
+    prefs.paragraphSpacing,
+    prefs.cleanMode,
     prefs.indentParagraphs,
     pagedWidthPx,
   ]);
@@ -1656,6 +1675,9 @@ export const JapaneseNovelReaderModal: React.FC<
     prefs.lineHeight,
     prefs.letterSpacing,
     prefs.maxWidth,
+    prefs.customMaxWidthPx,
+    prefs.paragraphSpacing,
+    prefs.cleanMode,
     prefs.indentParagraphs,
     pagedWidthPx,
     scrollToChapterPosition,
@@ -2077,6 +2099,8 @@ export const JapaneseNovelReaderModal: React.FC<
           setShowToc(false);
         } else if (zenMode) {
           setZenMode(false);
+        } else if (prefs.cleanMode) {
+          updatePrefs({ cleanMode: false });
         } else {
           void handleCloseReader();
         }
@@ -2203,6 +2227,15 @@ export const JapaneseNovelReaderModal: React.FC<
         e.preventDefault();
         setShowSettings((prev) => !prev);
         setShowAudioPanel(false);
+      } else if (lower === 'z') {
+        e.preventDefault();
+        const nextClean = !prefs.cleanMode;
+        updatePrefs({ cleanMode: nextClean });
+        toast.success(
+          nextClean
+            ? 'Mode Clean aktif (tekan Z untuk keluar)'
+            : 'Mode Clean dimatikan'
+        );
       } else if (lower === 'm') {
         e.preventDefault();
         void handleToggleFullscreen();
@@ -2220,6 +2253,7 @@ export const JapaneseNovelReaderModal: React.FC<
     showSettings,
     showToc,
     zenMode,
+    prefs.cleanMode,
     prefs.writingMode,
     prefs.readingMode,
     prefs.furigana,
@@ -2970,6 +3004,21 @@ export const JapaneseNovelReaderModal: React.FC<
         : '50%';
 
   const articleGlassStyle: React.CSSProperties = useMemo(() => {
+    const isDarkTheme =
+      prefs.theme === 'navy' ||
+      prefs.theme === 'charcoal' ||
+      prefs.theme === 'amoled';
+    if (prefs.cleanMode) {
+      return {
+        backgroundColor: 'transparent',
+        border: 'none',
+        borderRadius: 0,
+        textShadow:
+          hasActiveBg && prefs.bgPanelOpacity <= 0 && isDarkTheme
+            ? '0 1px 10px rgba(0, 0, 0, 0.85)'
+            : 'none',
+      };
+    }
     if (!hasActiveBg) return {};
     if (prefs.bgPanelOpacity > 0) {
       const glassBlur = isVideoBg ? 'none' : 'blur(8px)';
@@ -2983,14 +3032,12 @@ export const JapaneseNovelReaderModal: React.FC<
     }
     return {
       backgroundColor: 'transparent',
-      textShadow:
-        prefs.theme === 'navy' || prefs.theme === 'amoled'
-          ? '0 1px 10px rgba(0, 0, 0, 0.85)'
-          : 'none',
+      textShadow: isDarkTheme ? '0 1px 10px rgba(0, 0, 0, 0.85)' : 'none',
     };
   }, [
     hasActiveBg,
     isVideoBg,
+    prefs.cleanMode,
     prefs.bgPanelOpacity,
     prefs.theme,
     themeStyle.surfaceRgb,
@@ -2998,6 +3045,23 @@ export const JapaneseNovelReaderModal: React.FC<
   ]);
 
   const vnCardStyle: React.CSSProperties | undefined = useMemo(() => {
+    const isDarkTheme =
+      prefs.theme === 'navy' ||
+      prefs.theme === 'charcoal' ||
+      prefs.theme === 'amoled';
+    if (prefs.cleanMode) {
+      return {
+        backgroundColor: 'transparent',
+        backdropFilter: 'none',
+        WebkitBackdropFilter: 'none',
+        borderColor: 'transparent',
+        boxShadow: 'none',
+        textShadow:
+          hasActiveBg && prefs.bgPanelOpacity <= 0 && isDarkTheme
+            ? '0 1px 10px rgba(0, 0, 0, 0.85)'
+            : 'none',
+      };
+    }
     if (!hasActiveBg) return undefined;
     if (prefs.bgPanelOpacity > 0) {
       const glassBlur = isVideoBg ? 'none' : 'blur(8px)';
@@ -3014,14 +3078,12 @@ export const JapaneseNovelReaderModal: React.FC<
       WebkitBackdropFilter: 'none',
       borderColor: 'transparent',
       boxShadow: 'none',
-      textShadow:
-        prefs.theme === 'navy' || prefs.theme === 'amoled'
-          ? '0 1px 10px rgba(0, 0, 0, 0.85)'
-          : 'none',
+      textShadow: isDarkTheme ? '0 1px 10px rgba(0, 0, 0, 0.85)' : 'none',
     };
   }, [
     hasActiveBg,
     isVideoBg,
+    prefs.cleanMode,
     prefs.bgPanelOpacity,
     prefs.theme,
     themeStyle.cardRgb,
@@ -3041,11 +3103,46 @@ export const JapaneseNovelReaderModal: React.FC<
     prefs.vnParagraphsPerStep,
   ]);
 
+  const resolvedMaxWidthPx: number | null =
+    prefs.maxWidth === 'full'
+      ? null
+      : prefs.maxWidth === 'custom'
+        ? prefs.customMaxWidthPx
+        : prefs.maxWidth === 'narrow'
+          ? 544
+          : prefs.maxWidth === 'wide'
+            ? 928
+            : 704;
+
+  const resolvedVHeightPx: number | null =
+    prefs.maxWidth === 'full' || prefs.maxWidth === 'wide'
+      ? null
+      : prefs.maxWidth === 'custom'
+        ? Math.min(1000, Math.max(380, prefs.customMaxWidthPx))
+        : prefs.maxWidth === 'narrow'
+          ? 448
+          : 608;
+
+  const effectiveSliderWidthPx =
+    resolvedMaxWidthPx ?? (prefs.writingMode === 'vertical' ? 1000 : 1600);
+  const effectiveSliderVHeightPx = resolvedVHeightPx ?? 1000;
+
+  const exactBookPct =
+    readingProgressStats.totalChars > 0
+      ? (
+          (readingProgressStats.readChars / readingProgressStats.totalChars) *
+          100
+        ).toFixed(2)
+      : '0.00';
+
   const widthClass =
-    prefs.writingMode === 'vertical'
-      ? `jp-vheight-${prefs.maxWidth}`
-      : `jp-width-${prefs.maxWidth}`;
+    prefs.maxWidth === 'custom'
+      ? ''
+      : prefs.writingMode === 'vertical'
+        ? `jp-vheight-${prefs.maxWidth}`
+        : `jp-width-${prefs.maxWidth}`;
   const indentClass = prefs.indentParagraphs ? 'jp-indent-on' : '';
+  const cleanClass = prefs.cleanMode ? 'jp-clean-mode' : '';
   const activeFontCss = useMemo(
     () => resolveReaderFontCss(prefs.fontFamily, customFonts),
     [prefs.fontFamily, customFonts]
@@ -3056,6 +3153,7 @@ export const JapaneseNovelReaderModal: React.FC<
       : 'jp-writing-horizontal';
 
   const isFullscreenOrZen = isFullscreen || zenMode;
+  const hideChrome = isFullscreenOrZen || prefs.cleanMode;
 
   // Measure exact CSS multi-column page container width in Paginated mode
   useEffect(() => {
@@ -3084,6 +3182,8 @@ export const JapaneseNovelReaderModal: React.FC<
     prefs.readingMode,
     prefs.writingMode,
     prefs.maxWidth,
+    prefs.customMaxWidthPx,
+    prefs.cleanMode,
     hasActiveBg,
     prefs.bgPanelOpacity,
     isFullscreenOrZen,
@@ -3193,6 +3293,17 @@ export const JapaneseNovelReaderModal: React.FC<
             />
           )}
         </div>
+      )}
+
+      {/* Full-bleed edge-to-edge backdrop scrim in Clean Mode */}
+      {prefs.cleanMode && hasActiveBg && prefs.bgPanelOpacity > 0 && (
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 z-0 pointer-events-none transition-colors duration-200"
+          style={{
+            backgroundColor: `rgba(${themeStyle.surfaceRgb}, ${(prefs.bgPanelOpacity / 100).toFixed(2)})`,
+          }}
+        />
       )}
 
       {/* Hidden file pickers */}
@@ -3307,8 +3418,85 @@ export const JapaneseNovelReaderModal: React.FC<
         </>
       )}
 
+      {/* CLEAN MODE AMBIENT CONTROLS (Minimal Ttsu-style floating UI) */}
+      {prefs.cleanMode && !isFullscreenOrZen && book && (
+        <>
+          <div className="fixed top-[max(0.5rem,env(safe-area-inset-top))] right-3 z-[106] opacity-25 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200 flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                setSettingsTab('reading');
+                setShowSettings((prev) => !prev);
+                setShowToc(false);
+                setShowBacklog(false);
+                setShowAudioPanel(false);
+              }}
+              title="Atur Lebar Teks & Tampilan (S)"
+              className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-bold backdrop-blur-md shadow-lg inline-flex items-center gap-1 cursor-pointer ${themeStyle.subtleBtn}`}
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Tampilan</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTocTab('chapters');
+                setShowToc((prev) => !prev);
+                setShowSettings(false);
+                setShowBacklog(false);
+                setShowAudioPanel(false);
+              }}
+              title="Daftar Bab & Bookmark (C)"
+              className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-bold backdrop-blur-md shadow-lg inline-flex items-center gap-1 cursor-pointer ${themeStyle.subtleBtn}`}
+            >
+              <List className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Bab</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowAudioPanel((prev) => !prev);
+                setShowSettings(false);
+                setShowToc(false);
+                setShowBacklog(false);
+              }}
+              title="Audiobook & AI Narator (A)"
+              className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-bold backdrop-blur-md shadow-lg inline-flex items-center gap-1 cursor-pointer ${themeStyle.subtleBtn}`}
+            >
+              <Headphones className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => updatePrefs({ cleanMode: false })}
+              title="Tampilkan Toolbar Normal (Z / Esc)"
+              className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-extrabold backdrop-blur-md shadow-lg inline-flex items-center gap-1 cursor-pointer ${themeStyle.subtleBtn}`}
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Keluar Clean</span>
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setTocTab('chapters');
+              setShowToc(true);
+              setShowSettings(false);
+              setShowBacklog(false);
+              setShowAudioPanel(false);
+            }}
+            title="Klik untuk buka Daftar Bab & Bookmark"
+            className="fixed bottom-[max(0.45rem,env(safe-area-inset-bottom))] right-3 sm:right-5 z-[104] px-2 py-0.5 rounded-md text-[11px] font-mono opacity-45 hover:opacity-95 transition-opacity cursor-pointer select-none"
+          >
+            {readingProgressStats.readChars.toLocaleString('id-ID')} /{' '}
+            {readingProgressStats.totalChars.toLocaleString('id-ID')}{' '}
+            {exactBookPct}%
+          </button>
+        </>
+      )}
+
       {/* TOP TOOLBAR */}
-      {!isFullscreenOrZen && (
+      {!hideChrome && (
         <header
           className={`relative z-20 shrink-0 border-b backdrop-blur-md pt-[max(0.5rem,env(safe-area-inset-top))] ${
             hasActiveBg ? themeStyle.toolbarGlass : themeStyle.toolbar
@@ -3492,29 +3680,45 @@ export const JapaneseNovelReaderModal: React.FC<
               </button>
 
               {book && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAudioPanel((prev) => !prev);
-                    setShowSettings(false);
-                    setShowToc(false);
-                    setShowBacklog(false);
-                  }}
-                  title="Audiobook & AI Narator (A)"
-                  className={`hidden md:inline-flex p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold items-center gap-1 transition cursor-pointer ${
-                    showAudioPanel
-                      ? 'bg-sky-500 text-slate-950 border-sky-400'
-                      : audioPlaybackActive
-                        ? 'bg-emerald-500/20 border-emerald-400/45 text-emerald-300'
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAudioPanel((prev) => !prev);
+                      setShowSettings(false);
+                      setShowToc(false);
+                      setShowBacklog(false);
+                    }}
+                    title="Audiobook & AI Narator (A)"
+                    className={`hidden md:inline-flex p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold items-center gap-1 transition cursor-pointer ${
+                      showAudioPanel
+                        ? 'bg-sky-500 text-slate-950 border-sky-400'
+                        : audioPlaybackActive
+                          ? 'bg-emerald-500/20 border-emerald-400/45 text-emerald-300'
+                          : themeStyle.subtleBtn
+                    }`}
+                  >
+                    <Headphones className="w-3.5 h-3.5 shrink-0" />
+                    <span className="hidden xl:inline">Audio/AI</span>
+                    {audioPlaybackActive && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => updatePrefs({ cleanMode: !prefs.cleanMode })}
+                    title="Mode Clean ala Ttsu — teks penuh tanpa kotak & toolbar (Z)"
+                    className={`hidden md:inline-flex p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold items-center gap-1 transition cursor-pointer ${
+                      prefs.cleanMode
+                        ? 'bg-sky-500 text-slate-950 border-sky-400'
                         : themeStyle.subtleBtn
-                  }`}
-                >
-                  <Headphones className="w-3.5 h-3.5 shrink-0" />
-                  <span className="hidden xl:inline">Audio/AI</span>
-                  {audioPlaybackActive && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  )}
-                </button>
+                    }`}
+                  >
+                    <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                    <span className="hidden xl:inline">Clean</span>
+                  </button>
+                </>
               )}
 
               <button
@@ -3714,6 +3918,19 @@ export const JapaneseNovelReaderModal: React.FC<
 
               <button
                 type="button"
+                onClick={() => updatePrefs({ cleanMode: !prefs.cleanMode })}
+                className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${
+                  prefs.cleanMode
+                    ? 'bg-sky-500 text-slate-950 border-sky-400'
+                    : themeStyle.subtleBtn
+                }`}
+              >
+                <BookOpen className="w-3 h-3" />
+                <span>Clean</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => addBookInputRef.current?.click()}
                 disabled={importing}
                 className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${themeStyle.subtleBtn}`}
@@ -3860,6 +4077,48 @@ export const JapaneseNovelReaderModal: React.FC<
                     </div>
                   </div>
 
+                  {/* Mode Clean & 1-Click Ttsu Preset */}
+                  <div className="space-y-1.5">
+                    <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
+                      Tampilan Bersih (Ala Ttsu)
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updatePrefs({ cleanMode: !prefs.cleanMode })
+                        }
+                        className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                          prefs.cleanMode
+                            ? 'bg-sky-500 text-slate-950 border-sky-400'
+                            : themeStyle.subtleBtn
+                        }`}
+                      >
+                        Mode Clean (Z): {prefs.cleanMode ? 'ON' : 'OFF'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updatePrefs({
+                            cleanMode: true,
+                            theme: 'charcoal',
+                            bgMode: 'none',
+                            maxWidth: 'custom',
+                            customMaxWidthPx: 1080,
+                            lineHeight: 1.65,
+                            paragraphSpacing: 0.15,
+                            letterSpacing: 0.02,
+                            indentParagraphs: false,
+                          });
+                          toast.success('Preset Clean (Ala Ttsu) diterapkan!');
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl text-xs font-extrabold border border-sky-400/40 bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 transition cursor-pointer"
+                      >
+                        Preset Clean (Ttsu)
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Writing Direction */}
                   <div className="space-y-1.5">
                     <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
@@ -3970,7 +4229,7 @@ export const JapaneseNovelReaderModal: React.FC<
                     </div>
                     <input
                       type="range"
-                      min={1.6}
+                      min={1.35}
                       max={2.4}
                       step={0.05}
                       value={prefs.lineHeight}
@@ -3979,6 +4238,54 @@ export const JapaneseNovelReaderModal: React.FC<
                       }
                       className="w-full h-2 accent-sky-400 cursor-pointer"
                     />
+                  </div>
+
+                  {/* Paragraph Spacing */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className={`font-bold ${themeStyle.mutedText}`}>
+                        Jarak Paragraf
+                      </span>
+                      <span className="font-mono font-bold">
+                        {prefs.paragraphSpacing.toFixed(2)}em
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1.2}
+                      step={0.05}
+                      value={prefs.paragraphSpacing}
+                      onChange={(e) =>
+                        updatePrefs({
+                          paragraphSpacing:
+                            Math.round(Number(e.target.value) * 100) / 100,
+                        })
+                      }
+                      className="w-full h-2 accent-sky-400 cursor-pointer"
+                    />
+                    <div className="grid grid-cols-3 gap-1">
+                      {[
+                        { label: 'Rapat (0.15)', em: 0.15 },
+                        { label: 'Normal (0.45)', em: 0.45 },
+                        { label: 'Lega (0.90)', em: 0.9 },
+                      ].map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() =>
+                            updatePrefs({ paragraphSpacing: preset.em })
+                          }
+                          className={`py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                            Math.abs(prefs.paragraphSpacing - preset.em) < 0.01
+                              ? 'bg-sky-500 text-slate-950 border-sky-400'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Letter Spacing (Jarak Huruf) */}
@@ -4060,49 +4367,147 @@ export const JapaneseNovelReaderModal: React.FC<
                     </div>
                   </div>
 
-                  {/* Horizontal Width / Vertical Column Height & Indent */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
-                        {prefs.writingMode === 'vertical'
-                          ? 'Tinggi Kolom'
-                          : 'Lebar Teks'}
-                      </span>
-                      <div className="grid grid-cols-4 gap-1">
-                        {(
-                          [
-                            { id: 'narrow', label: 'S' },
-                            { id: 'medium', label: 'M' },
-                            { id: 'wide', label: 'L' },
-                            { id: 'full', label: 'Full' },
-                          ] as const
-                        ).map((w) => (
-                          <button
-                            key={w.id}
-                            type="button"
-                            onClick={() => updatePrefs({ maxWidth: w.id })}
-                            className={`py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
-                              prefs.maxWidth === w.id
-                                ? 'bg-sky-500 text-slate-950 border-sky-400'
-                                : themeStyle.subtleBtn
-                            }`}
-                          >
-                            {w.label}
-                          </button>
-                        ))}
+                  {/* Adjustable Max Width / Vertical Column Height & Indent */}
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className={`font-bold ${themeStyle.mutedText}`}>
+                          {prefs.writingMode === 'vertical'
+                            ? 'Tinggi Kolom Vertikal'
+                            : 'Lebar Teks (max-width)'}
+                        </span>
+                        <span className="font-mono font-bold text-sky-400">
+                          {prefs.writingMode === 'vertical'
+                            ? resolvedVHeightPx === null
+                              ? 'Full (100%)'
+                              : `${resolvedVHeightPx}px`
+                            : resolvedMaxWidthPx === null
+                              ? 'Full (100%)'
+                              : `${resolvedMaxWidthPx}px`}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cur =
+                              prefs.writingMode === 'vertical'
+                                ? effectiveSliderVHeightPx
+                                : effectiveSliderWidthPx;
+                            const minV =
+                              prefs.writingMode === 'vertical' ? 380 : 480;
+                            updatePrefs({
+                              maxWidth: 'custom',
+                              customMaxWidthPx: Math.max(minV, cur - 40),
+                            });
+                          }}
+                          className={`px-2.5 py-1 rounded-lg border text-xs font-bold cursor-pointer ${themeStyle.subtleBtn}`}
+                        >
+                          -
+                        </button>
+                        <input
+                          type="range"
+                          min={prefs.writingMode === 'vertical' ? 380 : 480}
+                          max={prefs.writingMode === 'vertical' ? 1000 : 1600}
+                          step={20}
+                          value={
+                            prefs.writingMode === 'vertical'
+                              ? effectiveSliderVHeightPx
+                              : effectiveSliderWidthPx
+                          }
+                          onChange={(e) =>
+                            updatePrefs({
+                              maxWidth: 'custom',
+                              customMaxWidthPx: Number(e.target.value),
+                            })
+                          }
+                          className="flex-1 h-2 accent-sky-400 cursor-pointer"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cur =
+                              prefs.writingMode === 'vertical'
+                                ? effectiveSliderVHeightPx
+                                : effectiveSliderWidthPx;
+                            const maxV =
+                              prefs.writingMode === 'vertical' ? 1000 : 1600;
+                            updatePrefs({
+                              maxWidth: 'custom',
+                              customMaxWidthPx: Math.min(maxV, cur + 40),
+                            });
+                          }}
+                          className={`px-2.5 py-1 rounded-lg border text-xs font-bold cursor-pointer ${themeStyle.subtleBtn}`}
+                        >
+                          +
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-5 gap-1">
+                        {(prefs.writingMode === 'vertical'
+                          ? ([
+                              { label: '460', px: 460 },
+                              { label: '600', px: 600 },
+                              { label: '760', px: 760 },
+                              { label: '900', px: 900 },
+                              { label: 'Full', px: null },
+                            ] as const)
+                          : ([
+                              { label: '640', px: 640 },
+                              { label: '860', px: 860 },
+                              { label: '1080', px: 1080 },
+                              { label: '1280', px: 1280 },
+                              { label: 'Full', px: null },
+                            ] as const)
+                        ).map((preset) => {
+                          const active =
+                            preset.px === null
+                              ? prefs.maxWidth === 'full' ||
+                                (prefs.writingMode === 'vertical' &&
+                                  prefs.maxWidth === 'wide')
+                              : (prefs.writingMode === 'vertical'
+                                  ? resolvedVHeightPx
+                                  : resolvedMaxWidthPx) === preset.px;
+                          return (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              onClick={() => {
+                                if (preset.px === null) {
+                                  updatePrefs({ maxWidth: 'full' });
+                                } else {
+                                  updatePrefs({
+                                    maxWidth: 'custom',
+                                    customMaxWidthPx: preset.px,
+                                  });
+                                }
+                              }}
+                              className={`py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                                active
+                                  ? 'bg-sky-500 text-slate-950 border-sky-400'
+                                  : themeStyle.subtleBtn
+                              }`}
+                            >
+                              {preset.label}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
 
-                    <div className="space-y-1">
-                      <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
-                        Indent Paragraf
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-[11px] font-bold ${themeStyle.mutedText}`}>
+                        Indent Paragraf (字下げ)
                       </span>
                       <button
                         type="button"
                         onClick={() =>
-                          updatePrefs({ indentParagraphs: !prefs.indentParagraphs })
+                          updatePrefs({
+                            indentParagraphs: !prefs.indentParagraphs,
+                          })
                         }
-                        className={`w-full py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
                           prefs.indentParagraphs
                             ? 'bg-sky-500 text-slate-950 border-sky-400'
                             : themeStyle.subtleBtn
@@ -4291,9 +4696,10 @@ export const JapaneseNovelReaderModal: React.FC<
                     <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
                       Tema Warna Baca
                     </span>
-                    <div className="grid grid-cols-4 gap-1.5">
+                    <div className="grid grid-cols-3 gap-1.5">
                       {(
                         [
+                          { id: 'charcoal', label: 'Clean Dark' },
                           { id: 'navy', label: 'Navy' },
                           { id: 'amoled', label: 'AMOLED' },
                           { id: 'sepia', label: 'Sepia' },
@@ -5424,7 +5830,7 @@ export const JapaneseNovelReaderModal: React.FC<
             className="flex-1 min-h-0 flex flex-col justify-between p-3 sm:p-6 overflow-hidden"
           >
             {/* Compact VN Controls Bar */}
-            {!isFullscreenOrZen && (
+            {!hideChrome && (
               <div className="max-w-4xl w-full mx-auto mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <button
@@ -5554,27 +5960,46 @@ export const JapaneseNovelReaderModal: React.FC<
                   onWheel={
                     prefs.writingMode === 'vertical' ? handleWheel : undefined
                   }
-                  className={`rounded-3xl border ${
-                    hasActiveBg ? 'bg-transparent' : themeStyle.vnCard
+                  className={`${
+                    prefs.cleanMode ? '' : 'rounded-3xl border'
+                  } ${
+                    hasActiveBg || prefs.cleanMode
+                      ? 'bg-transparent'
+                      : themeStyle.vnCard
                   } ${
                     prefs.writingMode === 'vertical'
                       ? 'jp-scroll-viewport-vertical w-full max-w-4xl h-full max-h-[38rem] sm:max-h-[42rem] px-3 sm:px-6 py-3 sm:py-5'
-                      : 'w-full max-w-3xl max-h-full overflow-y-auto p-5 sm:p-8'
+                      : 'w-full max-h-full overflow-y-auto p-5 sm:p-8'
                   }`}
-                  style={vnCardStyle}
+                  style={{
+                    ...(prefs.writingMode === 'horizontal'
+                      ? {
+                          maxWidth:
+                            resolvedMaxWidthPx === null
+                              ? 'none'
+                              : `${resolvedMaxWidthPx}px`,
+                        }
+                      : resolvedVHeightPx !== null
+                        ? { maxHeight: `min(100%, ${resolvedVHeightPx}px)` }
+                        : {}),
+                    ...vnCardStyle,
+                  }}
                 >
                   <article
                     ref={articleRef}
                     data-furigana={prefs.furigana}
-                    className={`jp-novel-reader-content ${contentDirClass} ${
+                    className={`jp-novel-reader-content ${contentDirClass} ${cleanClass} ${
                       prefs.writingMode === 'vertical' ? widthClass : ''
                     } ${indentClass}`}
-                    style={{
-                      fontFamily: activeFontCss,
-                      fontSize: `${prefs.fontSize}px`,
-                      lineHeight: prefs.lineHeight,
-                      letterSpacing: `${prefs.letterSpacing}em`,
-                    }}
+                    style={
+                      {
+                        fontFamily: activeFontCss,
+                        fontSize: `${prefs.fontSize}px`,
+                        lineHeight: prefs.lineHeight,
+                        letterSpacing: `${prefs.letterSpacing}em`,
+                        '--jp-para-gap': `${prefs.paragraphSpacing}em`,
+                      } as React.CSSProperties
+                    }
                   >
                     {vnVisibleParagraphs.map((p) => (
                       <div
@@ -5600,20 +6025,35 @@ export const JapaneseNovelReaderModal: React.FC<
                 <article
                   ref={articleRef}
                   data-furigana={prefs.furigana}
-                  className={`jp-novel-reader-content ${contentDirClass} ${widthClass} ${indentClass} ${
+                  className={`jp-novel-reader-content ${contentDirClass} ${widthClass} ${indentClass} ${cleanClass} ${
                     hasActiveBg &&
                     prefs.bgPanelOpacity > 0 &&
+                    !prefs.cleanMode &&
                     prefs.writingMode === 'horizontal'
                       ? 'px-4 py-5 sm:px-8 sm:py-8 shadow-xl'
                       : ''
                   }`}
-                  style={{
-                    fontFamily: activeFontCss,
-                    fontSize: `${prefs.fontSize}px`,
-                    lineHeight: prefs.lineHeight,
-                    letterSpacing: `${prefs.letterSpacing}em`,
-                    ...articleGlassStyle,
-                  }}
+                  style={
+                    {
+                      fontFamily: activeFontCss,
+                      fontSize: `${prefs.fontSize}px`,
+                      lineHeight: prefs.lineHeight,
+                      letterSpacing: `${prefs.letterSpacing}em`,
+                      '--jp-para-gap': `${prefs.paragraphSpacing}em`,
+                      ...(prefs.writingMode === 'horizontal'
+                        ? {
+                            width: '100%',
+                            maxWidth:
+                              resolvedMaxWidthPx === null
+                                ? 'none'
+                                : `${resolvedMaxWidthPx}px`,
+                          }
+                        : resolvedVHeightPx !== null
+                          ? { maxHeight: `min(100%, ${resolvedVHeightPx}px)` }
+                          : { maxHeight: '100%' }),
+                      ...articleGlassStyle,
+                    } as React.CSSProperties & Record<'--jp-para-gap', string>
+                  }
                 >
                   {vnVisibleParagraphs.map((p, idx) => {
                     const isNewBatch = idx >= vnIndex;
@@ -5631,7 +6071,7 @@ export const JapaneseNovelReaderModal: React.FC<
             )}
 
             {/* VN Stepper Footer Bar */}
-            {!isFullscreenOrZen && (
+            {!hideChrome && (
               <div className="max-w-3xl w-full mx-auto pt-3 flex items-center justify-between gap-2 pb-[env(safe-area-inset-bottom)]">
                 <button
                   type="button"
@@ -5668,29 +6108,37 @@ export const JapaneseNovelReaderModal: React.FC<
             onWheel={handleWheel}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
-            className="flex-1 min-h-0 flex flex-col px-2 sm:px-5 py-2.5 sm:py-4 overflow-hidden"
+            className={`flex-1 min-h-0 flex flex-col overflow-hidden ${
+              prefs.cleanMode
+                ? 'px-3 sm:px-6 py-4 sm:py-6'
+                : 'px-2 sm:px-5 py-2.5 sm:py-4'
+            }`}
           >
             <div
               className={`mx-auto w-full flex flex-col overflow-hidden ${
                 prefs.writingMode === 'horizontal'
-                  ? prefs.maxWidth === 'full'
-                    ? 'flex-1 min-h-0 max-w-none'
-                    : prefs.maxWidth === 'narrow'
-                      ? 'flex-1 min-h-0 max-w-[36rem]'
-                      : prefs.maxWidth === 'wide'
-                        ? 'flex-1 min-h-0 max-w-[60rem]'
-                        : 'flex-1 min-h-0 max-w-[46rem]'
-                  : prefs.maxWidth === 'narrow'
-                    ? 'h-full max-h-[30rem] my-auto'
-                    : prefs.maxWidth === 'medium'
-                      ? 'h-full max-h-[40rem] my-auto'
-                      : 'flex-1 min-h-0'
+                  ? 'flex-1 min-h-0'
+                  : resolvedVHeightPx === null
+                    ? 'flex-1 min-h-0'
+                    : 'h-full my-auto'
               } ${
-                hasActiveBg && prefs.bgPanelOpacity > 0
+                hasActiveBg && prefs.bgPanelOpacity > 0 && !prefs.cleanMode
                   ? 'px-4 py-4 sm:px-8 sm:py-6 shadow-xl'
-                  : 'px-2 sm:px-4 py-2 sm:py-4'
+                  : 'px-1 sm:px-3 py-1 sm:py-2'
               }`}
-              style={articleGlassStyle}
+              style={{
+                ...(prefs.writingMode === 'horizontal'
+                  ? {
+                      maxWidth:
+                        resolvedMaxWidthPx === null
+                          ? 'none'
+                          : `${resolvedMaxWidthPx}px`,
+                    }
+                  : resolvedVHeightPx !== null
+                    ? { maxHeight: `${resolvedVHeightPx}px` }
+                    : {}),
+                ...articleGlassStyle,
+              }}
             >
               <div
                 ref={scrollContainerRef}
@@ -5706,23 +6154,26 @@ export const JapaneseNovelReaderModal: React.FC<
                 <article
                   ref={articleRef}
                   data-furigana={prefs.furigana}
-                  className={`jp-novel-reader-content ${contentDirClass} ${indentClass} ${
+                  className={`jp-novel-reader-content ${contentDirClass} ${indentClass} ${cleanClass} ${
                     prefs.writingMode === 'vertical'
                       ? 'jp-paged-v-article'
                       : 'jp-paged-h-article'
                   }`}
-                  style={{
-                    fontFamily: activeFontCss,
-                    fontSize: `${prefs.fontSize}px`,
-                    lineHeight: prefs.lineHeight,
-                    letterSpacing: `${prefs.letterSpacing}em`,
-                    ...(prefs.writingMode === 'horizontal' && pagedWidthPx > 0
-                      ? ({
-                          '--jp-page-width': `${pagedWidthPx}px`,
-                          '--jp-page-gap': `${PAGE_GAP}px`,
-                        } as React.CSSProperties)
-                      : {}),
-                  }}
+                  style={
+                    {
+                      fontFamily: activeFontCss,
+                      fontSize: `${prefs.fontSize}px`,
+                      lineHeight: prefs.lineHeight,
+                      letterSpacing: `${prefs.letterSpacing}em`,
+                      '--jp-para-gap': `${prefs.paragraphSpacing}em`,
+                      ...(prefs.writingMode === 'horizontal' && pagedWidthPx > 0
+                        ? {
+                            '--jp-page-width': `${pagedWidthPx}px`,
+                            '--jp-page-gap': `${PAGE_GAP}px`,
+                          }
+                        : {}),
+                    } as React.CSSProperties
+                  }
                 >
                   <BookChaptersContent
                     chapters={book.chapters}
@@ -5745,34 +6196,51 @@ export const JapaneseNovelReaderModal: React.FC<
             className={`flex-1 min-h-0 ${
               prefs.writingMode === 'vertical'
                 ? `jp-scroll-viewport-vertical ${
-                    prefs.maxWidth === 'full'
+                    prefs.cleanMode || prefs.maxWidth === 'full'
                       ? 'px-3 sm:px-6 py-4 sm:py-6'
                       : 'px-4 sm:px-10 py-5 sm:py-8'
                   }`
                 : `overflow-y-auto overflow-x-hidden ${
-                    prefs.maxWidth === 'full'
-                      ? 'px-3 sm:px-6 py-5 sm:py-8'
-                      : 'px-4 sm:px-8 py-6 sm:py-10'
+                    prefs.cleanMode
+                      ? 'px-4 sm:px-8 py-5 sm:py-7'
+                      : prefs.maxWidth === 'full'
+                        ? 'px-3 sm:px-6 py-5 sm:py-8'
+                        : 'px-4 sm:px-8 py-6 sm:py-10'
                   }`
             }`}
           >
             <article
               ref={articleRef}
               data-furigana={prefs.furigana}
-              className={`jp-novel-reader-content ${contentDirClass} ${widthClass} ${indentClass} ${
+              className={`jp-novel-reader-content ${contentDirClass} ${widthClass} ${indentClass} ${cleanClass} ${
                 hasActiveBg &&
                 prefs.bgPanelOpacity > 0 &&
+                !prefs.cleanMode &&
                 prefs.writingMode === 'horizontal'
                   ? 'px-4 py-5 sm:px-8 sm:py-8 shadow-xl'
                   : ''
               }`}
-              style={{
-                fontFamily: activeFontCss,
-                fontSize: `${prefs.fontSize}px`,
-                lineHeight: prefs.lineHeight,
-                letterSpacing: `${prefs.letterSpacing}em`,
-                ...articleGlassStyle,
-              }}
+              style={
+                {
+                  fontFamily: activeFontCss,
+                  fontSize: `${prefs.fontSize}px`,
+                  lineHeight: prefs.lineHeight,
+                  letterSpacing: `${prefs.letterSpacing}em`,
+                  '--jp-para-gap': `${prefs.paragraphSpacing}em`,
+                  ...(prefs.writingMode === 'horizontal'
+                    ? {
+                        width: '100%',
+                        maxWidth:
+                          resolvedMaxWidthPx === null
+                            ? 'none'
+                            : `${resolvedMaxWidthPx}px`,
+                      }
+                    : resolvedVHeightPx !== null
+                      ? { maxHeight: `min(100%, ${resolvedVHeightPx}px)` }
+                      : { maxHeight: '100%', height: '100%' }),
+                  ...articleGlassStyle,
+                } as React.CSSProperties & Record<'--jp-para-gap', string>
+              }
             >
               <BookChaptersContent
                 chapters={book.chapters}
@@ -6069,7 +6537,7 @@ export const JapaneseNovelReaderModal: React.FC<
       )}
 
       {/* BOTTOM SLIDE / PAGE & CHAPTER NAVIGATION BAR */}
-      {!isFullscreenOrZen &&
+      {!hideChrome &&
         book &&
         activeChapter &&
         prefs.readingMode !== 'vn' && (
