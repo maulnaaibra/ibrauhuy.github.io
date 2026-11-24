@@ -96,7 +96,7 @@ export interface ReaderPreferences {
   theme: 'navy' | 'amoled' | 'sepia' | 'light';
   lineHeight: number;
   letterSpacing: number;
-  maxWidth: 'narrow' | 'medium' | 'wide';
+  maxWidth: 'narrow' | 'medium' | 'wide' | 'full';
   indentParagraphs: boolean;
   vnParagraphsPerStep: number;
   vnAnimation: VnAnimationStyle;
@@ -187,7 +187,9 @@ export function loadReaderPrefs(): ReaderPreferences {
           ? Math.min(0.3, Math.max(-0.02, Math.round(parsed.letterSpacing * 100) / 100))
           : DEFAULT_READER_PREFS.letterSpacing;
       const maxWidth: ReaderPreferences['maxWidth'] =
-        parsed.maxWidth === 'narrow' || parsed.maxWidth === 'wide'
+        parsed.maxWidth === 'narrow' ||
+        parsed.maxWidth === 'wide' ||
+        parsed.maxWidth === 'full'
           ? parsed.maxWidth
           : 'medium';
       const indentParagraphs =

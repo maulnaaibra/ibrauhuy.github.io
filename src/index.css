@@ -820,6 +820,11 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
   max-width: 58rem;
 }
 
+.jp-novel-reader-content.jp-width-full {
+  max-width: none;
+  width: 100%;
+}
+
 .jp-novel-reader-content.jp-vheight-narrow {
   max-height: min(100%, 28rem);
 }
@@ -832,6 +837,11 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
   max-height: 100%;
 }
 
+.jp-novel-reader-content.jp-vheight-full {
+  max-height: 100%;
+  height: 100%;
+}
+
 .jp-novel-reader-content.jp-writing-vertical {
   writing-mode: vertical-rl;
   -webkit-writing-mode: vertical-rl;
@@ -842,6 +852,131 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
   min-width: max-content;
   margin: 0;
   padding: 1.25rem 1.75rem;
+}
+
+.jp-chapter-section {
+  position: relative;
+}
+
+.jp-chapter-section p {
+  orphans: 2;
+  widows: 2;
+}
+
+.jp-chapter-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-block: 2rem 1.15rem;
+  opacity: 0.92;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+.jp-chapter-section:first-child .jp-chapter-divider {
+  margin-block-start: 0.15rem;
+}
+
+.jp-chapter-divider::before,
+.jp-chapter-divider::after {
+  content: '';
+  flex: 1;
+  block-size: 1px;
+  background: rgba(148, 163, 184, 0.28);
+}
+
+.jp-writing-vertical .jp-chapter-divider::before,
+.jp-writing-vertical .jp-chapter-divider::after,
+.jp-paged-v-viewport .jp-chapter-divider::before,
+.jp-paged-v-viewport .jp-chapter-divider::after {
+  min-height: 2.5rem;
+}
+
+.jp-chapter-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(56, 189, 248, 0.26);
+  background: rgba(15, 23, 42, 0.78);
+  color: rgba(186, 230, 253, 0.95);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* Horizontal CSS multi-column Page mode: outer frame owns padding so viewport stays zero-pad */
+.jp-paged-h-viewport {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  scrollbar-width: none;
+}
+
+.jp-paged-h-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.jp-paged-h-article {
+  height: 100%;
+  width: var(--jp-page-width, 100%);
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  column-width: var(--jp-page-width, 640px);
+  column-gap: var(--jp-page-gap, 48px);
+  column-fill: auto;
+}
+
+.jp-paged-h-article h1,
+.jp-paged-h-article h2,
+.jp-paged-h-article h3,
+.jp-paged-h-article h4 {
+  break-after: avoid;
+  page-break-after: avoid;
+  break-inside: avoid;
+}
+
+/* Vertical RTL Page mode */
+.jp-paged-v-viewport {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  justify-content: safe center;
+  align-items: center;
+  align-items: safe center;
+  writing-mode: vertical-rl;
+  -webkit-writing-mode: vertical-rl;
+  text-orientation: mixed;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  scrollbar-width: none;
+}
+
+.jp-paged-v-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.jp-paged-v-article {
+  writing-mode: vertical-rl;
+  -webkit-writing-mode: vertical-rl;
+  text-orientation: mixed;
+  flex: 0 0 auto;
+  height: 100%;
+  width: max-content;
+  min-width: max-content;
+  max-width: none;
+  padding: 0;
+  margin: 0;
 }
 
 .jp-novel-reader-content p {
@@ -901,6 +1036,11 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
   max-height: 78vh;
   max-width: 82vw;
   margin: 0 1.25rem;
+}
+
+.jp-paged-h-article img,
+.jp-paged-h-article svg {
+  max-height: 90%;
 }
 
 /* VN Entrance Animations (Pure CSS so DOM text stays 100% Yomitan-compatible) */

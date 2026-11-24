@@ -85,6 +85,7 @@ import {
   type ReaderMode,
   type ReaderPreferences,
   type StoredNovelBook,
+  type StoredNovelChapter,
   type StoredNovelSummary,
   type VnAnimationStyle,
 } from '../lib/epubReaderStore';
@@ -218,7 +219,7 @@ const READER_SHORTCUTS: Array<{ keys: string[]; desc: string }> = [
   { keys: ['['], desc: 'Bab sebelumnya' },
   { keys: [']'], desc: 'Bab berikutnya' },
   { keys: ['V'], desc: 'Aktif / matikan Mode VN' },
-  { keys: ['P'], desc: 'Ganti mode baca (Scroll / Halaman / VN)' },
+  { keys: ['P'], desc: 'Ganti mode baca (Continuous / Page / VN)' },
   { keys: ['T'], desc: 'Ganti arah baca (Horizontal ↔ Vertikal 縦書き)' },
   { keys: ['F'], desc: 'Ganti mode Furigana (Tampil / Hover / Sembunyi)' },
   { keys: ['+', '-'], desc: 'Perbesar / perkecil ukuran huruf' },
@@ -268,6 +269,36 @@ const ReaderSessionTimerButton: React.FC<{
   );
 });
 
+const PAGE_GAP = 48;
+
+const BookChaptersContent: React.FC<{
+  chapters: StoredNovelChapter[];
+  showChapterDividers: boolean;
+}> = React.memo(({ chapters, showChapterDividers }) => (
+  <>
+    {chapters.map((ch, idx) => (
+      <section
+        key={ch.id || `ch-${idx}`}
+        data-chapter-index={idx}
+        className="jp-chapter-section"
+      >
+        {showChapterDividers && chapters.length > 1 && (
+          <div
+            className="jp-chapter-divider"
+            aria-label={`Bab ${idx + 1}: ${ch.title}`}
+          >
+            <span className="jp-chapter-badge">
+              <span>Bab {idx + 1}</span>
+              {ch.title && <span className="opacity-80">• {ch.title}</span>}
+            </span>
+          </div>
+        )}
+        <div dangerouslySetInnerHTML={{ __html: ch.html }} />
+      </section>
+    ))}
+  </>
+));
+
 export const JapaneseNovelReaderModal: React.FC<
   JapaneseNovelReaderModalProps
 > = ({ target, userId, onClose, onLogReadingSession, onBookLibraryChanged }) => {
@@ -292,6 +323,12 @@ export const JapaneseNovelReaderModal: React.FC<
   const vnPreviewControllerRef = useRef<VnRevealController | null>(null);
   const progressTimerRef = useRef<number | null>(null);
   const pendingJumpToEndRef = useRef(false);
+  const pendingJumpTargetRef = useRef<{
+    chapterIndex: number;
+    chapterRatio: number;
+  } | null>(null);
+  const restoringScrollRef = useRef(false);
+  const wheelPageCooldownRef = useRef(0);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(
     null
   );
@@ -343,6 +380,9 @@ export const JapaneseNovelReaderModal: React.FC<
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const [scrollPct, setScrollPct] = useState(0);
+  const [bookBarPct, setBookBarPct] = useState(0);
+  const [pagedWidthPx, setPagedWidthPx] = useState(0);
+  const [explicitJumpToken, setExplicitJumpToken] = useState(0);
   const [pageInfo, setPageInfo] = useState<{ current: number; total: number }>({
     current: 1,
     total: 1,
@@ -443,6 +483,13 @@ export const JapaneseNovelReaderModal: React.FC<
         };
       }
 
+      pendingJumpTargetRef.current = loaded
+        ? {
+            chapterIndex: loaded.currentChapter,
+            chapterRatio: loaded.scrollRatio || 0,
+          }
+        : null;
+      setExplicitJumpToken((t) => t + 1);
       setActiveKey(loaded?.storageKey ?? resolvedKey);
       setYatsuInput(yatsuLinks[loaded?.storageKey ?? resolvedKey] ?? '');
       setBook(loaded);
@@ -592,37 +639,398 @@ export const JapaneseNovelReaderModal: React.FC<
 
   const computeScrollMetrics = useCallback(() => {
     const el = scrollContainerRef.current;
-    if (!el) return { ratio: 0, current: 1, total: 1 };
+    const article = articleRef.current;
+    const curBook = bookRef.current;
+    const fallbackChapter = curBook?.currentChapter ?? 0;
+    if (!el) {
+      return {
+        ratio: 0,
+        bookRatio: 0,
+        chapterIndex: fallbackChapter,
+        current: 1,
+        total: 1,
+      };
+    }
 
-    if (prefs.writingMode === 'vertical') {
-      const maxScroll = el.scrollWidth - el.clientWidth;
-      const stepPx = Math.max(220, Math.round(el.clientWidth * 0.88));
-      const total = Math.max(1, Math.ceil(el.scrollWidth / stepPx));
-      if (maxScroll <= 2) {
-        return { ratio: 0, current: 1, total };
-      }
+    const mode = prefsRef.current.readingMode;
+    const isVertical = prefsRef.current.writingMode === 'vertical';
+    const isPaginated = mode === 'paginated';
+
+    let bookRatio = 0;
+    let current = 1;
+    let total = 1;
+
+    if (isVertical) {
+      const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
       const scrolled = Math.abs(el.scrollLeft);
-      const ratio = Math.min(1, Math.max(0, scrolled / maxScroll));
-      const current =
-        scrolled >= maxScroll - 16
-          ? total
-          : Math.min(total, Math.floor(scrolled / stepPx) + 1);
-      return { ratio, current, total };
+      const clientW = Math.max(
+        200,
+        Math.floor(el.getBoundingClientRect().width) || el.clientWidth
+      );
+      const stepPx = isPaginated
+        ? Math.max(200, Math.round(clientW * 0.92))
+        : Math.max(220, Math.round(el.clientWidth * 0.88));
+      total =
+        maxScroll <= 2
+          ? 1
+          : isPaginated
+            ? Math.floor((maxScroll - 1) / stepPx) + 2
+            : Math.max(1, Math.ceil(el.scrollWidth / stepPx));
+      if (maxScroll > 2) {
+        bookRatio = Math.min(1, Math.max(0, scrolled / maxScroll));
+        if (scrolled >= maxScroll - 16) {
+          current = total;
+        } else {
+          current = Math.min(
+            total,
+            Math.max(
+              1,
+              (isPaginated
+                ? Math.round(scrolled / stepPx)
+                : Math.floor(scrolled / stepPx)) + 1
+            )
+          );
+        }
+      }
+    } else if (isPaginated) {
+      const pageW = Math.max(
+        200,
+        pagedWidthPx ||
+          Math.floor(el.getBoundingClientRect().width) ||
+          el.clientWidth
+      );
+      const stride = pageW + PAGE_GAP;
+      const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+      total = Math.max(1, Math.round((el.scrollWidth + PAGE_GAP) / stride));
+      if (maxScroll > 2) {
+        bookRatio = Math.min(1, Math.max(0, el.scrollLeft / maxScroll));
+        current = Math.min(
+          total,
+          Math.max(1, Math.round(el.scrollLeft / stride) + 1)
+        );
+      }
+    } else {
+      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+      const stepPx = Math.max(220, Math.round(el.clientHeight * 0.88));
+      total = Math.max(1, Math.ceil(el.scrollHeight / stepPx));
+      if (maxScroll > 2) {
+        bookRatio = Math.min(1, Math.max(0, el.scrollTop / maxScroll));
+        current =
+          el.scrollTop >= maxScroll - 16
+            ? total
+            : Math.min(total, Math.floor(el.scrollTop / stepPx) + 1);
+      }
     }
 
-    const maxScroll = el.scrollHeight - el.clientHeight;
-    const stepPx = Math.max(220, Math.round(el.clientHeight * 0.88));
-    const total = Math.max(1, Math.ceil(el.scrollHeight / stepPx));
-    if (maxScroll <= 2) {
-      return { ratio: 0, current: 1, total };
+    let chapterIndex = fallbackChapter;
+    let ratio = bookRatio;
+
+    if (article && curBook && curBook.chapters.length > 0) {
+      const sections = Array.from(
+        article.querySelectorAll<HTMLElement>('section[data-chapter-index]')
+      );
+      if (sections.length > 0) {
+        const vpRect = el.getBoundingClientRect();
+        const scrolledX = Math.abs(el.scrollLeft);
+
+        if (isVertical) {
+          const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+          if (maxScroll > 2 && scrolledX >= maxScroll - 8) {
+            const lastIdx = sections.length - 1;
+            chapterIndex = Number(
+              sections[lastIdx].dataset.chapterIndex ?? lastIdx
+            );
+            ratio = 1;
+          } else {
+            const bounds = sections.map((sec) => {
+              const r = sec.getBoundingClientRect();
+              const start = Math.max(0, vpRect.right - r.right + scrolledX);
+              const end = Math.max(start, vpRect.right - r.left + scrolledX);
+              return {
+                idx: Number(sec.dataset.chapterIndex ?? 0),
+                start,
+                end,
+              };
+            });
+            const threshold =
+              scrolledX + Math.min(96, Math.round(el.clientWidth * 0.25));
+            let activeB = bounds[0];
+            for (let i = 0; i < bounds.length; i++) {
+              if (bounds[i].start <= threshold) {
+                activeB = bounds[i];
+              } else {
+                break;
+              }
+            }
+            chapterIndex = activeB.idx;
+            const span = Math.max(1, activeB.end - activeB.start);
+            ratio = Math.min(
+              1,
+              Math.max(0, (scrolledX - activeB.start) / span)
+            );
+          }
+        } else if (isPaginated) {
+          const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+          if (maxScroll > 2 && el.scrollLeft >= maxScroll - 8) {
+            const lastIdx = sections.length - 1;
+            chapterIndex = Number(
+              sections[lastIdx].dataset.chapterIndex ?? lastIdx
+            );
+            ratio = 1;
+          } else {
+            const bounds = sections.map((sec) => {
+              const r = sec.getBoundingClientRect();
+              const start = Math.max(0, r.left - vpRect.left + el.scrollLeft);
+              const end = Math.max(
+                start,
+                r.right - vpRect.left + el.scrollLeft
+              );
+              return {
+                idx: Number(sec.dataset.chapterIndex ?? 0),
+                start,
+                end,
+              };
+            });
+            const threshold =
+              el.scrollLeft + Math.min(120, Math.round(el.clientWidth * 0.35));
+            let activeB = bounds[0];
+            for (let i = 0; i < bounds.length; i++) {
+              if (bounds[i].start <= threshold) {
+                activeB = bounds[i];
+              } else {
+                break;
+              }
+            }
+            chapterIndex = activeB.idx;
+            const span = Math.max(1, activeB.end - activeB.start);
+            ratio = Math.min(
+              1,
+              Math.max(0, (el.scrollLeft - activeB.start) / span)
+            );
+          }
+        } else {
+          const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+          if (maxScroll > 2 && el.scrollTop >= maxScroll - 8) {
+            const lastIdx = sections.length - 1;
+            chapterIndex = Number(
+              sections[lastIdx].dataset.chapterIndex ?? lastIdx
+            );
+            ratio = 1;
+          } else {
+            const bounds = sections.map((sec) => {
+              const r = sec.getBoundingClientRect();
+              const start = Math.max(0, r.top - vpRect.top + el.scrollTop);
+              const end = Math.max(start, r.bottom - vpRect.top + el.scrollTop);
+              return {
+                idx: Number(sec.dataset.chapterIndex ?? 0),
+                start,
+                end,
+              };
+            });
+            const threshold =
+              el.scrollTop + Math.min(96, Math.round(el.clientHeight * 0.2));
+            let activeB = bounds[0];
+            for (let i = 0; i < bounds.length; i++) {
+              if (bounds[i].start <= threshold) {
+                activeB = bounds[i];
+              } else {
+                break;
+              }
+            }
+            chapterIndex = activeB.idx;
+            const span = Math.max(1, activeB.end - activeB.start);
+            ratio = Math.min(
+              1,
+              Math.max(0, (el.scrollTop - activeB.start) / span)
+            );
+          }
+        }
+      }
     }
-    const ratio = Math.min(1, Math.max(0, el.scrollTop / maxScroll));
-    const current =
-      el.scrollTop >= maxScroll - 16
-        ? total
-        : Math.min(total, Math.floor(el.scrollTop / stepPx) + 1);
-    return { ratio, current, total };
-  }, [prefs.writingMode]);
+
+    return { ratio, bookRatio, chapterIndex, current, total };
+  }, [pagedWidthPx]);
+
+  const scrollToChapterPosition = useCallback(
+    (chapterIndex: number, chapterRatio = 0) => {
+      const el = scrollContainerRef.current;
+      const article = articleRef.current;
+      const curBook = bookRef.current;
+      if (!el || !curBook || curBook.chapters.length === 0) return;
+
+      const safeIdx = Math.max(
+        0,
+        Math.min(curBook.chapters.length - 1, chapterIndex)
+      );
+      const ratio = Math.min(1, Math.max(0, chapterRatio || 0));
+      const sec = article?.querySelector<HTMLElement>(
+        `section[data-chapter-index="${safeIdx}"]`
+      );
+
+      const isVertical = prefsRef.current.writingMode === 'vertical';
+      const isPaginated = prefsRef.current.readingMode === 'paginated';
+      const hasMoreChaptersAfter = safeIdx < curBook.chapters.length - 1;
+
+      if (!sec) {
+        if (isVertical) {
+          const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+          el.scrollLeft = ratio > 0 ? -(maxScroll * ratio) : 0;
+        } else if (isPaginated) {
+          const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+          el.scrollLeft = Math.round(maxScroll * ratio);
+        } else {
+          const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+          el.scrollTop = Math.round(maxScroll * ratio);
+        }
+        return;
+      }
+
+      const vpRect = el.getBoundingClientRect();
+      const secRect = sec.getBoundingClientRect();
+
+      if (isVertical) {
+        const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+        const curScrolled = Math.abs(el.scrollLeft);
+        const secStart = Math.max(
+          0,
+          vpRect.right - secRect.right + curScrolled
+        );
+        const secEnd = Math.max(
+          secStart,
+          vpRect.right - secRect.left + curScrolled
+        );
+        const span = Math.max(0, secEnd - secStart);
+        if (isPaginated) {
+          const clientW = Math.max(
+            200,
+            Math.floor(vpRect.width) || el.clientWidth
+          );
+          const stride = Math.max(200, Math.round(clientW * 0.92));
+          const usableSpan = hasMoreChaptersAfter
+            ? Math.max(0, span - stride * 0.35)
+            : span;
+          const rawTarget = secStart + ratio * usableSpan;
+          const pageIdx =
+            ratio <= 0
+              ? Math.floor((secStart + 4) / stride)
+              : Math.round(rawTarget / stride);
+          const targetScrolled = Math.min(
+            maxScroll,
+            Math.max(0, pageIdx * stride)
+          );
+          el.scrollLeft = targetScrolled > 0 ? -targetScrolled : 0;
+        } else {
+          const usableSpan = hasMoreChaptersAfter
+            ? Math.max(0, span - el.clientWidth * 0.45)
+            : span;
+          const targetScrolled = Math.min(
+            maxScroll,
+            Math.max(
+              0,
+              Math.round(
+                ratio <= 0 ? secStart : secStart + ratio * usableSpan
+              )
+            )
+          );
+          el.scrollLeft = targetScrolled > 0 ? -targetScrolled : 0;
+        }
+        return;
+      }
+
+      if (isPaginated) {
+        const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+        const secStart = Math.max(0, secRect.left - vpRect.left + el.scrollLeft);
+        const secEnd = Math.max(
+          secStart,
+          secRect.right - vpRect.left + el.scrollLeft
+        );
+        const span = Math.max(0, secEnd - secStart);
+        const pageW = Math.max(
+          200,
+          pagedWidthPx || Math.floor(vpRect.width) || el.clientWidth
+        );
+        const stride = pageW + PAGE_GAP;
+        const usableSpan = hasMoreChaptersAfter
+          ? Math.max(0, span - stride * 0.35)
+          : span;
+        const rawTarget = secStart + ratio * usableSpan;
+        const pageIdx =
+          ratio <= 0
+            ? Math.floor((secStart + 4) / stride)
+            : Math.round(rawTarget / stride);
+        const targetLeft = Math.min(maxScroll, Math.max(0, pageIdx * stride));
+        el.scrollLeft = targetLeft;
+        return;
+      }
+
+      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+      const secStart = Math.max(0, secRect.top - vpRect.top + el.scrollTop);
+      const secEnd = Math.max(
+        secStart,
+        secRect.bottom - vpRect.top + el.scrollTop
+      );
+      const span = Math.max(0, secEnd - secStart);
+      const usableSpan = hasMoreChaptersAfter
+        ? Math.max(0, span - el.clientHeight * 0.45)
+        : span;
+      const targetTop = Math.min(
+        maxScroll,
+        Math.max(
+          0,
+          Math.round(ratio <= 0 ? secStart : secStart + ratio * usableSpan)
+        )
+      );
+      el.scrollTop = targetTop;
+    },
+    [pagedWidthPx]
+  );
+
+  const syncProgressFromViewport = useCallback(
+    (persistDb = true) => {
+      const curBook = bookRef.current;
+      if (!curBook || prefsRef.current.readingMode === 'vn') return;
+      const metrics = computeScrollMetrics();
+      setScrollPct(Math.round(metrics.ratio * 100));
+      setBookBarPct(Math.round(metrics.bookRatio * 100));
+      setPageInfo({ current: metrics.current, total: metrics.total });
+
+      if (
+        curBook.currentChapter !== metrics.chapterIndex ||
+        Math.abs((curBook.scrollRatio ?? 0) - metrics.ratio) > 0.005
+      ) {
+        const chapterChanged = curBook.currentChapter !== metrics.chapterIndex;
+        const updatedBook: StoredNovelBook = {
+          ...curBook,
+          currentChapter: metrics.chapterIndex,
+          scrollRatio: metrics.ratio,
+        };
+        bookRef.current = updatedBook;
+        if (chapterChanged) {
+          setBook((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  currentChapter: metrics.chapterIndex,
+                  scrollRatio: metrics.ratio,
+                }
+              : prev
+          );
+        }
+      }
+
+      if (!persistDb) return;
+      if (progressTimerRef.current) {
+        window.clearTimeout(progressTimerRef.current);
+      }
+      const snapKey = curBook.storageKey;
+      const snapChapter = metrics.chapterIndex;
+      const snapRatio = metrics.ratio;
+      progressTimerRef.current = window.setTimeout(() => {
+        void updateStoredNovelProgress(snapKey, snapChapter, snapRatio);
+      }, 350);
+    },
+    [computeScrollMetrics]
+  );
 
   const flushProgressSyncNow = useCallback(
     (explicitRatio?: number, explicitVnIdx?: number) => {
@@ -631,9 +1039,11 @@ export const JapaneseNovelReaderModal: React.FC<
       const metrics = computeScrollMetrics();
       const vnIdx = explicitVnIdx ?? vnIndexRef.current;
       const paraLen = chapterParaLenRef.current;
+      const isVn = prefsRef.current.readingMode === 'vn';
+      const chapterIdx = isVn ? currentBook.currentChapter : metrics.chapterIndex;
       const ratio =
         explicitRatio ??
-        (prefsRef.current.readingMode === 'vn'
+        (isVn
           ? paraLen > 0
             ? Math.min(1, vnIdx / Math.max(1, paraLen - 1))
             : 0
@@ -646,7 +1056,7 @@ export const JapaneseNovelReaderModal: React.FC<
         fileName: currentBook.fileName,
         totalChars: currentBook.totalChars,
         chapterCount: currentBook.chapters.length,
-        currentChapter: currentBook.currentChapter,
+        currentChapter: chapterIdx,
         scrollRatio: ratio,
         vnIndex: vnIdx,
         bookmarks: currentBook.bookmarks ?? [],
@@ -659,11 +1069,14 @@ export const JapaneseNovelReaderModal: React.FC<
 
   const persistCurrentProgress = useCallback(
     async (explicitRatio?: number, explicitVnIdx?: number) => {
-      if (!book) return;
+      const curBook = bookRef.current ?? book;
+      if (!curBook) return;
       const metrics = computeScrollMetrics();
+      const isVn = prefsRef.current.readingMode === 'vn';
+      const chapterIdx = isVn ? curBook.currentChapter : metrics.chapterIndex;
       const ratio =
         explicitRatio ??
-        (prefs.readingMode === 'vn'
+        (isVn
           ? chapterParagraphs.length > 0
             ? Math.min(
                 1,
@@ -674,8 +1087,8 @@ export const JapaneseNovelReaderModal: React.FC<
           : metrics.ratio);
       flushProgressSyncNow(ratio, explicitVnIdx ?? vnIndex);
       await updateStoredNovelProgress(
-        book.storageKey,
-        book.currentChapter,
+        curBook.storageKey,
+        chapterIdx,
         ratio,
         explicitVnIdx ?? vnIndex
       );
@@ -684,7 +1097,6 @@ export const JapaneseNovelReaderModal: React.FC<
       book,
       computeScrollMetrics,
       flushProgressSyncNow,
-      prefs.readingMode,
       chapterParagraphs.length,
       vnIndex,
     ]
@@ -786,6 +1198,11 @@ export const JapaneseNovelReaderModal: React.FC<
             : 0;
 
       pendingJumpToEndRef.current = Boolean(opts?.jumpToEnd);
+      pendingJumpTargetRef.current = {
+        chapterIndex: clamped,
+        chapterRatio: targetRatio,
+      };
+      setExplicitJumpToken((t) => t + 1);
 
       const updated: StoredNovelBook = {
         ...book,
@@ -794,6 +1211,7 @@ export const JapaneseNovelReaderModal: React.FC<
         vnIndex: targetVn,
         updatedAt: Date.now(),
       };
+      bookRef.current = updated;
       setBook(updated);
       setVnIndex(targetVn);
       setShowToc(false);
@@ -801,13 +1219,6 @@ export const JapaneseNovelReaderModal: React.FC<
       setSelectedSentence('');
       void saveStoredNovelBook(updated);
       scheduleCloudLibraryPush(userIdRef.current);
-
-      const el = scrollContainerRef.current;
-      if (el && !opts?.jumpToEnd && !opts?.targetScrollRatio) {
-        el.scrollTop = 0;
-        el.scrollLeft = 0;
-        setScrollPct(0);
-      }
     },
     [book, prefs.vnParagraphsPerStep]
   );
@@ -922,47 +1333,84 @@ export const JapaneseNovelReaderModal: React.FC<
     animPreviewTick,
   ]);
 
-  // Restore scroll position cleanly when chapter or writingMode changes
-  useEffect(() => {
-    const el = scrollContainerRef.current;
-    if (!el || !book || prefs.readingMode === 'vn') return;
-    const raf = window.requestAnimationFrame(() => {
-      const ratio = pendingJumpToEndRef.current ? 1 : book.scrollRatio || 0;
-      pendingJumpToEndRef.current = false;
-      if (prefs.writingMode === 'vertical') {
-        const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
-        el.scrollLeft = ratio > 0 ? -(maxScroll * ratio) : 0;
-      } else {
-        const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
-        el.scrollTop = Math.round(maxScroll * ratio);
-      }
-      const m = computeScrollMetrics();
-      setScrollPct(Math.round(m.ratio * 100));
-      setPageInfo({ current: m.current, total: m.total });
-    });
-    return () => window.cancelAnimationFrame(raf);
+  // Guard passive scroll sync across layout transitions before scroll restore completes
+  useLayoutEffect(() => {
+    if (loadingBook || !book || prefs.readingMode === 'vn') {
+      restoringScrollRef.current = false;
+      return;
+    }
+    restoringScrollRef.current = true;
   }, [
+    loadingBook,
     book?.storageKey,
-    book?.currentChapter,
+    explicitJumpToken,
     prefs.writingMode,
     prefs.readingMode,
     prefs.fontSize,
     prefs.lineHeight,
     prefs.letterSpacing,
     prefs.maxWidth,
-    computeScrollMetrics,
+    prefs.indentParagraphs,
+    pagedWidthPx,
+  ]);
+
+  // Restore scroll position cleanly on explicit navigation or layout reflow (never on passive scroll)
+  useEffect(() => {
+    if (loadingBook || !book || prefs.readingMode === 'vn') return;
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    let rafInner = 0;
+    const raf = window.requestAnimationFrame(() => {
+      const jumpTarget = pendingJumpTargetRef.current;
+      pendingJumpTargetRef.current = null;
+      const targetChapter =
+        jumpTarget?.chapterIndex ??
+        bookRef.current?.currentChapter ??
+        book.currentChapter;
+      const targetRatio =
+        jumpTarget?.chapterRatio ??
+        (pendingJumpToEndRef.current
+          ? 1
+          : bookRef.current?.scrollRatio ?? book.scrollRatio ?? 0);
+      pendingJumpToEndRef.current = false;
+
+      scrollToChapterPosition(targetChapter, targetRatio);
+      syncProgressFromViewport(false);
+      rafInner = window.requestAnimationFrame(() => {
+        restoringScrollRef.current = false;
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(raf);
+      if (rafInner) window.cancelAnimationFrame(rafInner);
+    };
+  }, [
+    loadingBook,
+    book?.storageKey,
+    explicitJumpToken,
+    prefs.writingMode,
+    prefs.readingMode,
+    prefs.fontSize,
+    prefs.lineHeight,
+    prefs.letterSpacing,
+    prefs.maxWidth,
+    prefs.indentParagraphs,
+    pagedWidthPx,
+    scrollToChapterPosition,
+    syncProgressFromViewport,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep page counter updated when viewport resizes
   useEffect(() => {
     const onResize = () => {
-      if (!book || prefs.readingMode === 'vn') return;
+      if (!bookRef.current || prefsRef.current.readingMode === 'vn') return;
       const m = computeScrollMetrics();
       setPageInfo({ current: m.current, total: m.total });
+      setBookBarPct(Math.round(m.bookRatio * 100));
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [book, prefs.readingMode, computeScrollMetrics]);
+  }, [computeScrollMetrics]);
 
   const handleStepForward = useCallback(() => {
     if (!book) return;
@@ -1005,15 +1453,50 @@ export const JapaneseNovelReaderModal: React.FC<
     const el = scrollContainerRef.current;
     if (!el) return;
 
+    if (prefs.readingMode === 'paginated') {
+      if (prefs.writingMode === 'vertical') {
+        const clientW = Math.max(
+          200,
+          Math.floor(el.getBoundingClientRect().width) || el.clientWidth
+        );
+        const stride = Math.max(200, Math.round(clientW * 0.92));
+        const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+        const scrolled = Math.abs(el.scrollLeft);
+        if (scrolled >= maxScroll - 4) {
+          toast('Sudah di halaman terakhir buku ini.');
+          return;
+        }
+        const nextScrolled = Math.min(maxScroll, scrolled + stride);
+        el.scrollTo({
+          left: nextScrolled > 0 ? -nextScrolled : 0,
+          behavior: 'auto',
+        });
+        return;
+      }
+
+      const pageW = Math.max(
+        200,
+        pagedWidthPx ||
+          Math.floor(el.getBoundingClientRect().width) ||
+          el.clientWidth
+      );
+      const stride = pageW + PAGE_GAP;
+      const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+      if (el.scrollLeft >= maxScroll - 4) {
+        toast('Sudah di halaman terakhir buku ini.');
+        return;
+      }
+      const curIdx = Math.round(el.scrollLeft / stride);
+      const targetLeft = Math.min(maxScroll, (curIdx + 1) * stride);
+      el.scrollTo({ left: targetLeft, behavior: 'auto' });
+      return;
+    }
+
     if (prefs.writingMode === 'vertical') {
       const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
       const scrolled = Math.abs(el.scrollLeft);
       if (scrolled >= maxScroll - 18) {
-        if (book.currentChapter < book.chapters.length - 1) {
-          handleSwitchChapter(book.currentChapter + 1);
-        } else {
-          toast('Sudah di halaman terakhir buku ini.');
-        }
+        toast('Sudah di bagian akhir buku ini.');
         return;
       }
       const step = Math.max(220, Math.round(el.clientWidth * 0.88));
@@ -1023,11 +1506,7 @@ export const JapaneseNovelReaderModal: React.FC<
 
     const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
     if (el.scrollTop >= maxScroll - 18) {
-      if (book.currentChapter < book.chapters.length - 1) {
-        handleSwitchChapter(book.currentChapter + 1);
-      } else {
-        toast('Sudah di halaman terakhir buku ini.');
-      }
+      toast('Sudah di bagian akhir buku ini.');
       return;
     }
     const step = Math.max(220, Math.round(el.clientHeight * 0.88));
@@ -1037,6 +1516,7 @@ export const JapaneseNovelReaderModal: React.FC<
     prefs.readingMode,
     prefs.vnParagraphsPerStep,
     prefs.writingMode,
+    pagedWidthPx,
     vnIndex,
     chapterParagraphs.length,
     flushProgressSyncNow,
@@ -1079,12 +1559,47 @@ export const JapaneseNovelReaderModal: React.FC<
     const el = scrollContainerRef.current;
     if (!el) return;
 
+    if (prefs.readingMode === 'paginated') {
+      if (prefs.writingMode === 'vertical') {
+        const clientW = Math.max(
+          200,
+          Math.floor(el.getBoundingClientRect().width) || el.clientWidth
+        );
+        const stride = Math.max(200, Math.round(clientW * 0.92));
+        const scrolled = Math.abs(el.scrollLeft);
+        if (scrolled <= 4) {
+          toast('Ini halaman pertama buku ini.');
+          return;
+        }
+        const prevScrolled = Math.max(0, scrolled - stride);
+        el.scrollTo({
+          left: prevScrolled > 0 ? -prevScrolled : 0,
+          behavior: 'auto',
+        });
+        return;
+      }
+
+      const pageW = Math.max(
+        200,
+        pagedWidthPx ||
+          Math.floor(el.getBoundingClientRect().width) ||
+          el.clientWidth
+      );
+      const stride = pageW + PAGE_GAP;
+      if (el.scrollLeft <= 4) {
+        toast('Ini halaman pertama buku ini.');
+        return;
+      }
+      const curIdx = Math.round(el.scrollLeft / stride);
+      const targetLeft = Math.max(0, (curIdx - 1) * stride);
+      el.scrollTo({ left: targetLeft, behavior: 'auto' });
+      return;
+    }
+
     if (prefs.writingMode === 'vertical') {
       const scrolled = Math.abs(el.scrollLeft);
       if (scrolled <= 18) {
-        if (book.currentChapter > 0) {
-          handleSwitchChapter(book.currentChapter - 1, { jumpToEnd: true });
-        }
+        toast('Ini bagian awal buku ini.');
         return;
       }
       const step = Math.max(220, Math.round(el.clientWidth * 0.88));
@@ -1093,9 +1608,7 @@ export const JapaneseNovelReaderModal: React.FC<
     }
 
     if (el.scrollTop <= 18) {
-      if (book.currentChapter > 0) {
-        handleSwitchChapter(book.currentChapter - 1, { jumpToEnd: true });
-      }
+      toast('Ini bagian awal buku ini.');
       return;
     }
     const step = Math.max(220, Math.round(el.clientHeight * 0.88));
@@ -1105,6 +1618,7 @@ export const JapaneseNovelReaderModal: React.FC<
     prefs.readingMode,
     prefs.vnParagraphsPerStep,
     prefs.writingMode,
+    pagedWidthPx,
     vnIndex,
     chapterParagraphs.length,
     flushProgressSyncNow,
@@ -1114,27 +1628,32 @@ export const JapaneseNovelReaderModal: React.FC<
   const handleAddBookmark = useCallback(async () => {
     if (!book || !activeChapter) return;
     const metrics = computeScrollMetrics();
-    const excerpt =
-      prefs.readingMode === 'vn'
-        ? chapterParagraphs[vnIndex]?.text || activeChapter.title
-        : chapterParagraphs[
-            Math.min(
-              Math.max(0, chapterParagraphs.length - 1),
-              Math.floor(metrics.ratio * Math.max(1, chapterParagraphs.length - 1))
-            )
-          ]?.text || activeChapter.title;
+    const isVn = prefs.readingMode === 'vn';
+    const bmChapterIdx = isVn ? book.currentChapter : metrics.chapterIndex;
+    const bmChapter = book.chapters[bmChapterIdx] ?? activeChapter;
+    const bmParagraphs =
+      bmChapterIdx === book.currentChapter
+        ? chapterParagraphs
+        : extractChapterParagraphs(bmChapter.html);
+    const excerpt = isVn
+      ? bmParagraphs[vnIndex]?.text || bmChapter.title
+      : bmParagraphs[
+          Math.min(
+            Math.max(0, bmParagraphs.length - 1),
+            Math.floor(metrics.ratio * Math.max(1, bmParagraphs.length - 1))
+          )
+        ]?.text || bmChapter.title;
 
     const bookmark: NovelBookmark = {
       id: `bm-${Date.now()}`,
-      chapterIndex: book.currentChapter,
-      chapterTitle: activeChapter.title,
-      scrollRatio:
-        prefs.readingMode === 'vn'
-          ? chapterParagraphs.length > 1
-            ? vnIndex / (chapterParagraphs.length - 1)
-            : 0
-          : metrics.ratio,
-      vnIndex: prefs.readingMode === 'vn' ? vnIndex : undefined,
+      chapterIndex: bmChapterIdx,
+      chapterTitle: bmChapter.title,
+      scrollRatio: isVn
+        ? bmParagraphs.length > 1
+          ? vnIndex / (bmParagraphs.length - 1)
+          : 0
+        : metrics.ratio,
+      vnIndex: isVn ? vnIndex : undefined,
       excerpt: excerpt.slice(0, 75),
       createdAt: Date.now(),
     };
@@ -1142,7 +1661,7 @@ export const JapaneseNovelReaderModal: React.FC<
     setBook((prev) => (prev ? { ...prev, bookmarks: nextBookmarks } : prev));
     scheduleCloudLibraryPush(userIdRef.current);
     window.dispatchEvent(new CustomEvent(LIBRARY_DATA_CHANGED_EVENT));
-    toast.success(`Bookmark disimpan di Bab ${book.currentChapter + 1}!`);
+    toast.success(`Bookmark disimpan di Bab ${bmChapterIdx + 1}!`);
   }, [
     book,
     activeChapter,
@@ -1268,7 +1787,7 @@ export const JapaneseNovelReaderModal: React.FC<
           prefs.readingMode === 'vn' ? 'paginated' : 'vn';
         updatePrefs({ readingMode: nextMode });
         toast.success(
-          nextMode === 'vn' ? 'Mode VN aktif' : 'Mode Halaman aktif'
+          nextMode === 'vn' ? 'Mode VN aktif' : 'Mode Page aktif'
         );
       } else if (lower === 'p') {
         e.preventDefault();
@@ -1283,8 +1802,8 @@ export const JapaneseNovelReaderModal: React.FC<
           nextMode === 'vn'
             ? 'Mode VN'
             : nextMode === 'paginated'
-              ? 'Mode Halaman'
-              : 'Mode Scroll'
+              ? 'Mode Page'
+              : 'Mode Continuous'
         );
       } else if (lower === 't') {
         e.preventDefault();
@@ -1412,6 +1931,11 @@ export const JapaneseNovelReaderModal: React.FC<
       }
 
       if (lastParsed) {
+        pendingJumpTargetRef.current = {
+          chapterIndex: lastParsed.currentChapter,
+          chapterRatio: lastParsed.scrollRatio || 0,
+        };
+        setExplicitJumpToken((t) => t + 1);
         setActiveKey(lastParsed.storageKey);
         setLastOpenedNovelKey(lastParsed.storageKey);
         setBook(lastParsed);
@@ -1513,24 +2037,85 @@ export const JapaneseNovelReaderModal: React.FC<
   };
 
   const handleScroll = () => {
-    if (!book || prefs.readingMode === 'vn') return;
-    const metrics = computeScrollMetrics();
-    setScrollPct(Math.round(metrics.ratio * 100));
-    setPageInfo({ current: metrics.current, total: metrics.total });
-
-    if (progressTimerRef.current) {
-      window.clearTimeout(progressTimerRef.current);
+    if (!book || prefs.readingMode === 'vn' || restoringScrollRef.current) {
+      return;
     }
-    progressTimerRef.current = window.setTimeout(() => {
-      void updateStoredNovelProgress(
-        book.storageKey,
-        book.currentChapter,
-        metrics.ratio
+    syncProgressFromViewport(true);
+  };
+
+  const handleScrubBookProgress = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!book || prefs.readingMode === 'vn') return;
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickRatio = Math.min(
+      1,
+      Math.max(0, (e.clientX - rect.left) / Math.max(1, rect.width))
+    );
+
+    if (prefs.writingMode === 'vertical') {
+      const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+      if (prefs.readingMode === 'paginated') {
+        const clientW = Math.max(
+          200,
+          Math.floor(el.getBoundingClientRect().width) || el.clientWidth
+        );
+        const stride = Math.max(200, Math.round(clientW * 0.92));
+        const pageIdx = Math.round((maxScroll * clickRatio) / stride);
+        const targetScrolled = Math.min(maxScroll, Math.max(0, pageIdx * stride));
+        el.scrollTo({
+          left: targetScrolled > 0 ? -targetScrolled : 0,
+          behavior: 'auto',
+        });
+      } else {
+        const targetScrolled = Math.round(maxScroll * clickRatio);
+        el.scrollTo({
+          left: targetScrolled > 0 ? -targetScrolled : 0,
+          behavior: 'smooth',
+        });
+      }
+      return;
+    }
+
+    if (prefs.readingMode === 'paginated') {
+      const pageW = Math.max(
+        200,
+        pagedWidthPx ||
+          Math.floor(el.getBoundingClientRect().width) ||
+          el.clientWidth
       );
-    }, 350);
+      const stride = pageW + PAGE_GAP;
+      const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+      const pageIdx = Math.round((maxScroll * clickRatio) / stride);
+      const targetLeft = Math.min(maxScroll, Math.max(0, pageIdx * stride));
+      el.scrollTo({ left: targetLeft, behavior: 'auto' });
+      return;
+    }
+
+    const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+    el.scrollTo({ top: Math.round(maxScroll * clickRatio), behavior: 'smooth' });
   };
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (prefs.readingMode === 'paginated') {
+      if (Math.abs(e.deltaY) < 8 && Math.abs(e.deltaX) < 8) return;
+      e.preventDefault();
+      const now = Date.now();
+      if (now - wheelPageCooldownRef.current < 180) return;
+      wheelPageCooldownRef.current = now;
+      if (Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+        if (e.deltaY > 0) handleStepForward();
+        else handleStepBackward();
+      } else if (prefs.writingMode === 'vertical') {
+        if (e.deltaX < 0) handleStepForward();
+        else handleStepBackward();
+      } else {
+        if (e.deltaX > 0) handleStepForward();
+        else handleStepBackward();
+      }
+      return;
+    }
+
     if (prefs.writingMode !== 'vertical') return;
     const el =
       prefs.readingMode === 'vn'
@@ -2096,6 +2681,38 @@ export const JapaneseNovelReaderModal: React.FC<
 
   const isFullscreenOrZen = isFullscreen || zenMode;
 
+  // Measure exact CSS multi-column page container width in Paginated mode
+  useEffect(() => {
+    if (loadingBook || !book || prefs.readingMode !== 'paginated') return;
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      const exactW = Math.floor(el.getBoundingClientRect().width);
+      if (exactW > 40) {
+        setPagedWidthPx((prev) => (prev === exactW ? prev : exactW));
+      }
+    };
+
+    measure();
+    const raf = window.requestAnimationFrame(measure);
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(el);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [
+    loadingBook,
+    book?.storageKey,
+    prefs.readingMode,
+    prefs.writingMode,
+    prefs.maxWidth,
+    hasActiveBg,
+    prefs.bgPanelOpacity,
+    isFullscreenOrZen,
+  ]);
+
   return createPortal(
     <div
       ref={readerRootRef}
@@ -2355,14 +2972,14 @@ export const JapaneseNovelReaderModal: React.FC<
             <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
               {book && (
                 <>
-                  {/* Desktop Reading Mode Switcher: Scroll | Halaman | VN */}
+                  {/* Desktop Reading Mode Switcher: Continuous | Page | Mode VN */}
                   <div
                     className={`hidden md:inline-flex items-center p-0.5 rounded-xl border ${themeStyle.subtleBtn}`}
                   >
                     {(
                       [
-                        { id: 'scroll', label: 'Scroll' },
-                        { id: 'paginated', label: 'Halaman' },
+                        { id: 'scroll', label: 'Continuous' },
+                        { id: 'paginated', label: 'Page' },
                         { id: 'vn', label: 'Mode VN' },
                       ] as const
                     ).map((rm) => (
@@ -2612,8 +3229,8 @@ export const JapaneseNovelReaderModal: React.FC<
               >
                 {(
                   [
-                    { id: 'scroll', label: 'Scroll' },
-                    { id: 'paginated', label: 'Hal' },
+                    { id: 'scroll', label: 'Cont' },
+                    { id: 'paginated', label: 'Page' },
                     { id: 'vn', label: 'VN' },
                   ] as const
                 ).map((rm) => (
@@ -2795,8 +3412,8 @@ export const JapaneseNovelReaderModal: React.FC<
                     <div className="grid grid-cols-3 gap-1.5">
                       {(
                         [
-                          { id: 'scroll', label: 'Scroll' },
-                          { id: 'paginated', label: 'Halaman' },
+                          { id: 'scroll', label: 'Continuous' },
+                          { id: 'paginated', label: 'Page' },
                           { id: 'vn', label: 'Mode VN' },
                         ] as const
                       ).map((rm) => (
@@ -3024,12 +3641,13 @@ export const JapaneseNovelReaderModal: React.FC<
                           ? 'Tinggi Kolom'
                           : 'Lebar Teks'}
                       </span>
-                      <div className="grid grid-cols-3 gap-1">
+                      <div className="grid grid-cols-4 gap-1">
                         {(
                           [
                             { id: 'narrow', label: 'S' },
                             { id: 'medium', label: 'M' },
                             { id: 'wide', label: 'L' },
+                            { id: 'full', label: 'Full' },
                           ] as const
                         ).map((w) => (
                           <button
@@ -4613,8 +5231,78 @@ export const JapaneseNovelReaderModal: React.FC<
               </div>
             )}
           </div>
+        ) : book && activeChapter && prefs.readingMode === 'paginated' ? (
+          /* PAGINATED FULL-BOOK VIEWPORT (Horizontal CSS Multi-Column & Vertical RTL) */
+          <div
+            onWheel={handleWheel}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            className="flex-1 min-h-0 flex flex-col px-2 sm:px-5 py-2.5 sm:py-4 overflow-hidden"
+          >
+            <div
+              className={`mx-auto w-full flex flex-col overflow-hidden ${
+                prefs.writingMode === 'horizontal'
+                  ? prefs.maxWidth === 'full'
+                    ? 'flex-1 min-h-0 max-w-none'
+                    : prefs.maxWidth === 'narrow'
+                      ? 'flex-1 min-h-0 max-w-[36rem]'
+                      : prefs.maxWidth === 'wide'
+                        ? 'flex-1 min-h-0 max-w-[60rem]'
+                        : 'flex-1 min-h-0 max-w-[46rem]'
+                  : prefs.maxWidth === 'narrow'
+                    ? 'h-full max-h-[30rem] my-auto'
+                    : prefs.maxWidth === 'medium'
+                      ? 'h-full max-h-[40rem] my-auto'
+                      : 'flex-1 min-h-0'
+              } ${
+                hasActiveBg && prefs.bgPanelOpacity > 0
+                  ? 'px-4 py-4 sm:px-8 sm:py-6 shadow-xl'
+                  : 'px-2 sm:px-4 py-2 sm:py-4'
+              }`}
+              style={articleGlassStyle}
+            >
+              <div
+                ref={scrollContainerRef}
+                onScroll={handleScroll}
+                onMouseUp={handleMouseOrKeySelection}
+                onKeyUp={handleMouseOrKeySelection}
+                className={
+                  prefs.writingMode === 'vertical'
+                    ? 'jp-paged-v-viewport'
+                    : 'jp-paged-h-viewport'
+                }
+              >
+                <article
+                  ref={articleRef}
+                  data-furigana={prefs.furigana}
+                  className={`jp-novel-reader-content ${contentDirClass} ${indentClass} ${
+                    prefs.writingMode === 'vertical'
+                      ? 'jp-paged-v-article'
+                      : 'jp-paged-h-article'
+                  }`}
+                  style={{
+                    fontFamily: activeFontCss,
+                    fontSize: `${prefs.fontSize}px`,
+                    lineHeight: prefs.lineHeight,
+                    letterSpacing: `${prefs.letterSpacing}em`,
+                    ...(prefs.writingMode === 'horizontal' && pagedWidthPx > 0
+                      ? ({
+                          '--jp-page-width': `${pagedWidthPx}px`,
+                          '--jp-page-gap': `${PAGE_GAP}px`,
+                        } as React.CSSProperties)
+                      : {}),
+                  }}
+                >
+                  <BookChaptersContent
+                    chapters={book.chapters}
+                    showChapterDividers={true}
+                  />
+                </article>
+              </div>
+            </div>
+          </div>
         ) : book && activeChapter ? (
-          /* SCROLL / PAGINATED READING VIEWPORT (Horizontal & True Vertical Tategaki) */
+          /* CONTINUOUS FULL-BOOK SCROLL VIEWPORT (Horizontal & Vertical Tategaki) */
           <div
             ref={scrollContainerRef}
             onScroll={handleScroll}
@@ -4625,8 +5313,16 @@ export const JapaneseNovelReaderModal: React.FC<
             onKeyUp={handleMouseOrKeySelection}
             className={`flex-1 min-h-0 ${
               prefs.writingMode === 'vertical'
-                ? 'jp-scroll-viewport-vertical px-4 sm:px-10 py-5 sm:py-8'
-                : 'overflow-y-auto overflow-x-hidden px-4 sm:px-8 py-6 sm:py-10'
+                ? `jp-scroll-viewport-vertical ${
+                    prefs.maxWidth === 'full'
+                      ? 'px-3 sm:px-6 py-4 sm:py-6'
+                      : 'px-4 sm:px-10 py-5 sm:py-8'
+                  }`
+                : `overflow-y-auto overflow-x-hidden ${
+                    prefs.maxWidth === 'full'
+                      ? 'px-3 sm:px-6 py-5 sm:py-8'
+                      : 'px-4 sm:px-8 py-6 sm:py-10'
+                  }`
             }`}
           >
             <article
@@ -4646,8 +5342,12 @@ export const JapaneseNovelReaderModal: React.FC<
                 letterSpacing: `${prefs.letterSpacing}em`,
                 ...articleGlassStyle,
               }}
-              dangerouslySetInnerHTML={{ __html: activeChapter.html }}
-            />
+            >
+              <BookChaptersContent
+                chapters={book.chapters}
+                showChapterDividers={true}
+              />
+            </article>
           </div>
         ) : (
           /* ONBOARDING / IMPORT EPUB VIEW (when no book loaded for this storageKey yet) */
@@ -4861,6 +5561,20 @@ export const JapaneseNovelReaderModal: React.FC<
               hasActiveBg ? themeStyle.toolbarGlass : themeStyle.toolbar
             }`}
           >
+            {/* Clickable 3px full-book progress bar */}
+            <div
+              onClick={handleScrubBookProgress}
+              title="Klik untuk lompat posisi baca dalam buku"
+              className="absolute -top-1 inset-x-0 h-2.5 cursor-pointer group z-30 flex items-center"
+            >
+              <div className="w-full h-[3px] group-hover:h-1 bg-white/10 transition-all overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-sky-400 to-cyan-300 transition-[width] duration-150"
+                  style={{ width: `${Math.min(100, Math.max(0, bookBarPct))}%` }}
+                />
+              </div>
+            </div>
+
             <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
@@ -4892,17 +5606,15 @@ export const JapaneseNovelReaderModal: React.FC<
               title="Buka Daftar Bab & Bookmark"
               className={`min-w-0 flex-1 text-[11px] font-mono text-center truncate px-2 py-1 rounded-lg hover:bg-white/10 transition cursor-pointer flex items-center justify-center gap-1.5 ${themeStyle.mutedText}`}
             >
-              <span className="truncate max-w-[9rem] sm:max-w-xs font-semibold">
+              <span className="truncate max-w-[8rem] sm:max-w-xs font-semibold">
                 Bab {book.currentChapter + 1}/{book.chapters.length}
               </span>
               <span>•</span>
-              {prefs.readingMode === 'paginated' ? (
-                <span>
-                  Hal {pageInfo.current}/{pageInfo.total}
-                </span>
-              ) : (
-                <span>{scrollPct}%</span>
-              )}
+              <span>
+                Hal {pageInfo.current}/{pageInfo.total}
+              </span>
+              <span>•</span>
+              <span>{readingProgressStats.bookPct}%</span>
               {readingProgressStats.charsPerHour > 0 && (
                 <span className="hidden md:inline text-sky-400">
                   • ~{readingProgressStats.charsPerHour.toLocaleString('id-ID')}{' '}
