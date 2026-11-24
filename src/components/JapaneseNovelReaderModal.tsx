@@ -21,6 +21,7 @@ import {
   FileUp,
   FolderInput,
   HardDrive,
+  Headphones,
   History,
   Image as ImageIcon,
   Keyboard,
@@ -110,6 +111,12 @@ import {
   startLineByLineReveal,
   type VnRevealController,
 } from '../lib/vnLineReveal';
+import {
+  explainJapaneseSentenceWithAi,
+  hasAiTextKey,
+  loadAiTtsSettings,
+} from '../lib/audiobookEngine';
+import { ReaderAudiobookDock } from './ReaderAudiobookDock';
 
 export interface NovelReaderTarget {
   storageKey: string;
@@ -226,6 +233,7 @@ const READER_SHORTCUTS: Array<{ keys: string[]; desc: string }> = [
   { keys: ['B'], desc: 'Simpan Bookmark posisi sekarang' },
   { keys: ['C'], desc: 'Buka Daftar Bab & Bookmark' },
   { keys: ['H'], desc: 'Buka Riwayat Paragraf (Backlog Mode VN)' },
+  { keys: ['A'], desc: 'Buka panel Audiobook & AI Narator' },
   { keys: ['S'], desc: 'Buka Pengaturan Reader' },
   { keys: ['M'], desc: 'Mode Fullscreen / Fokus (sembunyikan toolbar)' },
   { keys: ['?'], desc: 'Tampilkan panduan shortcut ini' },
@@ -375,6 +383,20 @@ export const JapaneseNovelReaderModal: React.FC<
   >('google');
   const [animPreviewTick, setAnimPreviewTick] = useState(0);
   const [showBacklog, setShowBacklog] = useState(false);
+  const [showAudioPanel, setShowAudioPanel] = useState(false);
+  const [audioPanelTab, setAudioPanelTab] = useState<'ai' | 'file'>('ai');
+  const [audioPlaybackActive, setAudioPlaybackActive] = useState(false);
+  const [oneShotSpeakRequest, setOneShotSpeakRequest] = useState<{
+    id: number;
+    text: string;
+  } | null>(null);
+  const [aiExplainState, setAiExplainState] = useState<{
+    sentence: string;
+    loading: boolean;
+    text: string;
+    error: string;
+  } | null>(null);
+  const aiExplainAbortRef = useRef<AbortController | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [zenMode, setZenMode] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -1963,6 +1985,74 @@ export const JapaneseNovelReaderModal: React.FC<
     toast.success('Bookmark dihapus.');
   };
 
+  const handleSpeakSelectedSentence = useCallback(() => {
+    const clean = selectedSentence.trim();
+    if (!clean) return;
+    setOneShotSpeakRequest({ id: Date.now(), text: clean });
+  }, [selectedSentence]);
+
+  const handleExplainSelectedSentence = useCallback(async () => {
+    const clean = selectedSentence.trim();
+    if (!clean) return;
+    const ttsSettings = loadAiTtsSettings();
+    if (!hasAiTextKey(ttsSettings)) {
+      setAudioPanelTab('ai');
+      setShowAudioPanel(true);
+      setShowSettings(false);
+      setShowToc(false);
+      setShowBacklog(false);
+      toast(
+        'Pilih Google Gemini AI (API Key gratis dari AI Studio) atau OpenAI di panel Audio/AI terlebih dahulu.'
+      );
+      return;
+    }
+
+    if (aiExplainAbortRef.current) {
+      aiExplainAbortRef.current.abort();
+    }
+    const ac = new AbortController();
+    aiExplainAbortRef.current = ac;
+
+    setAiExplainState({
+      sentence: clean,
+      loading: true,
+      text: '',
+      error: '',
+    });
+
+    try {
+      const answer = await explainJapaneseSentenceWithAi(
+        clean,
+        ttsSettings,
+        ac.signal
+      );
+      setAiExplainState((prev) =>
+        prev && prev.sentence === clean
+          ? { sentence: clean, loading: false, text: answer, error: '' }
+          : prev
+      );
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'Gagal meminta penjelasan dari AI.';
+      setAiExplainState((prev) =>
+        prev && prev.sentence === clean
+          ? { sentence: clean, loading: false, text: '', error: msg }
+          : prev
+      );
+    }
+  }, [selectedSentence]);
+
+  useEffect(() => {
+    return () => {
+      if (aiExplainAbortRef.current) {
+        aiExplainAbortRef.current.abort();
+      }
+    };
+  }, []);
+
   // Global keyboard shortcuts inside Reader
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1972,8 +2062,13 @@ export const JapaneseNovelReaderModal: React.FC<
 
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (showShortcuts) {
+        if (aiExplainState) {
+          aiExplainAbortRef.current?.abort();
+          setAiExplainState(null);
+        } else if (showShortcuts) {
           setShowShortcuts(false);
+        } else if (showAudioPanel) {
+          setShowAudioPanel(false);
         } else if (showBacklog) {
           setShowBacklog(false);
         } else if (showSettings) {
@@ -1996,7 +2091,7 @@ export const JapaneseNovelReaderModal: React.FC<
         return;
       }
 
-      if (showShortcuts || showToc || showBacklog) return;
+      if (showShortcuts || showToc || showBacklog || showAudioPanel) return;
 
       const lower = e.key.toLowerCase();
       const isVertical = prefs.writingMode === 'vertical';
@@ -2092,13 +2187,22 @@ export const JapaneseNovelReaderModal: React.FC<
         e.preventDefault();
         setShowToc((prev) => !prev);
         setShowSettings(false);
+        setShowAudioPanel(false);
       } else if (lower === 'h') {
         e.preventDefault();
         setShowBacklog((prev) => !prev);
         setShowSettings(false);
+        setShowAudioPanel(false);
+      } else if (lower === 'a') {
+        e.preventDefault();
+        setShowAudioPanel((prev) => !prev);
+        setShowSettings(false);
+        setShowToc(false);
+        setShowBacklog(false);
       } else if (lower === 's') {
         e.preventDefault();
         setShowSettings((prev) => !prev);
+        setShowAudioPanel(false);
       } else if (lower === 'm') {
         e.preventDefault();
         void handleToggleFullscreen();
@@ -2109,6 +2213,8 @@ export const JapaneseNovelReaderModal: React.FC<
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
     book,
+    aiExplainState,
+    showAudioPanel,
     showShortcuts,
     showBacklog,
     showSettings,
@@ -3329,6 +3435,7 @@ export const JapaneseNovelReaderModal: React.FC<
                       }
                       setShowSettings(false);
                       setShowBacklog(false);
+                      setShowAudioPanel(false);
                     }}
                     title="Daftar Bab & Bookmark (C)"
                     className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer ${
@@ -3366,6 +3473,7 @@ export const JapaneseNovelReaderModal: React.FC<
                   }
                   setShowSettings(false);
                   setShowBacklog(false);
+                  setShowAudioPanel(false);
                 }}
                 title="Library Buku Permanen & Backup"
                 className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer ${
@@ -3382,6 +3490,32 @@ export const JapaneseNovelReaderModal: React.FC<
                   </span>
                 )}
               </button>
+
+              {book && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAudioPanel((prev) => !prev);
+                    setShowSettings(false);
+                    setShowToc(false);
+                    setShowBacklog(false);
+                  }}
+                  title="Audiobook & AI Narator (A)"
+                  className={`hidden md:inline-flex p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold items-center gap-1 transition cursor-pointer ${
+                    showAudioPanel
+                      ? 'bg-sky-500 text-slate-950 border-sky-400'
+                      : audioPlaybackActive
+                        ? 'bg-emerald-500/20 border-emerald-400/45 text-emerald-300'
+                        : themeStyle.subtleBtn
+                  }`}
+                >
+                  <Headphones className="w-3.5 h-3.5 shrink-0" />
+                  <span className="hidden xl:inline">Audio/AI</span>
+                  {audioPlaybackActive && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  )}
+                </button>
+              )}
 
               <button
                 type="button"
@@ -3435,6 +3569,7 @@ export const JapaneseNovelReaderModal: React.FC<
                     setShowSettings(true);
                     setShowToc(false);
                     setShowBacklog(false);
+                    setShowAudioPanel(false);
                   }
                 }}
                 title="Atur Background, Video, Blur & Opacity Reader"
@@ -3457,6 +3592,7 @@ export const JapaneseNovelReaderModal: React.FC<
                   setShowSettings((prev) => !prev);
                   setShowToc(false);
                   setShowBacklog(false);
+                  setShowAudioPanel(false);
                 }}
                 title="Pengaturan Baca, Mode VN & Background (S)"
                 className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer ${
@@ -3558,6 +3694,26 @@ export const JapaneseNovelReaderModal: React.FC<
 
               <button
                 type="button"
+                onClick={() => {
+                  setShowAudioPanel((prev) => !prev);
+                  setShowSettings(false);
+                  setShowToc(false);
+                  setShowBacklog(false);
+                }}
+                className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${
+                  showAudioPanel
+                    ? 'bg-sky-500 text-slate-950 border-sky-400'
+                    : audioPlaybackActive
+                      ? 'bg-emerald-500/20 border-emerald-400/45 text-emerald-300'
+                      : themeStyle.subtleBtn
+                }`}
+              >
+                <Headphones className="w-3 h-3" />
+                <span>Audio/AI</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => addBookInputRef.current?.click()}
                 disabled={importing}
                 className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${themeStyle.subtleBtn}`}
@@ -3592,6 +3748,7 @@ export const JapaneseNovelReaderModal: React.FC<
                   setShowSettings(true);
                   setShowToc(false);
                   setShowBacklog(false);
+                  setShowAudioPanel(false);
                 }}
                 className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${
                   hasActiveBg
@@ -5272,7 +5429,10 @@ export const JapaneseNovelReaderModal: React.FC<
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <button
                     type="button"
-                    onClick={() => setShowBacklog(true)}
+                    onClick={() => {
+                      setShowBacklog(true);
+                      setShowAudioPanel(false);
+                    }}
                     className={`px-2.5 py-1 rounded-xl border text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer ${themeStyle.subtleBtn}`}
                   >
                     <History className="w-3.5 h-3.5 text-sky-400" />
@@ -5338,6 +5498,7 @@ export const JapaneseNovelReaderModal: React.FC<
                       setShowSettings(true);
                       setShowToc(false);
                       setShowBacklog(false);
+                      setShowAudioPanel(false);
                     }}
                     title="Atur Gaya & Durasi Animasi VN"
                     className={`px-2.5 py-1 rounded-xl border text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer ${themeStyle.subtleBtn}`}
@@ -5792,19 +5953,73 @@ export const JapaneseNovelReaderModal: React.FC<
         )}
       </div>
 
+      {/* AI SENTENCE EXPLANATION POPOVER CARD */}
+      {aiExplainState && (
+        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-[114] w-[min(92vw,34rem)] rounded-2xl bg-[#0b121c]/95 border border-sky-400/45 text-white shadow-2xl backdrop-blur-md overflow-hidden">
+          <div className="px-3.5 py-2 border-b border-white/10 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-xs font-extrabold text-sky-300 min-w-0">
+              <Sparkles className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">
+                Penjelasan AI: 「{aiExplainState.sentence}」
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                aiExplainAbortRef.current?.abort();
+                setAiExplainState(null);
+              }}
+              className="p-1 rounded-lg opacity-75 hover:opacity-100 cursor-pointer shrink-0"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="p-3.5 max-h-60 overflow-y-auto text-xs leading-relaxed whitespace-pre-wrap select-text">
+            {aiExplainState.loading ? (
+              <div className="py-4 flex items-center justify-center gap-2 text-sky-300">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>AI sedang menganalisis kalimat Jepang...</span>
+              </div>
+            ) : aiExplainState.error ? (
+              <div className="text-rose-300">{aiExplainState.error}</div>
+            ) : (
+              <div>{aiExplainState.text}</div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* FLOATING SENTENCE HELPER BAR ON TEXT SELECTION */}
       {selectedSentence && book && (
-        <div className="fixed bottom-16 left-1/2 -translate-x-1/2 z-30 px-3 py-2 rounded-2xl bg-[#0b121c]/95 border border-sky-400/40 text-white shadow-2xl flex items-center gap-2 max-w-[92vw] backdrop-blur-md">
-          <span className="text-xs truncate max-w-[16rem] sm:max-w-xs font-medium text-sky-100">
+        <div className="fixed bottom-16 left-1/2 -translate-x-1/2 z-30 px-3 py-2 rounded-2xl bg-[#0b121c]/95 border border-sky-400/40 text-white shadow-2xl flex items-center gap-1.5 sm:gap-2 max-w-[94vw] flex-wrap sm:flex-nowrap backdrop-blur-md">
+          <span className="text-xs truncate max-w-[11rem] sm:max-w-[14rem] font-medium text-sky-100">
             「{selectedSentence}」
           </span>
+          <button
+            type="button"
+            onClick={handleSpeakSelectedSentence}
+            title="Bacakan kalimat ini dengan suara Jepang"
+            className="px-2 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/40 hover:bg-emerald-500/30 text-emerald-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer shrink-0"
+          >
+            <Volume2 className="w-3 h-3" />
+            Bacakan
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleExplainSelectedSentence()}
+            title="Tanya arti & tata bahasa kalimat ini ke AI"
+            className="px-2 py-1 rounded-lg bg-violet-500/25 border border-violet-400/45 hover:bg-violet-500/35 text-violet-100 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer shrink-0"
+          >
+            <Sparkles className="w-3 h-3" />
+            Tanya AI
+          </button>
           <button
             type="button"
             onClick={() => {
               void navigator.clipboard?.writeText(selectedSentence);
               toast.success('Kalimat disalin ke clipboard!');
             }}
-            className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer shrink-0"
+            className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer shrink-0"
           >
             <Copy className="w-3 h-3" />
             Salin
@@ -5813,12 +6028,44 @@ export const JapaneseNovelReaderModal: React.FC<
             href={`https://jisho.org/search/${encodeURIComponent(selectedSentence)}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-2.5 py-1 rounded-lg bg-sky-500 text-slate-950 text-[11px] font-extrabold inline-flex items-center gap-1 shrink-0"
+            className="px-2 py-1 rounded-lg bg-sky-500 text-slate-950 text-[11px] font-extrabold inline-flex items-center gap-1 shrink-0"
           >
             <Search className="w-3 h-3" />
             Jisho
           </a>
         </div>
+      )}
+
+      {/* PER-NOVEL AUDIOBOOK & AI NARATOR DOCK */}
+      {book && activeChapter && (
+        <ReaderAudiobookDock
+          open={showAudioPanel}
+          initialTab={audioPanelTab}
+          onClose={() => setShowAudioPanel(false)}
+          onOpenDrawer={(tab) => {
+            setAudioPanelTab(tab);
+            setShowAudioPanel(true);
+            setShowSettings(false);
+            setShowToc(false);
+            setShowBacklog(false);
+          }}
+          bookStorageKey={book.storageKey}
+          bookTitle={book.title}
+          chapterCount={book.chapters.length}
+          currentChapterIndex={book.currentChapter}
+          chapterParagraphs={chapterParagraphs}
+          readingMode={prefs.readingMode}
+          vnIndex={vnIndex}
+          vnParagraphsPerStep={prefs.vnParagraphsPerStep}
+          scrollRatio={liveScrollRatioRef.current}
+          isFullscreenOrZen={isFullscreenOrZen}
+          themeStyle={themeStyle}
+          hasActiveBg={hasActiveBg}
+          oneShotSpeakRequest={oneShotSpeakRequest}
+          onAdvanceVnStep={handleStepForward}
+          onSwitchChapter={(idx) => handleSwitchChapter(idx)}
+          onPlaybackStatusChange={(st) => setAudioPlaybackActive(st.active)}
+        />
       )}
 
       {/* BOTTOM SLIDE / PAGE & CHAPTER NAVIGATION BAR */}
@@ -5872,6 +6119,7 @@ export const JapaneseNovelReaderModal: React.FC<
                 setShowToc(true);
                 setShowSettings(false);
                 setShowBacklog(false);
+                setShowAudioPanel(false);
               }}
               title="Buka Daftar Bab & Bookmark"
               className={`min-w-0 flex-1 text-[11px] font-mono text-center truncate px-2 py-1 rounded-lg hover:bg-white/10 transition cursor-pointer flex items-center justify-center gap-1.5 ${themeStyle.mutedText}`}
