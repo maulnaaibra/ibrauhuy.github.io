@@ -106,6 +106,8 @@ function formatCheckpointParts(sb: StoredNovelSummary): string {
   }
   if ((sb.vnIndex ?? 0) > 0) {
     parts.push(`Paragraf #${sb.vnIndex! + 1}`);
+  } else if (sb.scrollRatio > 0.005) {
+    parts.push(`${Math.round(sb.scrollRatio * 100)}% bab`);
   }
   return parts.join(' • ');
 }

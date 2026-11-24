@@ -415,6 +415,15 @@ export const JapaneseNovelReaderModal: React.FC<
 
   const bookRef = useRef<StoredNovelBook | null>(book);
   bookRef.current = book;
+  const loadingBookRef = useRef(true);
+  const liveChapterRef = useRef(0);
+  const liveScrollRatioRef = useRef(0);
+  const hasSavedOnCloseRef = useRef(false);
+  const userInteractedSinceRestoreRef = useRef(false);
+  const flushProgressSyncRef = useRef<() => void>(() => {});
+  const getLiveProgressRef = useRef<
+    () => { chapterIndex: number; ratio: number; vnIndex: number } | null
+  >(() => null);
   const vnIndexRef = useRef(vnIndex);
   vnIndexRef.current = vnIndex;
   const scrollPctRef = useRef(scrollPct);
@@ -432,6 +441,9 @@ export const JapaneseNovelReaderModal: React.FC<
 
   const loadBookByKey = useCallback(
     async (key: string) => {
+      loadingBookRef.current = true;
+      hasSavedOnCloseRef.current = false;
+      userInteractedSinceRestoreRef.current = false;
       setLoadingBook(true);
       const allSaved = await listStoredNovelBooks();
       let resolvedKey = key;
@@ -483,23 +495,32 @@ export const JapaneseNovelReaderModal: React.FC<
         };
       }
 
+      const initChapter = loaded?.currentChapter ?? 0;
+      const initRatio = loaded?.scrollRatio || 0;
+      const initVn = loaded?.vnIndex ?? 0;
+      liveChapterRef.current = initChapter;
+      liveScrollRatioRef.current = initRatio;
+      vnIndexRef.current = initVn;
+
       pendingJumpTargetRef.current = loaded
         ? {
-            chapterIndex: loaded.currentChapter,
-            chapterRatio: loaded.scrollRatio || 0,
+            chapterIndex: initChapter,
+            chapterRatio: initRatio,
           }
         : null;
       setExplicitJumpToken((t) => t + 1);
       setActiveKey(loaded?.storageKey ?? resolvedKey);
       setYatsuInput(yatsuLinks[loaded?.storageKey ?? resolvedKey] ?? '');
       setBook(loaded);
-      setVnIndex(loaded?.vnIndex ?? 0);
+      setVnIndex(initVn);
+      setScrollPct(Math.round(initRatio * 100));
       sessionStartMsRef.current = Date.now();
       setTimerResetToken((t) => t + 1);
       setSavedBooks(allSaved);
       if (loaded) {
         setLastOpenedNovelKey(loaded.storageKey);
       }
+      loadingBookRef.current = false;
       setLoadingBook(false);
       void refreshStorageStatus();
     },
@@ -559,7 +580,69 @@ export const JapaneseNovelReaderModal: React.FC<
   }, [prefs.bgMode, prefs.bgImageUrl]);
 
   const updatePrefs = useCallback((patch: Partial<ReaderPreferences>): boolean => {
-    const next = { ...prefsRef.current, ...patch };
+    const prevPrefs = prefsRef.current;
+    const next = { ...prevPrefs, ...patch };
+    const modeChanged =
+      patch.readingMode !== undefined &&
+      patch.readingMode !== prevPrefs.readingMode &&
+      Boolean(bookRef.current) &&
+      !loadingBookRef.current;
+    const writingChanged =
+      patch.writingMode !== undefined &&
+      patch.writingMode !== prevPrefs.writingMode &&
+      Boolean(bookRef.current) &&
+      !loadingBookRef.current;
+
+    if ((modeChanged || writingChanged) && bookRef.current) {
+      const curBook = bookRef.current;
+      const live = getLiveProgressRef.current() ?? {
+        chapterIndex: liveChapterRef.current,
+        ratio: liveScrollRatioRef.current,
+        vnIndex: vnIndexRef.current,
+      };
+      const clampedChap = Math.max(
+        0,
+        Math.min(curBook.chapters.length - 1, live.chapterIndex)
+      );
+      liveChapterRef.current = clampedChap;
+      liveScrollRatioRef.current = live.ratio;
+      pendingJumpTargetRef.current = {
+        chapterIndex: clampedChap,
+        chapterRatio: live.ratio,
+      };
+
+      if (next.readingMode === 'vn' && modeChanged) {
+        const paras = extractChapterParagraphs(
+          curBook.chapters[clampedChap]?.html ?? ''
+        );
+        const targetVn =
+          paras.length > 0
+            ? Math.min(
+                paras.length - 1,
+                Math.max(
+                  0,
+                  Math.round(live.ratio * Math.max(0, paras.length - 1))
+                )
+              )
+            : 0;
+        vnIndexRef.current = targetVn;
+        setVnIndex(targetVn);
+        setScrollPct(Math.round(live.ratio * 100));
+        setBook((prev) =>
+          prev && prev.storageKey === curBook.storageKey
+            ? {
+                ...prev,
+                currentChapter: clampedChap,
+                scrollRatio: live.ratio,
+                vnIndex: targetVn,
+              }
+            : prev
+        );
+      } else if (prevPrefs.readingMode === 'vn' && modeChanged) {
+        setExplicitJumpToken((t) => t + 1);
+      }
+    }
+
     const saved = saveReaderPrefs(next);
     prefsRef.current = next;
     setPrefs(next);
@@ -906,9 +989,10 @@ export const JapaneseNovelReaderModal: React.FC<
             Math.floor(vpRect.width) || el.clientWidth
           );
           const stride = Math.max(200, Math.round(clientW * 0.92));
-          const usableSpan = hasMoreChaptersAfter
-            ? Math.max(0, span - stride * 0.35)
-            : span;
+          const usableSpan =
+            ratio >= 0.995 && hasMoreChaptersAfter
+              ? Math.max(0, span - stride * 0.35)
+              : span;
           const rawTarget = secStart + ratio * usableSpan;
           const pageIdx =
             ratio <= 0
@@ -920,9 +1004,10 @@ export const JapaneseNovelReaderModal: React.FC<
           );
           el.scrollLeft = targetScrolled > 0 ? -targetScrolled : 0;
         } else {
-          const usableSpan = hasMoreChaptersAfter
-            ? Math.max(0, span - el.clientWidth * 0.45)
-            : span;
+          const usableSpan =
+            ratio >= 0.995 && hasMoreChaptersAfter
+              ? Math.max(0, span - el.clientWidth * 0.45)
+              : span;
           const targetScrolled = Math.min(
             maxScroll,
             Math.max(
@@ -950,9 +1035,10 @@ export const JapaneseNovelReaderModal: React.FC<
           pagedWidthPx || Math.floor(vpRect.width) || el.clientWidth
         );
         const stride = pageW + PAGE_GAP;
-        const usableSpan = hasMoreChaptersAfter
-          ? Math.max(0, span - stride * 0.35)
-          : span;
+        const usableSpan =
+          ratio >= 0.995 && hasMoreChaptersAfter
+            ? Math.max(0, span - stride * 0.35)
+            : span;
         const rawTarget = secStart + ratio * usableSpan;
         const pageIdx =
           ratio <= 0
@@ -970,9 +1056,10 @@ export const JapaneseNovelReaderModal: React.FC<
         secRect.bottom - vpRect.top + el.scrollTop
       );
       const span = Math.max(0, secEnd - secStart);
-      const usableSpan = hasMoreChaptersAfter
-        ? Math.max(0, span - el.clientHeight * 0.45)
-        : span;
+      const usableSpan =
+        ratio >= 0.995 && hasMoreChaptersAfter
+          ? Math.max(0, span - el.clientHeight * 0.45)
+          : span;
       const targetTop = Math.min(
         maxScroll,
         Math.max(
@@ -986,32 +1073,30 @@ export const JapaneseNovelReaderModal: React.FC<
   );
 
   const syncProgressFromViewport = useCallback(
-    (persistDb = true) => {
+    (persistDb = true, updateLiveRefs = true) => {
       const curBook = bookRef.current;
       if (!curBook || prefsRef.current.readingMode === 'vn') return;
       const metrics = computeScrollMetrics();
-      setScrollPct(Math.round(metrics.ratio * 100));
+      const maxChapIdx = Math.max(0, curBook.chapters.length - 1);
+      const clampedChap = Math.max(0, Math.min(maxChapIdx, metrics.chapterIndex));
+      const clampedRatio = Math.min(1, Math.max(0, metrics.ratio));
+
+      setScrollPct(Math.round(clampedRatio * 100));
       setBookBarPct(Math.round(metrics.bookRatio * 100));
       setPageInfo({ current: metrics.current, total: metrics.total });
 
-      if (
-        curBook.currentChapter !== metrics.chapterIndex ||
-        Math.abs((curBook.scrollRatio ?? 0) - metrics.ratio) > 0.005
-      ) {
-        const chapterChanged = curBook.currentChapter !== metrics.chapterIndex;
-        const updatedBook: StoredNovelBook = {
-          ...curBook,
-          currentChapter: metrics.chapterIndex,
-          scrollRatio: metrics.ratio,
-        };
-        bookRef.current = updatedBook;
-        if (chapterChanged) {
+      if (updateLiveRefs) {
+        const prevLiveChap = liveChapterRef.current;
+        liveChapterRef.current = clampedChap;
+        liveScrollRatioRef.current = clampedRatio;
+
+        if (prevLiveChap !== clampedChap) {
           setBook((prev) =>
-            prev
+            prev && prev.storageKey === curBook.storageKey
               ? {
                   ...prev,
-                  currentChapter: metrics.chapterIndex,
-                  scrollRatio: metrics.ratio,
+                  currentChapter: clampedChap,
+                  scrollRatio: clampedRatio,
                 }
               : prev
           );
@@ -1023,31 +1108,118 @@ export const JapaneseNovelReaderModal: React.FC<
         window.clearTimeout(progressTimerRef.current);
       }
       const snapKey = curBook.storageKey;
-      const snapChapter = metrics.chapterIndex;
-      const snapRatio = metrics.ratio;
+      const snapBook = curBook;
+      const snapVnIdx = vnIndexRef.current;
       progressTimerRef.current = window.setTimeout(() => {
-        void updateStoredNovelProgress(snapKey, snapChapter, snapRatio);
-      }, 350);
+        progressTimerRef.current = null;
+        if (loadingBookRef.current || hasSavedOnCloseRef.current) return;
+        saveNovelProgressSync({
+          storageKey: snapBook.storageKey,
+          catalogItemId: snapBook.catalogItemId,
+          title: snapBook.title,
+          author: snapBook.author,
+          fileName: snapBook.fileName,
+          totalChars: snapBook.totalChars,
+          chapterCount: snapBook.chapters.length,
+          currentChapter: clampedChap,
+          scrollRatio: clampedRatio,
+          vnIndex: snapVnIdx,
+          bookmarks: snapBook.bookmarks ?? [],
+          updatedAt: Date.now(),
+        });
+        void updateStoredNovelProgress(
+          snapKey,
+          clampedChap,
+          clampedRatio,
+          snapVnIdx
+        );
+      }, 250);
     },
     [computeScrollMetrics]
   );
+
+  const getCurrentLiveProgress = useCallback(
+    (explicitRatio?: number, explicitVnIdx?: number) => {
+      const curBook = bookRef.current;
+      if (
+        loadingBookRef.current ||
+        !curBook ||
+        curBook.chapters.length === 0
+      ) {
+        return null;
+      }
+      const maxChapIdx = Math.max(0, curBook.chapters.length - 1);
+      const isVn = prefsRef.current.readingMode === 'vn';
+      if (isVn) {
+        const chapterIndex = Math.max(
+          0,
+          Math.min(maxChapIdx, liveChapterRef.current)
+        );
+        const vnIdx = Math.max(0, explicitVnIdx ?? vnIndexRef.current);
+        const ratio =
+          explicitRatio ??
+          (chapterParaLenRef.current > 1
+            ? Math.min(1, vnIdx / (chapterParaLenRef.current - 1))
+            : liveScrollRatioRef.current);
+        return {
+          chapterIndex,
+          ratio: Math.min(1, Math.max(0, ratio)),
+          vnIndex: vnIdx,
+        };
+      }
+
+      const el = scrollContainerRef.current;
+      const domReady = Boolean(
+        el &&
+          !restoringScrollRef.current &&
+          userInteractedSinceRestoreRef.current &&
+          el.clientWidth > 0 &&
+          el.clientHeight > 0 &&
+          (el.scrollHeight > el.clientHeight + 2 ||
+            el.scrollWidth > el.clientWidth + 2 ||
+            curBook.chapters.length <= 1)
+      );
+
+      if (domReady && explicitRatio === undefined) {
+        const metrics = computeScrollMetrics();
+        const chapterIndex = Math.max(
+          0,
+          Math.min(maxChapIdx, metrics.chapterIndex)
+        );
+        const ratio = Math.min(1, Math.max(0, metrics.ratio));
+        liveChapterRef.current = chapterIndex;
+        liveScrollRatioRef.current = ratio;
+        return {
+          chapterIndex,
+          ratio,
+          vnIndex: vnIndexRef.current,
+        };
+      }
+
+      return {
+        chapterIndex: Math.max(0, Math.min(maxChapIdx, liveChapterRef.current)),
+        ratio: Math.min(
+          1,
+          Math.max(0, explicitRatio ?? liveScrollRatioRef.current)
+        ),
+        vnIndex: Math.max(0, explicitVnIdx ?? vnIndexRef.current),
+      };
+    },
+    [computeScrollMetrics]
+  );
+  getLiveProgressRef.current = getCurrentLiveProgress;
 
   const flushProgressSyncNow = useCallback(
     (explicitRatio?: number, explicitVnIdx?: number) => {
       const currentBook = bookRef.current;
       if (!currentBook) return;
-      const metrics = computeScrollMetrics();
-      const vnIdx = explicitVnIdx ?? vnIndexRef.current;
-      const paraLen = chapterParaLenRef.current;
-      const isVn = prefsRef.current.readingMode === 'vn';
-      const chapterIdx = isVn ? currentBook.currentChapter : metrics.chapterIndex;
-      const ratio =
-        explicitRatio ??
-        (isVn
-          ? paraLen > 0
-            ? Math.min(1, vnIdx / Math.max(1, paraLen - 1))
-            : 0
-          : metrics.ratio);
+      const live = getCurrentLiveProgress(explicitRatio, explicitVnIdx);
+      if (!live) return;
+
+      liveChapterRef.current = live.chapterIndex;
+      liveScrollRatioRef.current = live.ratio;
+      vnIndexRef.current = live.vnIndex;
+
       saveNovelProgressSync({
         storageKey: currentBook.storageKey,
         catalogItemId: currentBook.catalogItemId,
@@ -1056,75 +1228,89 @@ export const JapaneseNovelReaderModal: React.FC<
         fileName: currentBook.fileName,
         totalChars: currentBook.totalChars,
         chapterCount: currentBook.chapters.length,
-        currentChapter: chapterIdx,
-        scrollRatio: ratio,
-        vnIndex: vnIdx,
+        currentChapter: live.chapterIndex,
+        scrollRatio: live.ratio,
+        vnIndex: live.vnIndex,
         bookmarks: currentBook.bookmarks ?? [],
         updatedAt: Date.now(),
       });
       scheduleCloudLibraryPush(userIdRef.current);
     },
-    [computeScrollMetrics]
+    [getCurrentLiveProgress]
   );
+  flushProgressSyncRef.current = () => {
+    flushProgressSyncNow();
+  };
 
   const persistCurrentProgress = useCallback(
     async (explicitRatio?: number, explicitVnIdx?: number) => {
-      const curBook = bookRef.current ?? book;
-      if (!curBook) return;
-      const metrics = computeScrollMetrics();
-      const isVn = prefsRef.current.readingMode === 'vn';
-      const chapterIdx = isVn ? curBook.currentChapter : metrics.chapterIndex;
-      const ratio =
-        explicitRatio ??
-        (isVn
-          ? chapterParagraphs.length > 0
-            ? Math.min(
-                1,
-                (explicitVnIdx ?? vnIndex) /
-                  Math.max(1, chapterParagraphs.length - 1)
-              )
-            : 0
-          : metrics.ratio);
-      flushProgressSyncNow(ratio, explicitVnIdx ?? vnIndex);
+      if (progressTimerRef.current) {
+        window.clearTimeout(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+      const curBook = bookRef.current;
+      if (!curBook) return null;
+      const live = getCurrentLiveProgress(explicitRatio, explicitVnIdx);
+      if (!live) return null;
+
+      flushProgressSyncNow(live.ratio, live.vnIndex);
       await updateStoredNovelProgress(
         curBook.storageKey,
-        chapterIdx,
-        ratio,
-        explicitVnIdx ?? vnIndex
+        live.chapterIndex,
+        live.ratio,
+        live.vnIndex
       );
+
+      setBook((prev) =>
+        prev && prev.storageKey === curBook.storageKey
+          ? {
+              ...prev,
+              currentChapter: live.chapterIndex,
+              scrollRatio: live.ratio,
+              vnIndex: live.vnIndex,
+            }
+          : prev
+      );
+      return live;
     },
-    [
-      book,
-      computeScrollMetrics,
-      flushProgressSyncNow,
-      chapterParagraphs.length,
-      vnIndex,
-    ]
+    [getCurrentLiveProgress, flushProgressSyncNow]
   );
 
   useEffect(() => {
     const onHideOrUnload = () => {
-      flushProgressSyncNow();
+      if (!hasSavedOnCloseRef.current && !loadingBookRef.current) {
+        flushProgressSyncRef.current();
+      }
     };
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        flushProgressSyncNow();
+      if (
+        document.visibilityState === 'hidden' &&
+        !hasSavedOnCloseRef.current &&
+        !loadingBookRef.current
+      ) {
+        flushProgressSyncRef.current();
       }
     };
     window.addEventListener('pagehide', onHideOrUnload);
     window.addEventListener('beforeunload', onHideOrUnload);
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
-      flushProgressSyncNow();
+      if (!hasSavedOnCloseRef.current && !loadingBookRef.current) {
+        flushProgressSyncRef.current();
+      }
       window.removeEventListener('pagehide', onHideOrUnload);
       window.removeEventListener('beforeunload', onHideOrUnload);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [flushProgressSyncNow]);
+  }, []);
 
   const handleCloseReader = useCallback(async () => {
-    flushProgressSyncNow();
+    if (progressTimerRef.current) {
+      window.clearTimeout(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
     await persistCurrentProgress();
+    hasSavedOnCloseRef.current = true;
     onBookLibraryChanged?.();
     window.dispatchEvent(new CustomEvent(LIBRARY_DATA_CHANGED_EVENT));
     if (document.fullscreenElement) {
@@ -1135,7 +1321,7 @@ export const JapaneseNovelReaderModal: React.FC<
       }
     }
     onClose();
-  }, [flushProgressSyncNow, persistCurrentProgress, onBookLibraryChanged, onClose]);
+  }, [persistCurrentProgress, onBookLibraryChanged, onClose]);
 
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
@@ -1197,11 +1383,20 @@ export const JapaneseNovelReaderModal: React.FC<
             ? Math.max(0, nextChapterParagraphs.length - prefs.vnParagraphsPerStep)
             : 0;
 
+      if (progressTimerRef.current) {
+        window.clearTimeout(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+
       pendingJumpToEndRef.current = Boolean(opts?.jumpToEnd);
       pendingJumpTargetRef.current = {
         chapterIndex: clamped,
         chapterRatio: targetRatio,
       };
+      liveChapterRef.current = clamped;
+      liveScrollRatioRef.current = targetRatio;
+      vnIndexRef.current = targetVn;
+      userInteractedSinceRestoreRef.current = false;
       setExplicitJumpToken((t) => t + 1);
 
       const updated: StoredNovelBook = {
@@ -1214,6 +1409,7 @@ export const JapaneseNovelReaderModal: React.FC<
       bookRef.current = updated;
       setBook(updated);
       setVnIndex(targetVn);
+      setScrollPct(Math.round(targetRatio * 100));
       setShowToc(false);
       setShowBacklog(false);
       setSelectedSentence('');
@@ -1357,32 +1553,76 @@ export const JapaneseNovelReaderModal: React.FC<
   // Restore scroll position cleanly on explicit navigation or layout reflow (never on passive scroll)
   useEffect(() => {
     if (loadingBook || !book || prefs.readingMode === 'vn') return;
+    if (prefs.readingMode === 'paginated' && pagedWidthPx <= 0) return;
     const el = scrollContainerRef.current;
     if (!el) return;
-    let rafInner = 0;
-    const raf = window.requestAnimationFrame(() => {
-      const jumpTarget = pendingJumpTargetRef.current;
-      pendingJumpTargetRef.current = null;
-      const targetChapter =
-        jumpTarget?.chapterIndex ??
-        bookRef.current?.currentChapter ??
-        book.currentChapter;
-      const targetRatio =
-        jumpTarget?.chapterRatio ??
-        (pendingJumpToEndRef.current
-          ? 1
-          : bookRef.current?.scrollRatio ?? book.scrollRatio ?? 0);
-      pendingJumpToEndRef.current = false;
+
+    let cancelled = false;
+    let raf1 = 0;
+    let raf2 = 0;
+    let raf3 = 0;
+
+    const applyRestore = (isFontReanchor: boolean) => {
+      if (cancelled) return;
+      if (isFontReanchor && userInteractedSinceRestoreRef.current) return;
+      const jumpTarget = isFontReanchor ? null : pendingJumpTargetRef.current;
+      if (!isFontReanchor) {
+        pendingJumpTargetRef.current = null;
+      }
+      const maxChap = Math.max(0, (bookRef.current?.chapters.length ?? 1) - 1);
+      const targetChapter = Math.max(
+        0,
+        Math.min(maxChap, jumpTarget?.chapterIndex ?? liveChapterRef.current)
+      );
+      const targetRatio = Math.min(
+        1,
+        Math.max(
+          0,
+          jumpTarget?.chapterRatio ??
+            (!isFontReanchor && pendingJumpToEndRef.current
+              ? 1
+              : liveScrollRatioRef.current)
+        )
+      );
+      if (!isFontReanchor) {
+        pendingJumpToEndRef.current = false;
+        liveChapterRef.current = targetChapter;
+        liveScrollRatioRef.current = targetRatio;
+      }
 
       scrollToChapterPosition(targetChapter, targetRatio);
-      syncProgressFromViewport(false);
-      rafInner = window.requestAnimationFrame(() => {
-        restoringScrollRef.current = false;
+      const m = computeScrollMetrics();
+      setScrollPct(Math.round(targetRatio * 100));
+      setBookBarPct(Math.round(m.bookRatio * 100));
+      setPageInfo({ current: m.current, total: m.total });
+    };
+
+    raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(() => {
+        applyRestore(false);
+        userInteractedSinceRestoreRef.current = false;
+        raf3 = window.requestAnimationFrame(() => {
+          if (!cancelled) {
+            restoringScrollRef.current = false;
+          }
+        });
       });
     });
+
+    if (typeof document !== 'undefined' && document.fonts?.ready) {
+      void document.fonts.ready.then(() => {
+        if (cancelled || userInteractedSinceRestoreRef.current) return;
+        window.requestAnimationFrame(() => {
+          applyRestore(true);
+        });
+      });
+    }
+
     return () => {
-      window.cancelAnimationFrame(raf);
-      if (rafInner) window.cancelAnimationFrame(rafInner);
+      cancelled = true;
+      if (raf1) window.cancelAnimationFrame(raf1);
+      if (raf2) window.cancelAnimationFrame(raf2);
+      if (raf3) window.cancelAnimationFrame(raf3);
     };
   }, [
     loadingBook,
@@ -1397,7 +1637,7 @@ export const JapaneseNovelReaderModal: React.FC<
     prefs.indentParagraphs,
     pagedWidthPx,
     scrollToChapterPosition,
-    syncProgressFromViewport,
+    computeScrollMetrics,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep page counter updated when viewport resizes
@@ -1414,6 +1654,7 @@ export const JapaneseNovelReaderModal: React.FC<
 
   const handleStepForward = useCallback(() => {
     if (!book) return;
+    userInteractedSinceRestoreRef.current = true;
 
     if (prefs.readingMode === 'vn') {
       if (vnRevealControllerRef.current?.isRunning()) {
@@ -1430,12 +1671,15 @@ export const JapaneseNovelReaderModal: React.FC<
         }
         return;
       }
+      vnIndexRef.current = nextVn;
       setVnIndex(nextVn);
       setSelectedSentence('');
       const ratio =
         chapterParagraphs.length > 1
           ? Math.min(1, nextVn / (chapterParagraphs.length - 1))
           : 0;
+      liveChapterRef.current = book.currentChapter;
+      liveScrollRatioRef.current = ratio;
       setScrollPct(Math.round(ratio * 100));
       flushProgressSyncNow(ratio, nextVn);
       if (progressTimerRef.current) window.clearTimeout(progressTimerRef.current);
@@ -1471,6 +1715,7 @@ export const JapaneseNovelReaderModal: React.FC<
           left: nextScrolled > 0 ? -nextScrolled : 0,
           behavior: 'auto',
         });
+        syncProgressFromViewport(true);
         return;
       }
 
@@ -1489,6 +1734,7 @@ export const JapaneseNovelReaderModal: React.FC<
       const curIdx = Math.round(el.scrollLeft / stride);
       const targetLeft = Math.min(maxScroll, (curIdx + 1) * stride);
       el.scrollTo({ left: targetLeft, behavior: 'auto' });
+      syncProgressFromViewport(true);
       return;
     }
 
@@ -1520,11 +1766,13 @@ export const JapaneseNovelReaderModal: React.FC<
     vnIndex,
     chapterParagraphs.length,
     flushProgressSyncNow,
+    syncProgressFromViewport,
     handleSwitchChapter,
   ]);
 
   const handleStepBackward = useCallback(() => {
     if (!book) return;
+    userInteractedSinceRestoreRef.current = true;
 
     if (prefs.readingMode === 'vn') {
       if (vnIndex <= 0) {
@@ -1536,12 +1784,15 @@ export const JapaneseNovelReaderModal: React.FC<
         return;
       }
       const prevVn = Math.max(0, vnIndex - prefs.vnParagraphsPerStep);
+      vnIndexRef.current = prevVn;
       setVnIndex(prevVn);
       setSelectedSentence('');
       const ratio =
         chapterParagraphs.length > 1
           ? Math.min(1, prevVn / (chapterParagraphs.length - 1))
           : 0;
+      liveChapterRef.current = book.currentChapter;
+      liveScrollRatioRef.current = ratio;
       setScrollPct(Math.round(ratio * 100));
       flushProgressSyncNow(ratio, prevVn);
       if (progressTimerRef.current) window.clearTimeout(progressTimerRef.current);
@@ -1576,6 +1827,7 @@ export const JapaneseNovelReaderModal: React.FC<
           left: prevScrolled > 0 ? -prevScrolled : 0,
           behavior: 'auto',
         });
+        syncProgressFromViewport(true);
         return;
       }
 
@@ -1593,6 +1845,7 @@ export const JapaneseNovelReaderModal: React.FC<
       const curIdx = Math.round(el.scrollLeft / stride);
       const targetLeft = Math.max(0, (curIdx - 1) * stride);
       el.scrollTo({ left: targetLeft, behavior: 'auto' });
+      syncProgressFromViewport(true);
       return;
     }
 
@@ -1622,14 +1875,16 @@ export const JapaneseNovelReaderModal: React.FC<
     vnIndex,
     chapterParagraphs.length,
     flushProgressSyncNow,
+    syncProgressFromViewport,
     handleSwitchChapter,
   ]);
 
   const handleAddBookmark = useCallback(async () => {
     if (!book || !activeChapter) return;
-    const metrics = computeScrollMetrics();
     const isVn = prefs.readingMode === 'vn';
-    const bmChapterIdx = isVn ? book.currentChapter : metrics.chapterIndex;
+    const live = getCurrentLiveProgress();
+    const bmChapterIdx = live?.chapterIndex ?? book.currentChapter;
+    const bmRatio = live?.ratio ?? book.scrollRatio ?? 0;
     const bmChapter = book.chapters[bmChapterIdx] ?? activeChapter;
     const bmParagraphs =
       bmChapterIdx === book.currentChapter
@@ -1640,7 +1895,7 @@ export const JapaneseNovelReaderModal: React.FC<
       : bmParagraphs[
           Math.min(
             Math.max(0, bmParagraphs.length - 1),
-            Math.floor(metrics.ratio * Math.max(1, bmParagraphs.length - 1))
+            Math.floor(bmRatio * Math.max(1, bmParagraphs.length - 1))
           )
         ]?.text || bmChapter.title;
 
@@ -1652,7 +1907,7 @@ export const JapaneseNovelReaderModal: React.FC<
         ? bmParagraphs.length > 1
           ? vnIndex / (bmParagraphs.length - 1)
           : 0
-        : metrics.ratio,
+        : bmRatio,
       vnIndex: isVn ? vnIndex : undefined,
       excerpt: excerpt.slice(0, 75),
       createdAt: Date.now(),
@@ -1665,7 +1920,7 @@ export const JapaneseNovelReaderModal: React.FC<
   }, [
     book,
     activeChapter,
-    computeScrollMetrics,
+    getCurrentLiveProgress,
     prefs.readingMode,
     chapterParagraphs,
     vnIndex,
@@ -1675,33 +1930,27 @@ export const JapaneseNovelReaderModal: React.FC<
     const currentBook = bookRef.current;
     if (!currentBook) return;
 
-    flushProgressSyncNow();
-    await persistCurrentProgress();
+    if (progressTimerRef.current) {
+      window.clearTimeout(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
+
+    const saved = await persistCurrentProgress();
+    if (!saved) return;
+
     const cloudRes = await pushCloudLibraryNow(userIdRef.current);
     const updatedList = await listStoredNovelBooks();
     setSavedBooks(updatedList);
     onBookLibraryChanged?.();
     window.dispatchEvent(new CustomEvent(LIBRARY_DATA_CHANGED_EVENT));
 
-    const pct = Math.min(
-      100,
-      Math.max(
-        0,
-        Math.round(
-          prefsRef.current.readingMode === 'vn'
-            ? chapterParaLenRef.current > 1
-              ? (vnIndexRef.current / (chapterParaLenRef.current - 1)) * 100
-              : 0
-            : scrollPctRef.current
-        )
-      )
-    );
+    const pct = Math.min(100, Math.max(0, Math.round(saved.ratio * 100)));
     toast.success(
-      `Posisi tersimpan: Bab ${currentBook.currentChapter + 1}/${currentBook.chapters.length} (${pct}%)${
+      `Posisi tersimpan: Bab ${saved.chapterIndex + 1}/${currentBook.chapters.length} (${pct}%)${
         cloudRes === 'synced' ? ' • Cloud' : ''
       }`
     );
-  }, [flushProgressSyncNow, persistCurrentProgress, onBookLibraryChanged]);
+  }, [persistCurrentProgress, onBookLibraryChanged]);
 
   const handleDeleteBookmark = async (bookmarkId: string) => {
     if (!book) return;
@@ -1931,17 +2180,28 @@ export const JapaneseNovelReaderModal: React.FC<
       }
 
       if (lastParsed) {
+        const initChapter = lastParsed.currentChapter;
+        const initRatio = lastParsed.scrollRatio || 0;
+        const initVn = lastParsed.vnIndex ?? 0;
+        hasSavedOnCloseRef.current = false;
+        userInteractedSinceRestoreRef.current = false;
+        liveChapterRef.current = initChapter;
+        liveScrollRatioRef.current = initRatio;
+        vnIndexRef.current = initVn;
         pendingJumpTargetRef.current = {
-          chapterIndex: lastParsed.currentChapter,
-          chapterRatio: lastParsed.scrollRatio || 0,
+          chapterIndex: initChapter,
+          chapterRatio: initRatio,
         };
         setExplicitJumpToken((t) => t + 1);
         setActiveKey(lastParsed.storageKey);
         setLastOpenedNovelKey(lastParsed.storageKey);
         setBook(lastParsed);
-        setVnIndex(lastParsed.vnIndex ?? 0);
+        setVnIndex(initVn);
+        setScrollPct(Math.round(initRatio * 100));
         sessionStartMsRef.current = Date.now();
         setTimerResetToken((t) => t + 1);
+        loadingBookRef.current = false;
+        setLoadingBook(false);
       }
 
       const list = await listStoredNovelBooks();
@@ -1979,6 +2239,9 @@ export const JapaneseNovelReaderModal: React.FC<
       if (remaining.length > 0) {
         await loadBookByKey(remaining[0].storageKey);
       } else {
+        liveChapterRef.current = 0;
+        liveScrollRatioRef.current = 0;
+        vnIndexRef.current = 0;
         setBook(null);
       }
     }
@@ -2040,6 +2303,7 @@ export const JapaneseNovelReaderModal: React.FC<
     if (!book || prefs.readingMode === 'vn' || restoringScrollRef.current) {
       return;
     }
+    userInteractedSinceRestoreRef.current = true;
     syncProgressFromViewport(true);
   };
 
@@ -2047,6 +2311,7 @@ export const JapaneseNovelReaderModal: React.FC<
     if (!book || prefs.readingMode === 'vn') return;
     const el = scrollContainerRef.current;
     if (!el) return;
+    userInteractedSinceRestoreRef.current = true;
     const rect = e.currentTarget.getBoundingClientRect();
     const clickRatio = Math.min(
       1,
@@ -2067,6 +2332,7 @@ export const JapaneseNovelReaderModal: React.FC<
           left: targetScrolled > 0 ? -targetScrolled : 0,
           behavior: 'auto',
         });
+        syncProgressFromViewport(true);
       } else {
         const targetScrolled = Math.round(maxScroll * clickRatio);
         el.scrollTo({
@@ -2089,6 +2355,7 @@ export const JapaneseNovelReaderModal: React.FC<
       const pageIdx = Math.round((maxScroll * clickRatio) / stride);
       const targetLeft = Math.min(maxScroll, Math.max(0, pageIdx * stride));
       el.scrollTo({ left: targetLeft, behavior: 'auto' });
+      syncProgressFromViewport(true);
       return;
     }
 
@@ -2100,6 +2367,7 @@ export const JapaneseNovelReaderModal: React.FC<
     if (prefs.readingMode === 'paginated') {
       if (Math.abs(e.deltaY) < 8 && Math.abs(e.deltaX) < 8) return;
       e.preventDefault();
+      userInteractedSinceRestoreRef.current = true;
       const now = Date.now();
       if (now - wheelPageCooldownRef.current < 180) return;
       wheelPageCooldownRef.current = now;
@@ -2123,6 +2391,7 @@ export const JapaneseNovelReaderModal: React.FC<
         : scrollContainerRef.current;
     if (!el || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
     e.preventDefault();
+    userInteractedSinceRestoreRef.current = true;
     el.scrollLeft -= e.deltaY;
   };
 
@@ -2131,6 +2400,7 @@ export const JapaneseNovelReaderModal: React.FC<
       touchStartRef.current = null;
       return;
     }
+    userInteractedSinceRestoreRef.current = true;
     const t = e.touches[0];
     touchStartRef.current = { x: t.clientX, y: t.clientY, time: Date.now() };
   };

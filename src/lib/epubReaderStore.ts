@@ -739,6 +739,10 @@ function writeNovelProgressMirror(
 
 export function saveNovelProgressSync(snapshot: NovelProgressSnapshot): void {
   const mirror = loadNovelProgressMirror();
+  const existing = mirror[snapshot.storageKey];
+  if (existing && existing.updatedAt > snapshot.updatedAt) {
+    return;
+  }
   mirror[snapshot.storageKey] = snapshot;
   writeNovelProgressMirror(mirror);
 }
@@ -1157,9 +1161,9 @@ export async function updateStoredNovelProgress(
   vnIndex?: number
 ): Promise<void> {
   try {
-    const now = Date.now();
     const mirror = loadNovelProgressMirror();
     const snap = mirror[storageKey];
+    const now = Math.max(Date.now(), (snap?.updatedAt ?? 0) + 1);
     if (snap) {
       saveNovelProgressSync({
         ...snap,
@@ -1171,6 +1175,13 @@ export async function updateStoredNovelProgress(
     }
     const existing = await getStoredNovelBook(storageKey);
     if (!existing) return;
+    const latestMirror = loadNovelProgressMirror()[storageKey];
+    if (
+      (latestMirror && latestMirror.updatedAt > now) ||
+      existing.updatedAt > now
+    ) {
+      return;
+    }
     await saveStoredNovelBook({
       ...existing,
       currentChapter,
