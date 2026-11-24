@@ -48,17 +48,24 @@ import {
   type StoredAudiobookTrack,
 } from '../lib/audiobookEngine';
 import {
+  alignTrackWithAi,
+  analyzeAudioSpeechEnvelope,
   buildSubtitleAlignedTimeline,
   buildWeightedSyncTimeline,
+  classifyStoryChapters,
   createDefaultTrackSyncConfig,
+  extractMp4EmbeddedChapters,
   findSegmentAtAudioTime,
   findSegmentForParagraph,
   loadGlobalTrackingPrefs,
   loadTrackSyncConfig,
+  matchEmbeddedChaptersToAnchors,
+  MAX_FULL_DECODE_BYTES,
   parseSubtitleTextToCues,
   saveGlobalTrackingPrefs,
   saveTrackSyncConfig,
-  transcribeAudioCuesWithAi,
+  spotSyncAudioAtCurrentTimeWithAi,
+  type AudioSpeechEnvelope,
   type GlobalTrackingPrefs,
   type SyncParagraphMeta,
   type SyncTimelineSegment,
@@ -79,6 +86,10 @@ export interface AudioTrackingStatusPayload {
   hasAudiobookTracks: boolean;
   syncLabel: string;
   isPlaying: boolean;
+  syncingSpotAudio: boolean;
+  hasAiKey: boolean;
+  resolvedScope: 'book' | 'chapter';
+  resolvedChapterIndex: number;
 }
 
 interface ReaderAudiobookDockProps {
@@ -88,6 +99,7 @@ interface ReaderAudiobookDockProps {
   bookStorageKey: string;
   bookTitle: string;
   chapterCount: number;
+  chapterTitles: string[];
   currentChapterIndex: number;
   chapterParagraphs: ChapterParagraphBlock[];
   allSyncBlocks: SyncParagraphMeta[];
@@ -112,6 +124,7 @@ interface ReaderAudiobookDockProps {
     paraIndex: number;
     calibrate?: boolean;
   } | null;
+  spotSyncRequest: number;
   onAdvanceVnStep: () => void;
   onSwitchChapter: (chapterIndex: number) => void;
   onOpenDrawer?: (tab: 'ai' | 'file') => void;
@@ -150,6 +163,7 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
   bookStorageKey,
   bookTitle,
   chapterCount,
+  chapterTitles,
   currentChapterIndex,
   chapterParagraphs,
   allSyncBlocks,
@@ -162,6 +176,7 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
   hasActiveBg,
   oneShotSpeakRequest,
   jumpAudioRequest,
+  spotSyncRequest,
   onAdvanceVnStep,
   onSwitchChapter,
   onOpenDrawer,
@@ -250,6 +265,10 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
   const [loadingTracks, setLoadingTracks] = useState(false);
   const [uploadingTracks, setUploadingTracks] = useState(false);
   const [syncingAiAudio, setSyncingAiAudio] = useState(false);
+  const [aiSyncProgress, setAiSyncProgress] = useState('');
+  const [syncingSpotAudio, setSyncingSpotAudio] = useState(false);
+  const [speechEnvelope, setSpeechEnvelope] =
+    useState<AudioSpeechEnvelope | null>(null);
   const [urlInput, setUrlInput] = useState('');
   const [urlTitleInput, setUrlTitleInput] = useState('');
   const [activeTrackId, setActiveTrackId] = useState('');
@@ -278,6 +297,7 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
 
   // Load per-track sync config when activeTrack changes
   useEffect(() => {
+    setSpeechEnvelope(null);
     if (!activeTrack) {
       setSyncConfig(createDefaultTrackSyncConfig(currentChapterIndexRef.current));
       return;
@@ -314,6 +334,99 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     [activeTrack, bookStorageKey]
   );
 
+  // Automatic background VAD speech-energy analysis & M4B chapter marker extraction
+  useEffect(() => {
+    if (
+      !activeTrack ||
+      activeTrack.kind !== 'blob' ||
+      !activeTrack.blob ||
+      fileDuration <= 0
+    ) {
+      return;
+    }
+    let cancelled = false;
+    const blob = activeTrack.blob;
+    const trackId = activeTrack.id;
+    const cacheKey = `${trackId}:${blob.size}`;
+
+    if (blob.size <= MAX_FULL_DECODE_BYTES) {
+      void analyzeAudioSpeechEnvelope(blob, cacheKey).then((env) => {
+        if (cancelled || !env) return;
+        setSpeechEnvelope(env);
+        updateSyncConfig((prev) => {
+          if (
+            typeof prev.speechStartSec === 'number' &&
+            typeof prev.speechEndSec === 'number' &&
+            Math.abs(prev.speechStartSec - env.speechStartSec) < 0.25 &&
+            Math.abs(prev.speechEndSec - env.speechEndSec) < 0.25
+          ) {
+            return prev;
+          }
+          return {
+            ...prev,
+            speechStartSec: env.speechStartSec,
+            speechEndSec: env.speechEndSec,
+            syncMode: prev.syncMode ?? 'vad',
+          };
+        });
+      });
+    }
+
+    const lowerName = (activeTrack.name || '').toLowerCase();
+    const lowerMime = (activeTrack.mimeType || blob.type || '').toLowerCase();
+    const isMp4Container =
+      lowerName.endsWith('.m4b') ||
+      lowerName.endsWith('.m4a') ||
+      lowerName.endsWith('.mp4') ||
+      lowerMime.includes('mp4') ||
+      lowerMime.includes('m4a');
+
+    if (isMp4Container && allSyncBlocks.length > 0) {
+      const existingCfg = loadTrackSyncConfig(
+        bookStorageKey,
+        trackId,
+        currentChapterIndexRef.current
+      );
+      if (existingCfg.anchors.length === 0) {
+        void extractMp4EmbeddedChapters(blob).then((emb) => {
+          if (cancelled || emb.length < 2) return;
+          const matched = matchEmbeddedChaptersToAnchors(
+            emb,
+            allSyncBlocks,
+            chapterCount,
+            chapterTitles
+          );
+          if (matched.length >= 2) {
+            updateSyncConfig((prev) => {
+              if (prev.anchors.length > 0) return prev;
+              return {
+                ...prev,
+                scope: 'book',
+                syncMode: 'm4b',
+                anchors: matched,
+              };
+            });
+            toast.success(
+              `${matched.length} penanda bab M4B otomatis disinkronkan ke teks novel!`
+            );
+          }
+        });
+      }
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeTrack?.id,
+    fileDuration,
+    bookStorageKey,
+    chapterCount,
+    allSyncBlocks,
+    chapterTitles,
+    updateSyncConfig,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const activeTimeline = useMemo(() => {
     if (!activeTrack || allSyncBlocks.length === 0) {
       return {
@@ -327,16 +440,20 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
       durationSec: fileDuration,
       trackCount: tracks.length,
       trackIndex: activeTrackIdx,
+      trackName: activeTrack.name,
       currentChapterIndex,
       chapterCount,
+      chapterTitles,
       config: syncConfig,
+      speechEnvelope,
     });
     if (syncConfig.cues && syncConfig.cues.length > 0) {
       const aligned = buildSubtitleAlignedTimeline(
         base.targetBlocks,
         syncConfig.cues,
         fileDuration,
-        syncConfig.anchors
+        syncConfig.anchors,
+        speechEnvelope
       );
       return { ...base, segments: aligned };
     }
@@ -349,7 +466,9 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     activeTrackIdx,
     currentChapterIndex,
     chapterCount,
+    chapterTitles,
     syncConfig,
+    speechEnvelope,
   ]);
 
   const fileTrackedSeg = useMemo(() => {
@@ -368,8 +487,17 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     if (syncConfig.cues && syncConfig.cues.length > 0) {
       return syncConfig.cueSource === 'ai' ? 'AI Audio Sync' : 'Subtitle Sync';
     }
+    if (syncConfig.syncMode === 'ai' && syncConfig.anchors.length > 0) {
+      return `AI Forced Sync`;
+    }
+    if (syncConfig.syncMode === 'm4b' && syncConfig.anchors.length > 0) {
+      return `M4B Chapters`;
+    }
     if (syncConfig.anchors.length > 0) {
       return `Kalibrasi (${syncConfig.anchors.length})`;
+    }
+    if (speechEnvelope || syncConfig.syncMode === 'vad') {
+      return 'VAD + Auto';
     }
     return 'Auto-Sync';
   }, [
@@ -378,8 +506,14 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     aiSettings.provider,
     syncConfig.cues,
     syncConfig.cueSource,
+    syncConfig.syncMode,
     syncConfig.anchors.length,
+    speechEnvelope,
   ]);
+
+  const hasAudioAiKey = Boolean(
+    aiSettings.geminiApiKey.trim() || aiSettings.openaiApiKey.trim()
+  );
 
   // Broadcast live tracking target to Reader Modal without re-rendering book DOM
   useEffect(() => {
@@ -412,6 +546,10 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
       hasAudiobookTracks: tracks.length > 0,
       syncLabel,
       isPlaying: Boolean(aiPlaying || aiLoading || filePlaying),
+      syncingSpotAudio,
+      hasAiKey: hasAudioAiKey,
+      resolvedScope: activeTimeline.resolvedScope,
+      resolvedChapterIndex: activeTimeline.resolvedChapterIndex,
     });
   }, [
     aiPlaying,
@@ -426,6 +564,10 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     trackingPrefs,
     tracks.length,
     syncLabel,
+    syncingSpotAudio,
+    hasAudioAiKey,
+    activeTimeline.resolvedScope,
+    activeTimeline.resolvedChapterIndex,
     onTrackingStateChange,
   ]);
 
@@ -1327,16 +1469,40 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
 
   const handleAiAudioSync = async () => {
     if (!activeTrack || syncingAiAudio) return;
+    if (!hasAudioAiKey) {
+      onOpenDrawer?.('ai');
+      toast(
+        'Masukkan API Key Google Gemini (gratis) atau OpenAI di tab AI Narator untuk Sinkron AI.'
+      );
+      return;
+    }
     setSyncingAiAudio(true);
+    setAiSyncProgress('Menyiapkan audio...');
     try {
-      const cues = await transcribeAudioCuesWithAi(activeTrack, aiSettings);
+      const targetBlocks =
+        activeTimeline.targetBlocks.length > 0
+          ? activeTimeline.targetBlocks
+          : allSyncBlocks;
+      const res = await alignTrackWithAi(
+        activeTrack,
+        targetBlocks,
+        fileDuration,
+        aiSettings,
+        (_done, _total, detail) => {
+          if (detail) setAiSyncProgress(detail);
+        },
+        undefined,
+        allSyncBlocks
+      );
       updateSyncConfig((prev) => ({
         ...prev,
-        cues,
+        syncMode: 'ai',
+        anchors: res.anchors,
+        cues: undefined,
         cueSource: 'ai',
       }));
       toast.success(
-        `Sinkronisasi AI berhasil (${cues.length} segmen suara dipetakan ke teks)!`
+        `Sinkron Penuh AI selesai! ${res.anchors.length} titik paragraf dikunci ke audio.`
       );
     } catch (err: unknown) {
       toast.error(
@@ -1346,10 +1512,95 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
       );
     } finally {
       setSyncingAiAudio(false);
+      setAiSyncProgress('');
     }
   };
 
-  // Click any paragraph in book -> jump audio directly there (or Shift+Click -> calibrate anchor)
+  const handleSpotSyncNow = useCallback(async () => {
+    if (!activeTrack || syncingSpotAudio) return;
+    if (!hasAudioAiKey) {
+      onOpenDrawer?.('ai');
+      toast(
+        'Masukkan API Key Google Gemini (gratis) atau OpenAI di tab AI Narator untuk AI Cari Posisi.'
+      );
+      return;
+    }
+    setSyncingSpotAudio(true);
+    try {
+      const currentSec = fileAudioRef.current?.currentTime ?? fileCurrentTime;
+      const res = await spotSyncAudioAtCurrentTimeWithAi({
+        track: activeTrack,
+        audioEl: fileAudioRef.current,
+        currentTimeSec: currentSec,
+        durationSec: fileDuration,
+        allSyncBlocks,
+        settings: aiSettings,
+      });
+
+      updateSyncConfig((prev) => {
+        const filtered = prev.anchors.filter(
+          (a) => a.globalIndex !== res.block.globalIndex
+        );
+        const switchChapScope =
+          activeTimeline.resolvedScope === 'chapter' &&
+          res.block.chapterIndex !== activeTimeline.resolvedChapterIndex;
+        return {
+          ...prev,
+          ...(switchChapScope
+            ? { scope: 'chapter' as const, chapterIndex: res.block.chapterIndex }
+            : {}),
+          syncMode:
+            prev.syncMode === 'ai' ||
+            prev.syncMode === 'm4b' ||
+            prev.syncMode === 'subtitle'
+              ? prev.syncMode
+              : 'manual',
+          anchors: [
+            ...filtered,
+            { globalIndex: res.block.globalIndex, timeSec: res.timeSec },
+          ].sort((a, b) => a.globalIndex - b.globalIndex),
+        };
+      });
+
+      const snippet = res.block.text.slice(0, 26);
+      toast.success(
+        `Ketemu! Bab ${res.block.chapterIndex + 1} • #${res.block.paraIndex + 1} 「${snippet}…」`
+      );
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : 'AI gagal menemukan posisi teks sekarang.'
+      );
+    } finally {
+      setSyncingSpotAudio(false);
+    }
+  }, [
+    activeTrack,
+    syncingSpotAudio,
+    hasAudioAiKey,
+    onOpenDrawer,
+    fileCurrentTime,
+    fileDuration,
+    allSyncBlocks,
+    aiSettings,
+    updateSyncConfig,
+    activeTimeline.resolvedScope,
+    activeTimeline.resolvedChapterIndex,
+  ]);
+
+  const lastSpotSyncReqRef = useRef(spotSyncRequest);
+  const handleSpotSyncNowRef = useRef(handleSpotSyncNow);
+  handleSpotSyncNowRef.current = handleSpotSyncNow;
+
+  useEffect(() => {
+    if (spotSyncRequest > 0 && spotSyncRequest !== lastSpotSyncReqRef.current) {
+      lastSpotSyncReqRef.current = spotSyncRequest;
+      void handleSpotSyncNowRef.current();
+    }
+  }, [spotSyncRequest]);
+
+  // Click any paragraph in book -> jump audio directly there (or Shift+Click / Pas Teks -> calibrate anchor)
   useEffect(() => {
     if (!jumpAudioRequest) return;
     if (jumpAudioRequest.id === lastJumpIdRef.current) return;
@@ -1372,8 +1623,17 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
         const filtered = prev.anchors.filter(
           (a) => a.globalIndex !== clickedBlock.globalIndex
         );
+        const fixChap =
+          prev.scope === 'chapter' || activeTimeline.resolvedScope === 'chapter';
         return {
           ...prev,
+          ...(fixChap ? { chapterIndex: jumpAudioRequest.chapterIndex } : {}),
+          syncMode:
+            prev.syncMode === 'ai' ||
+            prev.syncMode === 'm4b' ||
+            prev.syncMode === 'subtitle'
+              ? prev.syncMode
+              : 'manual',
           anchors: [
             ...filtered,
             { globalIndex: clickedBlock.globalIndex, timeSec: t },
@@ -1397,10 +1657,31 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
       );
 
       if (tracks.length > 1) {
-        const expectedTrackIdx = Math.min(
-          tracks.length - 1,
-          Math.max(0, jumpAudioRequest.chapterIndex)
+        const { storyChapterIndices } = classifyStoryChapters(
+          allSyncBlocks,
+          chapterCount,
+          chapterTitles
         );
+        const storyPos = storyChapterIndices.indexOf(
+          jumpAudioRequest.chapterIndex
+        );
+        let expectedTrackIdx: number;
+        if (storyPos >= 0 && storyChapterIndices.length > 0) {
+          expectedTrackIdx =
+            tracks.length >= storyChapterIndices.length
+              ? Math.min(tracks.length - 1, storyPos)
+              : Math.min(
+                  tracks.length - 1,
+                  Math.floor(
+                    (storyPos / storyChapterIndices.length) * tracks.length
+                  )
+                );
+        } else {
+          expectedTrackIdx = Math.min(
+            tracks.length - 1,
+            Math.max(0, jumpAudioRequest.chapterIndex)
+          );
+        }
         if (
           (!seg || syncConfig.scope === 'auto') &&
           expectedTrackIdx !== activeTrackIdx &&
@@ -1448,9 +1729,12 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
           durationSec: fileDuration,
           trackCount: tracks.length,
           trackIndex: Math.max(0, activeTrackIdx),
+          trackName: activeTrack.name,
           currentChapterIndex: jumpAudioRequest.chapterIndex,
           chapterCount,
+          chapterTitles,
           config: nextCfg,
+          speechEnvelope,
         });
         const rebuiltSegs =
           nextCfg.cues && nextCfg.cues.length > 0
@@ -1458,7 +1742,8 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
                 rebuilt.targetBlocks,
                 nextCfg.cues,
                 fileDuration,
-                nextCfg.anchors
+                nextCfg.anchors,
+                speechEnvelope
               )
             : rebuilt.segments;
         targetSeg = findSegmentForParagraph(
@@ -1511,6 +1796,8 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     activeTab,
     fileDuration,
     chapterCount,
+    chapterTitles,
+    speechEnvelope,
     activeTimeline.segments,
     activeTimeline.resolvedScope,
     activeTimeline.resolvedChapterIndex,
@@ -1569,8 +1856,10 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
               durationSec: dur,
               trackCount: tracks.length,
               trackIndex: Math.max(0, trackIdx),
+              trackName: activeTrack.name,
               currentChapterIndex: pendingJump.chapterIndex,
               chapterCount,
+              chapterTitles,
               config: cfg,
             });
             const segs =
@@ -2515,16 +2804,25 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
                       </div>
 
                       {trackingPrefs.liveTracking && fileTrackedSeg && (
-                        <div className="text-[11px] font-mono px-2.5 py-1.5 rounded-xl bg-black/25 border border-white/10 flex items-center justify-between gap-2">
-                          <span className="text-emerald-300 font-bold">
-                            ● Posisi Teks: Bab {fileTrackedSeg.chapterIndex + 1} •
-                            Paragraf #{fileTrackedSeg.paraIndex + 1}
-                          </span>
-                          <span className="opacity-70 shrink-0">
-                            {activeTimeline.resolvedScope === 'book'
-                              ? 'Seluruh Buku'
-                              : `Bab ${activeTimeline.resolvedChapterIndex + 1}`}
-                          </span>
+                        <div className="text-[11px] font-mono px-2.5 py-1.5 rounded-xl bg-black/25 border border-white/10 space-y-0.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-emerald-300 font-bold truncate">
+                              ● Bab {fileTrackedSeg.chapterIndex + 1} • Paragraf #
+                              {fileTrackedSeg.paraIndex + 1}
+                            </span>
+                            <span className="opacity-75 shrink-0 text-[10px]">
+                              {activeTimeline.resolvedScope === 'book'
+                                ? 'Seluruh Buku'
+                                : `Bab ${activeTimeline.resolvedChapterIndex + 1}`}
+                            </span>
+                          </div>
+                          {activeTimeline.resolvedScope === 'chapter' &&
+                            chapterTitles[activeTimeline.resolvedChapterIndex] && (
+                              <div className="text-[10px] opacity-70 truncate">
+                                Target:{' '}
+                                {chapterTitles[activeTimeline.resolvedChapterIndex]}
+                              </div>
+                            )}
                         </div>
                       )}
 
@@ -2576,8 +2874,8 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
                         </button>
                       </div>
 
-                      {/* Target Scope */}
-                      <div className="space-y-1">
+                      {/* Target Scope & Chapter Picker */}
+                      <div className="space-y-1.5">
                         <span className={`block text-[10px] font-bold ${themeStyle.mutedText}`}>
                           Cakupan Audio Track Ini
                         </span>
@@ -2586,7 +2884,7 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
                             [
                               { id: 'auto', label: 'Otomatis' },
                               { id: 'book', label: 'Seluruh Buku' },
-                              { id: 'chapter', label: 'Bab Ini Saja' },
+                              { id: 'chapter', label: 'Per Bab' },
                             ] as const
                           ).map((sc) => (
                             <button
@@ -2598,7 +2896,7 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
                                   scope: sc.id,
                                   chapterIndex:
                                     sc.id === 'chapter'
-                                      ? currentChapterIndex
+                                      ? activeTimeline.resolvedChapterIndex
                                       : prev.chapterIndex,
                                 }))
                               }
@@ -2612,6 +2910,32 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
                             </button>
                           ))}
                         </div>
+                        {(syncConfig.scope === 'chapter' ||
+                          activeTimeline.resolvedScope === 'chapter') &&
+                          chapterTitles.length > 1 && (
+                            <select
+                              value={activeTimeline.resolvedChapterIndex}
+                              onChange={(e) =>
+                                updateSyncConfig((prev) => ({
+                                  ...prev,
+                                  scope: 'chapter',
+                                  chapterIndex: Number(e.target.value),
+                                }))
+                              }
+                              title="Pilih Bab EPUB yang sesuai dengan file audio ini"
+                              className="w-full px-2 py-1.5 rounded-lg bg-black/30 border border-white/15 text-[11px] font-medium focus:outline-none focus:border-sky-400 cursor-pointer"
+                            >
+                              {chapterTitles.map((title, idx) => (
+                                <option
+                                  key={`sync-ch-${idx}`}
+                                  value={idx}
+                                  className="bg-slate-900 text-white"
+                                >
+                                  Bab {idx + 1}: {title || `Bagian ${idx + 1}`}
+                                </option>
+                              ))}
+                            </select>
+                          )}
                       </div>
 
                       {/* Fine Offset & Anchor Controls */}
@@ -2625,39 +2949,24 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
                             {syncConfig.offsetSec.toFixed(1)}s
                           </span>
                         </div>
-                        <div className="grid grid-cols-4 gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleAdjustSyncOffset(-2)}
-                            className={`py-1 rounded-lg text-[10px] font-mono font-bold border cursor-pointer ${themeStyle.subtleBtn}`}
-                          >
-                            -2s
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleAdjustSyncOffset(-0.5)}
-                            className={`py-1 rounded-lg text-[10px] font-mono font-bold border cursor-pointer ${themeStyle.subtleBtn}`}
-                          >
-                            -0.5s
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleAdjustSyncOffset(0.5)}
-                            className={`py-1 rounded-lg text-[10px] font-mono font-bold border cursor-pointer ${themeStyle.subtleBtn}`}
-                          >
-                            +0.5s
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleAdjustSyncOffset(2)}
-                            className={`py-1 rounded-lg text-[10px] font-mono font-bold border cursor-pointer ${themeStyle.subtleBtn}`}
-                          >
-                            +2s
-                          </button>
+                        <div className="grid grid-cols-6 gap-1">
+                          {([-10, -2, -0.5, 0.5, 2, 10] as const).map((d) => (
+                            <button
+                              key={d}
+                              type="button"
+                              onClick={() => handleAdjustSyncOffset(d)}
+                              className={`py-1 rounded-lg text-[10px] font-mono font-bold border cursor-pointer ${themeStyle.subtleBtn}`}
+                            >
+                              {d > 0 ? `+${d}s` : `${d}s`}
+                            </button>
+                          ))}
+                        </div>
+                        <div className={`text-[9.5px] opacity-75 ${themeStyle.mutedText}`}>
+                          Teks kecepatan? Tekan (-) • Teks ketinggalan? Tekan (+)
                         </div>
                       </div>
 
-                      {/* Precision Sync Buttons */}
+                      {/* Precision & AI Sync Buttons */}
                       <div className="grid grid-cols-2 gap-1.5">
                         <button
                           type="button"
@@ -2675,21 +2984,40 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
                           <FileText className="w-3 h-3 text-emerald-400 shrink-0" />
                           <span>+ .SRT / .LRC</span>
                         </button>
+
                         <button
                           type="button"
-                          disabled={syncingAiAudio}
-                          onClick={() => void handleAiAudioSync()}
-                          className="col-span-2 py-1.5 px-2 rounded-xl border border-violet-400/40 bg-violet-500/20 hover:bg-violet-500/30 text-violet-100 text-[10px] font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                          disabled={syncingSpotAudio || syncingAiAudio}
+                          onClick={() => void handleSpotSyncNow()}
+                          className="col-span-2 py-1.5 px-2.5 rounded-xl border border-cyan-400/45 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-100 text-[10.5px] font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
                         >
-                          {syncingAiAudio ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
+                          {syncingSpotAudio ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
                           ) : (
-                            <Sparkles className="w-3 h-3" />
+                            <AudioLines className="w-3.5 h-3.5 shrink-0" />
                           )}
                           <span>
+                            {syncingSpotAudio
+                              ? 'AI Mendengarkan Cuplikan...'
+                              : 'AI Dengarkan & Cari Posisi Sekarang'}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={syncingAiAudio || syncingSpotAudio}
+                          onClick={() => void handleAiAudioSync()}
+                          className="col-span-2 py-1.5 px-2.5 rounded-xl border border-violet-400/40 bg-violet-500/20 hover:bg-violet-500/30 text-violet-100 text-[10px] font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+                        >
+                          {syncingAiAudio ? (
+                            <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                          ) : (
+                            <Sparkles className="w-3 h-3 shrink-0" />
+                          )}
+                          <span className="truncate">
                             {syncingAiAudio
-                              ? 'AI Sedang Mendengarkan Audio...'
-                              : 'Sinkron Otomatis Pakai AI (Whisper / Gemini)'}
+                              ? aiSyncProgress || 'AI Sedang Menyinkronkan...'
+                              : 'Sinkron Penuh AI (Track Ini)'}
                           </span>
                         </button>
                       </div>
@@ -2707,7 +3035,7 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
                       )}
 
                       <p className={`text-[10px] leading-relaxed ${themeStyle.mutedText}`}>
-                        Klik paragraf mana saja di novel untuk lompat audio ke bagian tersebut. Tahan <b>Shift + Klik</b> paragraf saat suara terdengar untuk mengunci kalibrasi presisi.
+                        Klik paragraf mana saja untuk lompat audio. Atau aktifkan tombol <b>Pas Teks</b> (di layar baca) / tahan <b>Shift + Klik</b> tepat pada kata yang sedang terdengar.
                       </p>
                     </div>
                   )}

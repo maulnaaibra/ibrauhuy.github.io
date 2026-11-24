@@ -16,6 +16,7 @@ import {
   ChevronsRight,
   Clock,
   Copy,
+  Crosshair,
   Download,
   ExternalLink,
   FileUp,
@@ -2749,6 +2750,12 @@ export const JapaneseNovelReaderModal: React.FC<
 
   const [audioTrackingState, setAudioTrackingState] =
     useState<AudioTrackingStatusPayload | null>(null);
+  const [calibrateClickMode, setCalibrateClickMode] = useState(false);
+  const [spotSyncRequest, setSpotSyncRequest] = useState(0);
+  const chapterTitles = useMemo(
+    () => book?.chapters.map((c) => c.title) ?? [],
+    [book?.chapters]
+  );
   const [jumpAudioRequest, setJumpAudioRequest] = useState<{
     id: number;
     chapterIndex: number;
@@ -2958,7 +2965,7 @@ export const JapaneseNovelReaderModal: React.FC<
 
   const handleArticleClickForAudio = useCallback(
     (e: React.MouseEvent<HTMLElement>) => {
-      if (!isAudioClickable || !book) return;
+      if ((!isAudioClickable && !calibrateClickMode) || !book) return;
       if (window.getSelection()?.toString().trim()) return;
       const targetEl = e.target as HTMLElement | null;
       if (!targetEl) return;
@@ -2977,16 +2984,21 @@ export const JapaneseNovelReaderModal: React.FC<
       const pIdx = Number(block.dataset.syncPara);
       if (!Number.isFinite(chIdx) || !Number.isFinite(pIdx)) return;
 
+      const isCalibrate = e.shiftKey || calibrateClickMode;
+      if (calibrateClickMode) {
+        setCalibrateClickMode(false);
+      }
+
       userInteractedSinceRestoreRef.current = true;
       jumpRequestSeqRef.current += 1;
       setJumpAudioRequest({
         id: jumpRequestSeqRef.current,
         chapterIndex: chIdx,
         paraIndex: pIdx,
-        calibrate: e.shiftKey,
+        calibrate: isCalibrate,
       });
     },
-    [isAudioClickable, book]
+    [isAudioClickable, calibrateClickMode, book]
   );
 
   useEffect(() => {
@@ -6183,45 +6195,104 @@ export const JapaneseNovelReaderModal: React.FC<
           hasActiveBg ? 'bg-transparent' : themeStyle.articleBg
         }`}
       >
-        {/* Live Audiobook ↔ Text Tracking Status Pill */}
+        {/* Live Audiobook ↔ Text Tracking Status & Quick 1-Tap Calibration Pills */}
         {book &&
           activeChapter &&
-          audioTrackingState?.liveTrackingEnabled &&
-          audioTrackingState.activeTarget && (
-            <button
-              type="button"
-              onClick={() => {
-                if (audioTrackingState.activeTarget) {
-                  scrollToTrackedBlock(audioTrackingState.activeTarget, true);
-                }
-              }}
-              title="Klik untuk langsung ke posisi paragraf tracking aktif (klik paragraf mana saja di novel untuk lompat audio, Shift+Klik untuk kalibrasi)"
+          audioTrackingState &&
+          ((audioTrackingState.liveTrackingEnabled &&
+            audioTrackingState.activeTarget) ||
+            audioTrackingState.hasAudiobookTracks) && (
+            <div
               className={`absolute ${
                 prefs.readingMode === 'vn' ? 'bottom-16 left-3' : 'bottom-3 left-3'
-              } z-20 max-w-[calc(100vw-1.5rem)] px-2.5 py-1 rounded-full border text-[11px] font-bold backdrop-blur-md shadow-lg inline-flex items-center gap-1.5 transition cursor-pointer ${
-                audioTrackingState.isPlaying
-                  ? 'bg-[#071829]/88 border-sky-400/55 text-sky-200 hover:bg-[#0b233b]'
-                  : 'bg-slate-950/75 border-white/15 text-slate-300 hover:text-white hover:border-sky-400/40'
-              }`}
+              } z-20 max-w-[calc(100vw-1.5rem)] flex flex-wrap items-center gap-1.5`}
             >
-              <Radio
-                className={`w-3 h-3 shrink-0 ${
-                  audioTrackingState.isPlaying
-                    ? 'text-sky-400 animate-pulse'
-                    : 'text-slate-400'
-                }`}
-              />
-              <span className="truncate">
-                {audioTrackingState.isPlaying ? 'LIVE TRACKING' : 'TRACKING'} • Bab{' '}
-                {audioTrackingState.activeTarget.chapterIndex + 1} • #
-                {audioTrackingState.activeTarget.paraIndex + 1}
-              </span>
-              {audioTrackingState.syncLabel && (
-                <span className="hidden sm:inline opacity-70 font-normal truncate max-w-[10rem]">
-                  ({audioTrackingState.syncLabel})
-                </span>
+              {audioTrackingState.liveTrackingEnabled &&
+                audioTrackingState.activeTarget && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (audioTrackingState.activeTarget) {
+                        scrollToTrackedBlock(
+                          audioTrackingState.activeTarget,
+                          true
+                        );
+                      }
+                    }}
+                    title="Klik untuk langsung ke posisi paragraf tracking aktif"
+                    className={`px-2.5 py-1 rounded-full border text-[11px] font-bold backdrop-blur-md shadow-lg inline-flex items-center gap-1.5 transition cursor-pointer ${
+                      audioTrackingState.isPlaying
+                        ? 'bg-[#071829]/88 border-sky-400/55 text-sky-200 hover:bg-[#0b233b]'
+                        : 'bg-slate-950/75 border-white/15 text-slate-300 hover:text-white hover:border-sky-400/40'
+                    }`}
+                  >
+                    <Radio
+                      className={`w-3 h-3 shrink-0 ${
+                        audioTrackingState.isPlaying
+                          ? 'text-sky-400 animate-pulse'
+                          : 'text-slate-400'
+                      }`}
+                    />
+                    <span className="truncate">
+                      {audioTrackingState.isPlaying
+                        ? 'LIVE TRACKING'
+                        : 'TRACKING'}{' '}
+                      • Bab {audioTrackingState.activeTarget.chapterIndex + 1} •
+                      #{audioTrackingState.activeTarget.paraIndex + 1}
+                    </span>
+                    {audioTrackingState.syncLabel && (
+                      <span className="hidden sm:inline opacity-70 font-normal truncate max-w-[10rem]">
+                        ({audioTrackingState.syncLabel})
+                      </span>
+                    )}
+                  </button>
+                )}
+
+              {audioTrackingState.hasAudiobookTracks && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setCalibrateClickMode((v) => !v)}
+                    title={
+                      calibrateClickMode
+                        ? 'Klik paragraf yang sedang dibaca narrator untuk mengunci sinkronisasi!'
+                        : 'Teks kurang pas? Ketuk ini lalu klik paragraf yang sedang terdengar di audiobook'
+                    }
+                    className={`px-2.5 py-1 rounded-full border text-[11px] font-bold backdrop-blur-md shadow-lg inline-flex items-center gap-1 transition cursor-pointer ${
+                      calibrateClickMode
+                        ? 'bg-amber-400 text-slate-950 border-amber-300 animate-pulse'
+                        : 'bg-slate-950/75 border-amber-400/35 text-amber-200 hover:bg-amber-500/20'
+                    }`}
+                  >
+                    <Crosshair className="w-3 h-3 shrink-0" />
+                    <span>
+                      {calibrateClickMode
+                        ? 'Klik Teks yg Terdengar!'
+                        : 'Pas Teks'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={audioTrackingState.syncingSpotAudio}
+                    onClick={() => setSpotSyncRequest((c) => c + 1)}
+                    title="Biarkan AI mendengarkan ~10 detik audio sekarang & mencocokkan paragrafnya otomatis"
+                    className="px-2.5 py-1 rounded-full border border-cyan-400/45 bg-cyan-950/80 hover:bg-cyan-500/25 text-cyan-200 text-[11px] font-bold backdrop-blur-md shadow-lg inline-flex items-center gap-1 transition cursor-pointer disabled:opacity-60"
+                  >
+                    {audioTrackingState.syncingSpotAudio ? (
+                      <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                    ) : (
+                      <Sparkles className="w-3 h-3 shrink-0" />
+                    )}
+                    <span>
+                      {audioTrackingState.syncingSpotAudio
+                        ? 'AI Mencari...'
+                        : 'AI Cari'}
+                    </span>
+                  </button>
+                </>
               )}
-            </button>
+            </div>
           )}
 
         {/* Floating Paginated Side Arrow Buttons */}
@@ -6439,7 +6510,7 @@ export const JapaneseNovelReaderModal: React.FC<
                     onClick={handleArticleClickForAudio}
                     data-furigana={prefs.furigana}
                     className={`jp-novel-reader-content ${contentDirClass} ${cleanClass} ${
-                      isAudioClickable ? 'jp-audio-clickable' : ''
+                      [isAudioClickable ? 'jp-audio-clickable' : '', calibrateClickMode ? 'jp-audio-calibrate-mode' : ''].filter(Boolean).join(' ')
                     } ${
                       prefs.writingMode === 'vertical' ? widthClass : ''
                     } ${indentClass}`}
@@ -6483,7 +6554,7 @@ export const JapaneseNovelReaderModal: React.FC<
                   onClick={handleArticleClickForAudio}
                   data-furigana={prefs.furigana}
                   className={`jp-novel-reader-content ${contentDirClass} ${widthClass} ${indentClass} ${cleanClass} ${
-                    isAudioClickable ? 'jp-audio-clickable' : ''
+                    [isAudioClickable ? 'jp-audio-clickable' : '', calibrateClickMode ? 'jp-audio-calibrate-mode' : ''].filter(Boolean).join(' ')
                   } ${
                     hasActiveBg &&
                     prefs.bgPanelOpacity > 0 &&
@@ -6619,7 +6690,7 @@ export const JapaneseNovelReaderModal: React.FC<
                   onClick={handleArticleClickForAudio}
                   data-furigana={prefs.furigana}
                   className={`jp-novel-reader-content ${contentDirClass} ${indentClass} ${cleanClass} ${
-                    isAudioClickable ? 'jp-audio-clickable' : ''
+                    [isAudioClickable ? 'jp-audio-clickable' : '', calibrateClickMode ? 'jp-audio-calibrate-mode' : ''].filter(Boolean).join(' ')
                   } ${
                     prefs.writingMode === 'vertical'
                       ? 'jp-paged-v-article'
@@ -6681,7 +6752,7 @@ export const JapaneseNovelReaderModal: React.FC<
               onClick={handleArticleClickForAudio}
               data-furigana={prefs.furigana}
               className={`jp-novel-reader-content ${contentDirClass} ${widthClass} ${indentClass} ${cleanClass} ${
-                isAudioClickable ? 'jp-audio-clickable' : ''
+                [isAudioClickable ? 'jp-audio-clickable' : '', calibrateClickMode ? 'jp-audio-calibrate-mode' : ''].filter(Boolean).join(' ')
               } ${
                 hasActiveBg &&
                 prefs.bgPanelOpacity > 0 &&
@@ -6991,6 +7062,7 @@ export const JapaneseNovelReaderModal: React.FC<
           bookStorageKey={book.storageKey}
           bookTitle={book.title}
           chapterCount={book.chapters.length}
+          chapterTitles={chapterTitles}
           currentChapterIndex={book.currentChapter}
           chapterParagraphs={chapterParagraphs}
           allSyncBlocks={annotatedBook.syncBlocks}
@@ -7003,6 +7075,7 @@ export const JapaneseNovelReaderModal: React.FC<
           hasActiveBg={hasActiveBg}
           oneShotSpeakRequest={oneShotSpeakRequest}
           jumpAudioRequest={jumpAudioRequest}
+          spotSyncRequest={spotSyncRequest}
           onAdvanceVnStep={handleStepForward}
           onSwitchChapter={(idx) => handleSwitchChapter(idx)}
           onPlaybackStatusChange={(st) => setAudioPlaybackActive(st.active)}
