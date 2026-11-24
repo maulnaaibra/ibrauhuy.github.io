@@ -1581,6 +1581,7 @@ export const JapaneseNovelReaderModal: React.FC<
     prefs.writingMode,
     prefs.readingMode,
     prefs.fontSize,
+    prefs.fontWeight,
     prefs.lineHeight,
     prefs.letterSpacing,
     prefs.maxWidth,
@@ -1672,6 +1673,7 @@ export const JapaneseNovelReaderModal: React.FC<
     prefs.writingMode,
     prefs.readingMode,
     prefs.fontSize,
+    prefs.fontWeight,
     prefs.lineHeight,
     prefs.letterSpacing,
     prefs.maxWidth,
@@ -4217,6 +4219,84 @@ export const JapaneseNovelReaderModal: React.FC<
                     </div>
                   </div>
 
+                  {/* Font Weight */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className={`font-bold ${themeStyle.mutedText}`}>
+                        Ketebalan Huruf (Font Weight)
+                      </span>
+                      <span className="font-mono font-bold text-sky-400">
+                        {prefs.fontWeight}{' '}
+                        {prefs.fontWeight <= 300
+                          ? '(Tipis)'
+                          : prefs.fontWeight <= 450
+                            ? '(Normal)'
+                            : prefs.fontWeight <= 550
+                              ? '(Sedang)'
+                              : prefs.fontWeight <= 650
+                                ? '(SemiBold)'
+                                : '(Tebal)'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updatePrefs({
+                            fontWeight: Math.max(200, prefs.fontWeight - 50),
+                          })
+                        }
+                        className={`px-2.5 py-1 rounded-lg border text-xs font-bold cursor-pointer ${themeStyle.subtleBtn}`}
+                      >
+                        -
+                      </button>
+                      <input
+                        type="range"
+                        min={200}
+                        max={800}
+                        step={50}
+                        value={prefs.fontWeight}
+                        onChange={(e) =>
+                          updatePrefs({ fontWeight: Number(e.target.value) })
+                        }
+                        className="flex-1 h-2 accent-sky-400 cursor-pointer"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updatePrefs({
+                            fontWeight: Math.min(800, prefs.fontWeight + 50),
+                          })
+                        }
+                        className={`px-2.5 py-1 rounded-lg border text-xs font-bold cursor-pointer ${themeStyle.subtleBtn}`}
+                      >
+                        +
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-5 gap-1">
+                      {[
+                        { label: 'Tipis', w: 300 },
+                        { label: 'Normal', w: 400 },
+                        { label: 'Sedang', w: 500 },
+                        { label: 'Semi', w: 600 },
+                        { label: 'Tebal', w: 700 },
+                      ].map((preset) => (
+                        <button
+                          key={preset.w}
+                          type="button"
+                          onClick={() => updatePrefs({ fontWeight: preset.w })}
+                          className={`py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                            prefs.fontWeight === preset.w
+                              ? 'bg-sky-500 text-slate-950 border-sky-400'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Line Height */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between text-[11px]">
@@ -4544,6 +4624,7 @@ export const JapaneseNovelReaderModal: React.FC<
                       className="px-3 py-2 rounded-xl border border-current/15 bg-black/15 text-sm leading-relaxed truncate"
                       style={{
                         fontFamily: activeFontCss,
+                        fontWeight: prefs.fontWeight,
                         letterSpacing: `${prefs.letterSpacing}em`,
                       }}
                     >
@@ -5995,6 +6076,7 @@ export const JapaneseNovelReaderModal: React.FC<
                       {
                         fontFamily: activeFontCss,
                         fontSize: `${prefs.fontSize}px`,
+                        fontWeight: prefs.fontWeight,
                         lineHeight: prefs.lineHeight,
                         letterSpacing: `${prefs.letterSpacing}em`,
                         '--jp-para-gap': `${prefs.paragraphSpacing}em`,
@@ -6037,6 +6119,7 @@ export const JapaneseNovelReaderModal: React.FC<
                     {
                       fontFamily: activeFontCss,
                       fontSize: `${prefs.fontSize}px`,
+                      fontWeight: prefs.fontWeight,
                       lineHeight: prefs.lineHeight,
                       letterSpacing: `${prefs.letterSpacing}em`,
                       '--jp-para-gap': `${prefs.paragraphSpacing}em`,
@@ -6163,6 +6246,7 @@ export const JapaneseNovelReaderModal: React.FC<
                     {
                       fontFamily: activeFontCss,
                       fontSize: `${prefs.fontSize}px`,
+                      fontWeight: prefs.fontWeight,
                       lineHeight: prefs.lineHeight,
                       letterSpacing: `${prefs.letterSpacing}em`,
                       '--jp-para-gap': `${prefs.paragraphSpacing}em`,
@@ -6224,6 +6308,7 @@ export const JapaneseNovelReaderModal: React.FC<
                 {
                   fontFamily: activeFontCss,
                   fontSize: `${prefs.fontSize}px`,
+                  fontWeight: prefs.fontWeight,
                   lineHeight: prefs.lineHeight,
                   letterSpacing: `${prefs.letterSpacing}em`,
                   '--jp-para-gap': `${prefs.paragraphSpacing}em`,

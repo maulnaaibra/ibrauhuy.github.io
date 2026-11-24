@@ -33,7 +33,7 @@ export const BUILTIN_READER_FONTS: BuiltinReaderFont[] = [
     label: 'Shippori Mincho',
     sampleTag: 'Novel Cetak',
     cssFamily: "'Shippori Mincho', 'Noto Serif JP', serif",
-    googleFamily: 'Shippori+Mincho:wght@400;600;700',
+    googleFamily: 'Shippori+Mincho:wght@400;500;600;700;800',
   },
   {
     id: 'klee',
@@ -47,7 +47,7 @@ export const BUILTIN_READER_FONTS: BuiltinReaderFont[] = [
     label: 'Zen Maru Gothic',
     sampleTag: 'Bulat Lembut',
     cssFamily: "'Zen Maru Gothic', 'Noto Sans JP', sans-serif",
-    googleFamily: 'Zen+Maru+Gothic:wght@400;500;700',
+    googleFamily: 'Zen+Maru+Gothic:wght@300;400;500;700',
   },
   {
     id: 'biz-udmincho',
@@ -68,7 +68,7 @@ export const BUILTIN_READER_FONTS: BuiltinReaderFont[] = [
     label: 'Kaisei Opti',
     sampleTag: 'Klasik Fantasi',
     cssFamily: "'Kaisei Opti', 'Noto Serif JP', serif",
-    googleFamily: 'Kaisei+Opti:wght@400;700',
+    googleFamily: 'Kaisei+Opti:wght@400;500;700',
   },
   {
     id: 'yuji',
@@ -218,6 +218,14 @@ function injectGoogleFontCss(googleFamilyParam: string): void {
   const link = document.createElement('link');
   link.rel = 'stylesheet';
   link.href = href;
+  if (googleFamilyParam.includes(':')) {
+    link.onerror = () => {
+      const bareFamily = googleFamilyParam.split(':')[0];
+      if (bareFamily) {
+        injectGoogleFontCss(bareFamily);
+      }
+    };
+  }
   document.head.appendChild(link);
 }
 
@@ -255,7 +263,7 @@ export async function saveCustomFontFile(
   const familyName = `ReaderCustomFont_${id.replace(/[^a-zA-Z0-9_]/g, '_')}`;
 
   const buffer = await file.arrayBuffer();
-  const face = new FontFace(familyName, buffer);
+  const face = new FontFace(familyName, buffer, { weight: '100 900' });
   const loadedFace = await face.load();
   document.fonts.add(loadedFace);
   loadedFaceIds.add(id);
@@ -294,7 +302,7 @@ export function addNamedCustomFont(
   if (existing) {
     if (source === 'google') {
       injectGoogleFontCss(
-        `${encodeURIComponent(existing.familyName).replace(/%20/g, '+')}:wght@400;500;700`
+        `${encodeURIComponent(existing.familyName).replace(/%20/g, '+')}:wght@300;400;500;600;700`
       );
     }
     return existing;
@@ -312,7 +320,7 @@ export function addNamedCustomFont(
 
   if (source === 'google') {
     injectGoogleFontCss(
-      `${encodeURIComponent(cleanName).replace(/%20/g, '+')}:wght@400;500;700`
+      `${encodeURIComponent(cleanName).replace(/%20/g, '+')}:wght@300;400;500;600;700`
     );
   }
 
@@ -353,7 +361,7 @@ export async function ensureReaderFontLoaded(
 
   if (custom.source === 'google') {
     injectGoogleFontCss(
-      `${encodeURIComponent(custom.familyName).replace(/%20/g, '+')}:wght@400;500;700`
+      `${encodeURIComponent(custom.familyName).replace(/%20/g, '+')}:wght@300;400;500;600;700`
     );
     try {
       await document.fonts?.ready;
@@ -369,7 +377,9 @@ export async function ensureReaderFontLoaded(
     if (!blob) return;
     try {
       const buffer = await blob.arrayBuffer();
-      const face = new FontFace(custom.familyName, buffer);
+      const face = new FontFace(custom.familyName, buffer, {
+        weight: '100 900',
+      });
       const loadedFace = await face.load();
       document.fonts.add(loadedFace);
       loadedFaceIds.add(custom.id);

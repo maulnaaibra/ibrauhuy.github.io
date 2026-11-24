@@ -92,6 +92,7 @@ export interface ReaderPreferences {
   writingMode: 'horizontal' | 'vertical';
   furigana: 'show' | 'hover' | 'hide';
   fontSize: number;
+  fontWeight: number;
   fontFamily: string;
   theme: 'navy' | 'charcoal' | 'amoled' | 'sepia' | 'light';
   lineHeight: number;
@@ -120,6 +121,7 @@ export const DEFAULT_READER_PREFS: ReaderPreferences = {
   writingMode: 'horizontal',
   furigana: 'show',
   fontSize: 20,
+  fontWeight: 400,
   fontFamily: 'serif',
   theme: 'navy',
   lineHeight: 1.95,
@@ -172,6 +174,11 @@ export function loadReaderPrefs(): ReaderPreferences {
         typeof parsed.fontSize === 'number' && Number.isFinite(parsed.fontSize)
           ? Math.min(34, Math.max(16, Math.round(parsed.fontSize)))
           : DEFAULT_READER_PREFS.fontSize;
+      const fontWeight =
+        typeof parsed.fontWeight === 'number' &&
+        Number.isFinite(parsed.fontWeight)
+          ? Math.min(800, Math.max(200, Math.round(parsed.fontWeight / 50) * 50))
+          : DEFAULT_READER_PREFS.fontWeight;
       const fontFamily =
         typeof parsed.fontFamily === 'string' && parsed.fontFamily.trim()
           ? parsed.fontFamily.trim()
@@ -277,6 +284,7 @@ export function loadReaderPrefs(): ReaderPreferences {
         writingMode,
         furigana,
         fontSize,
+        fontWeight,
         fontFamily,
         theme,
         lineHeight,
