@@ -33,6 +33,7 @@ import {
   Minus,
   Play,
   Plus,
+  Radio,
   RotateCcw,
   Save,
   Search,
@@ -116,7 +117,14 @@ import {
   hasAiTextKey,
   loadAiTtsSettings,
 } from '../lib/audiobookEngine';
-import { ReaderAudiobookDock } from './ReaderAudiobookDock';
+import {
+  annotateBookChaptersForSync,
+  type SyncParagraphMeta,
+} from '../lib/audiobookSync';
+import {
+  ReaderAudiobookDock,
+  type AudioTrackingStatusPayload,
+} from './ReaderAudiobookDock';
 
 export interface NovelReaderTarget {
   storageKey: string;
@@ -2727,6 +2735,325 @@ export const JapaneseNovelReaderModal: React.FC<
     chapterParagraphs,
     vnIndex,
     scrollPct,
+  ]);
+
+  const annotatedBook = useMemo(() => {
+    if (!book) {
+      return {
+        annotatedChapters: [] as StoredNovelChapter[],
+        syncBlocks: [] as SyncParagraphMeta[],
+      };
+    }
+    return annotateBookChaptersForSync(book.chapters);
+  }, [book?.storageKey, book?.chapters]);
+
+  const [audioTrackingState, setAudioTrackingState] =
+    useState<AudioTrackingStatusPayload | null>(null);
+  const [jumpAudioRequest, setJumpAudioRequest] = useState<{
+    id: number;
+    chapterIndex: number;
+    paraIndex: number;
+    calibrate?: boolean;
+  } | null>(null);
+  const jumpRequestSeqRef = useRef(0);
+  const prevTrackedDomElRef = useRef<HTMLElement | null>(null);
+  const lastAutoFollowKeyRef = useRef('');
+
+  const handleTrackingStateChange = useCallback(
+    (nextState: AudioTrackingStatusPayload) => {
+      setAudioTrackingState(nextState);
+    },
+    []
+  );
+
+  const isAudioClickable = Boolean(
+    audioTrackingState &&
+      audioTrackingState.liveTrackingEnabled &&
+      audioTrackingState.clickToJump &&
+      (audioTrackingState.hasAudiobookTracks ||
+        audioTrackingState.activeTarget !== null)
+  );
+
+  const scrollToTrackedBlock = useCallback(
+    (
+      targetTrack: NonNullable<AudioTrackingStatusPayload['activeTarget']>,
+      forceScroll = false
+    ) => {
+      const curBook = bookRef.current;
+      if (!curBook || loadingBookRef.current) return;
+
+      const mode = prefsRef.current.readingMode;
+      const isVertical = prefsRef.current.writingMode === 'vertical';
+
+      if (mode === 'vn') {
+        if (targetTrack.chapterIndex !== curBook.currentChapter) {
+          if (targetTrack.source === 'file' || forceScroll) {
+            handleSwitchChapter(targetTrack.chapterIndex, {
+              targetVnIndex: targetTrack.paraIndex,
+            });
+          }
+          return;
+        }
+        const perStep = Math.max(1, prefsRef.current.vnParagraphsPerStep);
+        const alignedVn = Math.max(
+          0,
+          Math.floor(targetTrack.paraIndex / perStep) * perStep
+        );
+        const curVn = vnIndexRef.current;
+        if (prefsRef.current.vnDisplayStyle === 'card') {
+          if (
+            targetTrack.paraIndex < curVn ||
+            targetTrack.paraIndex >= curVn + perStep
+          ) {
+            vnIndexRef.current = alignedVn;
+            setVnIndex(alignedVn);
+            const chapLen = chapterParaLenRef.current;
+            const ratio =
+              chapLen > 1 ? Math.min(1, alignedVn / (chapLen - 1)) : 0;
+            liveChapterRef.current = curBook.currentChapter;
+            liveScrollRatioRef.current = ratio;
+            setScrollPct(Math.round(ratio * 100));
+            return;
+          }
+        } else if (targetTrack.paraIndex >= curVn + perStep) {
+          vnIndexRef.current = alignedVn;
+          setVnIndex(alignedVn);
+          const chapLen = chapterParaLenRef.current;
+          const ratio =
+            chapLen > 1 ? Math.min(1, alignedVn / (chapLen - 1)) : 0;
+          liveChapterRef.current = curBook.currentChapter;
+          liveScrollRatioRef.current = ratio;
+          setScrollPct(Math.round(ratio * 100));
+          return;
+        }
+        const article = articleRef.current;
+        const blockEl = article?.querySelector<HTMLElement>(
+          `[data-sync-chapter="${targetTrack.chapterIndex}"][data-sync-para="${targetTrack.paraIndex}"]`
+        );
+        blockEl?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'nearest',
+        });
+        return;
+      }
+
+      if (restoringScrollRef.current && !forceScroll) return;
+      const el = scrollContainerRef.current;
+      const article = articleRef.current;
+      if (!el || !article) return;
+
+      const blockEl = article.querySelector<HTMLElement>(
+        `[data-sync-chapter="${targetTrack.chapterIndex}"][data-sync-para="${targetTrack.paraIndex}"]`
+      );
+      if (!blockEl) return;
+
+      const vpRect = el.getBoundingClientRect();
+      const blockRect = blockEl.getBoundingClientRect();
+
+      if (mode === 'paginated') {
+        if (isVertical) {
+          const clientW = Math.max(
+            200,
+            Math.floor(vpRect.width) || el.clientWidth
+          );
+          const stride = Math.max(200, Math.round(clientW * 0.92));
+          const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+          const curScrolled = Math.abs(el.scrollLeft);
+          const inView =
+            blockRect.right <= vpRect.right + 12 &&
+            blockRect.left >= vpRect.left - 12;
+          if (!inView || forceScroll) {
+            const absFromRight = Math.max(
+              0,
+              vpRect.right - blockRect.right + curScrolled
+            );
+            const pageIdx = Math.max(
+              0,
+              Math.floor((absFromRight + 4) / stride)
+            );
+            const targetScrolled = Math.min(
+              maxScroll,
+              Math.max(0, pageIdx * stride)
+            );
+            if (Math.abs(curScrolled - targetScrolled) > 8) {
+              userInteractedSinceRestoreRef.current = true;
+              el.scrollTo({
+                left: targetScrolled > 0 ? -targetScrolled : 0,
+                behavior: 'auto',
+              });
+              syncProgressFromViewport(true);
+            }
+          }
+          return;
+        }
+
+        const pageW = Math.max(
+          200,
+          pagedWidthPx || Math.floor(vpRect.width) || el.clientWidth
+        );
+        const stride = pageW + PAGE_GAP;
+        const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+        const inView =
+          blockRect.left >= vpRect.left - 12 &&
+          blockRect.right <= vpRect.right + 12;
+        if (!inView || forceScroll) {
+          const absLeft = Math.max(
+            0,
+            blockRect.left - vpRect.left + el.scrollLeft
+          );
+          const pageIdx = Math.max(0, Math.floor((absLeft + 4) / stride));
+          const targetLeft = Math.min(maxScroll, Math.max(0, pageIdx * stride));
+          if (Math.abs(el.scrollLeft - targetLeft) > 8) {
+            userInteractedSinceRestoreRef.current = true;
+            el.scrollTo({ left: targetLeft, behavior: 'auto' });
+            syncProgressFromViewport(true);
+          }
+        }
+        return;
+      }
+
+      if (isVertical) {
+        const curScrolled = Math.abs(el.scrollLeft);
+        const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+        const needScroll =
+          forceScroll ||
+          blockRect.right > vpRect.right - 24 ||
+          blockRect.left < vpRect.left + Math.min(120, el.clientWidth * 0.22);
+        if (needScroll) {
+          const absFromRight = Math.max(
+            0,
+            vpRect.right - blockRect.right + curScrolled
+          );
+          const targetScrolled = Math.min(
+            maxScroll,
+            Math.max(0, Math.round(absFromRight - el.clientWidth * 0.25))
+          );
+          userInteractedSinceRestoreRef.current = true;
+          el.scrollTo({
+            left: targetScrolled > 0 ? -targetScrolled : 0,
+            behavior: 'smooth',
+          });
+        }
+        return;
+      }
+
+      const needScroll =
+        forceScroll ||
+        blockRect.top < vpRect.top + 36 ||
+        blockRect.bottom > vpRect.bottom - 48;
+      if (needScroll) {
+        const targetTop = Math.max(
+          0,
+          Math.round(
+            el.scrollTop + (blockRect.top - vpRect.top) - el.clientHeight * 0.3
+          )
+        );
+        userInteractedSinceRestoreRef.current = true;
+        el.scrollTo({ top: targetTop, behavior: 'smooth' });
+      }
+    },
+    [handleSwitchChapter, pagedWidthPx, syncProgressFromViewport]
+  );
+
+  const handleArticleClickForAudio = useCallback(
+    (e: React.MouseEvent<HTMLElement>) => {
+      if (!isAudioClickable || !book) return;
+      if (window.getSelection()?.toString().trim()) return;
+      const targetEl = e.target as HTMLElement | null;
+      if (!targetEl) return;
+      if (
+        targetEl.closest(
+          'a, button, input, select, textarea, summary, label'
+        )
+      ) {
+        return;
+      }
+      const block = targetEl.closest<HTMLElement>(
+        '[data-sync-chapter][data-sync-para]'
+      );
+      if (!block) return;
+      const chIdx = Number(block.dataset.syncChapter);
+      const pIdx = Number(block.dataset.syncPara);
+      if (!Number.isFinite(chIdx) || !Number.isFinite(pIdx)) return;
+
+      userInteractedSinceRestoreRef.current = true;
+      jumpRequestSeqRef.current += 1;
+      setJumpAudioRequest({
+        id: jumpRequestSeqRef.current,
+        chapterIndex: chIdx,
+        paraIndex: pIdx,
+        calibrate: e.shiftKey,
+      });
+    },
+    [isAudioClickable, book]
+  );
+
+  useEffect(() => {
+    const prevEl = prevTrackedDomElRef.current;
+    if (prevEl) {
+      prevEl.classList.remove('jp-audio-tracking-active');
+      prevTrackedDomElRef.current = null;
+    }
+
+    if (loadingBook || !book) {
+      lastAutoFollowKeyRef.current = '';
+      return;
+    }
+
+    const targetTrack = audioTrackingState?.liveTrackingEnabled
+      ? audioTrackingState.activeTarget
+      : null;
+
+    if (!targetTrack) {
+      lastAutoFollowKeyRef.current = '';
+      return;
+    }
+
+    const article = articleRef.current;
+    if (article) {
+      const blockEl = article.querySelector<HTMLElement>(
+        `[data-sync-chapter="${targetTrack.chapterIndex}"][data-sync-para="${targetTrack.paraIndex}"]`
+      );
+      if (blockEl) {
+        blockEl.classList.add('jp-audio-tracking-active');
+        prevTrackedDomElRef.current = blockEl;
+      }
+    }
+
+    const autoFollowKey =
+      audioTrackingState?.autoFollow && audioTrackingState.isPlaying
+        ? `${targetTrack.source}:${targetTrack.chapterIndex}:${targetTrack.paraIndex}`
+        : '';
+
+    if (!autoFollowKey) {
+      lastAutoFollowKeyRef.current = '';
+      return;
+    }
+
+    if (autoFollowKey !== lastAutoFollowKeyRef.current) {
+      if (
+        prefs.readingMode === 'vn' &&
+        targetTrack.chapterIndex !== book.currentChapter &&
+        targetTrack.source === 'file'
+      ) {
+        scrollToTrackedBlock(targetTrack, false);
+        return;
+      }
+      lastAutoFollowKeyRef.current = autoFollowKey;
+      scrollToTrackedBlock(targetTrack, false);
+    }
+  }, [
+    loadingBook,
+    book?.storageKey,
+    book?.currentChapter,
+    audioTrackingState,
+    vnIndex,
+    prefs.readingMode,
+    prefs.writingMode,
+    prefs.vnDisplayStyle,
+    prefs.vnParagraphsPerStep,
+    scrollToTrackedBlock,
   ]);
 
   const resolvedRawBgUrl = useMemo(() => {
@@ -5856,6 +6183,47 @@ export const JapaneseNovelReaderModal: React.FC<
           hasActiveBg ? 'bg-transparent' : themeStyle.articleBg
         }`}
       >
+        {/* Live Audiobook ↔ Text Tracking Status Pill */}
+        {book &&
+          activeChapter &&
+          audioTrackingState?.liveTrackingEnabled &&
+          audioTrackingState.activeTarget && (
+            <button
+              type="button"
+              onClick={() => {
+                if (audioTrackingState.activeTarget) {
+                  scrollToTrackedBlock(audioTrackingState.activeTarget, true);
+                }
+              }}
+              title="Klik untuk langsung ke posisi paragraf tracking aktif (klik paragraf mana saja di novel untuk lompat audio, Shift+Klik untuk kalibrasi)"
+              className={`absolute ${
+                prefs.readingMode === 'vn' ? 'bottom-16 left-3' : 'bottom-3 left-3'
+              } z-20 max-w-[calc(100vw-1.5rem)] px-2.5 py-1 rounded-full border text-[11px] font-bold backdrop-blur-md shadow-lg inline-flex items-center gap-1.5 transition cursor-pointer ${
+                audioTrackingState.isPlaying
+                  ? 'bg-[#071829]/88 border-sky-400/55 text-sky-200 hover:bg-[#0b233b]'
+                  : 'bg-slate-950/75 border-white/15 text-slate-300 hover:text-white hover:border-sky-400/40'
+              }`}
+            >
+              <Radio
+                className={`w-3 h-3 shrink-0 ${
+                  audioTrackingState.isPlaying
+                    ? 'text-sky-400 animate-pulse'
+                    : 'text-slate-400'
+                }`}
+              />
+              <span className="truncate">
+                {audioTrackingState.isPlaying ? 'LIVE TRACKING' : 'TRACKING'} • Bab{' '}
+                {audioTrackingState.activeTarget.chapterIndex + 1} • #
+                {audioTrackingState.activeTarget.paraIndex + 1}
+              </span>
+              {audioTrackingState.syncLabel && (
+                <span className="hidden sm:inline opacity-70 font-normal truncate max-w-[10rem]">
+                  ({audioTrackingState.syncLabel})
+                </span>
+              )}
+            </button>
+          )}
+
         {/* Floating Paginated Side Arrow Buttons */}
         {book && activeChapter && prefs.readingMode === 'paginated' && (
           <>
@@ -6068,8 +6436,11 @@ export const JapaneseNovelReaderModal: React.FC<
                 >
                   <article
                     ref={articleRef}
+                    onClick={handleArticleClickForAudio}
                     data-furigana={prefs.furigana}
                     className={`jp-novel-reader-content ${contentDirClass} ${cleanClass} ${
+                      isAudioClickable ? 'jp-audio-clickable' : ''
+                    } ${
                       prefs.writingMode === 'vertical' ? widthClass : ''
                     } ${indentClass}`}
                     style={
@@ -6083,10 +6454,13 @@ export const JapaneseNovelReaderModal: React.FC<
                       } as React.CSSProperties
                     }
                   >
-                    {vnVisibleParagraphs.map((p) => (
+                    {vnVisibleParagraphs.map((p, idx) => (
                       <div
                         key={`${book.currentChapter}-${vnIndex}-${p.id}`}
                         data-vn-reveal="true"
+                        data-sync-chapter={book.currentChapter}
+                        data-sync-para={vnIndex + idx}
+                        className="jp-sync-block"
                         dangerouslySetInnerHTML={{ __html: p.html }}
                       />
                     ))}
@@ -6106,8 +6480,11 @@ export const JapaneseNovelReaderModal: React.FC<
               >
                 <article
                   ref={articleRef}
+                  onClick={handleArticleClickForAudio}
                   data-furigana={prefs.furigana}
                   className={`jp-novel-reader-content ${contentDirClass} ${widthClass} ${indentClass} ${cleanClass} ${
+                    isAudioClickable ? 'jp-audio-clickable' : ''
+                  } ${
                     hasActiveBg &&
                     prefs.bgPanelOpacity > 0 &&
                     !prefs.cleanMode &&
@@ -6144,6 +6521,9 @@ export const JapaneseNovelReaderModal: React.FC<
                       <div
                         key={`${book.currentChapter}-stream-${p.id}`}
                         data-vn-reveal={isNewBatch ? 'true' : undefined}
+                        data-sync-chapter={book.currentChapter}
+                        data-sync-para={idx}
+                        className="jp-sync-block"
                         dangerouslySetInnerHTML={{ __html: p.html }}
                       />
                     );
@@ -6236,8 +6616,11 @@ export const JapaneseNovelReaderModal: React.FC<
               >
                 <article
                   ref={articleRef}
+                  onClick={handleArticleClickForAudio}
                   data-furigana={prefs.furigana}
                   className={`jp-novel-reader-content ${contentDirClass} ${indentClass} ${cleanClass} ${
+                    isAudioClickable ? 'jp-audio-clickable' : ''
+                  } ${
                     prefs.writingMode === 'vertical'
                       ? 'jp-paged-v-article'
                       : 'jp-paged-h-article'
@@ -6260,7 +6643,7 @@ export const JapaneseNovelReaderModal: React.FC<
                   }
                 >
                   <BookChaptersContent
-                    chapters={book.chapters}
+                    chapters={annotatedBook.annotatedChapters}
                     showChapterDividers={true}
                   />
                 </article>
@@ -6295,8 +6678,11 @@ export const JapaneseNovelReaderModal: React.FC<
           >
             <article
               ref={articleRef}
+              onClick={handleArticleClickForAudio}
               data-furigana={prefs.furigana}
               className={`jp-novel-reader-content ${contentDirClass} ${widthClass} ${indentClass} ${cleanClass} ${
+                isAudioClickable ? 'jp-audio-clickable' : ''
+              } ${
                 hasActiveBg &&
                 prefs.bgPanelOpacity > 0 &&
                 !prefs.cleanMode &&
@@ -6328,7 +6714,7 @@ export const JapaneseNovelReaderModal: React.FC<
               }
             >
               <BookChaptersContent
-                chapters={book.chapters}
+                chapters={annotatedBook.annotatedChapters}
                 showChapterDividers={true}
               />
             </article>
@@ -6607,6 +6993,7 @@ export const JapaneseNovelReaderModal: React.FC<
           chapterCount={book.chapters.length}
           currentChapterIndex={book.currentChapter}
           chapterParagraphs={chapterParagraphs}
+          allSyncBlocks={annotatedBook.syncBlocks}
           readingMode={prefs.readingMode}
           vnIndex={vnIndex}
           vnParagraphsPerStep={prefs.vnParagraphsPerStep}
@@ -6615,9 +7002,11 @@ export const JapaneseNovelReaderModal: React.FC<
           themeStyle={themeStyle}
           hasActiveBg={hasActiveBg}
           oneShotSpeakRequest={oneShotSpeakRequest}
+          jumpAudioRequest={jumpAudioRequest}
           onAdvanceVnStep={handleStepForward}
           onSwitchChapter={(idx) => handleSwitchChapter(idx)}
           onPlaybackStatusChange={(st) => setAudioPlaybackActive(st.active)}
+          onTrackingStateChange={handleTrackingStateChange}
         />
       )}
 

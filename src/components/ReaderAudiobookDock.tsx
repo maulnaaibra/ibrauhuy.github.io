@@ -4,18 +4,22 @@ import {
   Bot,
   ChevronLeft,
   ChevronRight,
+  Crosshair,
   ExternalLink,
   Eye,
   EyeOff,
   FileAudio,
+  FileText,
   Headphones,
   Link2,
   Loader2,
   Pause,
   Play,
+  Radio,
   RefreshCw,
   RotateCcw,
   RotateCw,
+  Sparkles,
   Square,
   Trash2,
   Upload,
@@ -43,7 +47,39 @@ import {
   type AiTtsSettings,
   type StoredAudiobookTrack,
 } from '../lib/audiobookEngine';
+import {
+  buildSubtitleAlignedTimeline,
+  buildWeightedSyncTimeline,
+  createDefaultTrackSyncConfig,
+  findSegmentAtAudioTime,
+  findSegmentForParagraph,
+  loadGlobalTrackingPrefs,
+  loadTrackSyncConfig,
+  parseSubtitleTextToCues,
+  saveGlobalTrackingPrefs,
+  saveTrackSyncConfig,
+  transcribeAudioCuesWithAi,
+  type GlobalTrackingPrefs,
+  type SyncParagraphMeta,
+  type SyncTimelineSegment,
+  type TrackSyncConfig,
+} from '../lib/audiobookSync';
 import type { ChapterParagraphBlock, ReaderMode } from '../lib/epubReaderStore';
+
+export interface AudioTrackingStatusPayload {
+  activeTarget: {
+    chapterIndex: number;
+    paraIndex: number;
+    source: 'ai' | 'file';
+    timeSec?: number;
+  } | null;
+  liveTrackingEnabled: boolean;
+  autoFollow: boolean;
+  clickToJump: boolean;
+  hasAudiobookTracks: boolean;
+  syncLabel: string;
+  isPlaying: boolean;
+}
 
 interface ReaderAudiobookDockProps {
   open: boolean;
@@ -54,6 +90,7 @@ interface ReaderAudiobookDockProps {
   chapterCount: number;
   currentChapterIndex: number;
   chapterParagraphs: ChapterParagraphBlock[];
+  allSyncBlocks: SyncParagraphMeta[];
   readingMode: ReaderMode;
   vnIndex: number;
   vnParagraphsPerStep: number;
@@ -69,6 +106,12 @@ interface ReaderAudiobookDockProps {
   };
   hasActiveBg: boolean;
   oneShotSpeakRequest: { id: number; text: string } | null;
+  jumpAudioRequest: {
+    id: number;
+    chapterIndex: number;
+    paraIndex: number;
+    calibrate?: boolean;
+  } | null;
   onAdvanceVnStep: () => void;
   onSwitchChapter: (chapterIndex: number) => void;
   onOpenDrawer?: (tab: 'ai' | 'file') => void;
@@ -76,6 +119,7 @@ interface ReaderAudiobookDockProps {
     active: boolean;
     mode: 'ai' | 'file' | null;
   }) => void;
+  onTrackingStateChange?: (state: AudioTrackingStatusPayload) => void;
 }
 
 const SPEED_PRESETS = [0.75, 0.9, 1.0, 1.15, 1.25, 1.5, 2.0] as const;
@@ -108,6 +152,7 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
   chapterCount,
   currentChapterIndex,
   chapterParagraphs,
+  allSyncBlocks,
   readingMode,
   vnIndex,
   vnParagraphsPerStep,
@@ -116,10 +161,12 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
   themeStyle,
   hasActiveBg,
   oneShotSpeakRequest,
+  jumpAudioRequest,
   onAdvanceVnStep,
   onSwitchChapter,
   onOpenDrawer,
   onPlaybackStatusChange,
+  onTrackingStateChange,
 }) => {
   const [activeTab, setActiveTab] = useState<'ai' | 'file'>(initialTab ?? 'ai');
 
@@ -177,20 +224,32 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
   const aiObjectUrlRef = useRef<string | null>(null);
   const prefetchCacheRef = useRef<Map<string, Promise<Blob>>>(new Map());
   const pendingAiNextChapterRef = useRef<number | null>(null);
+  const pendingAiJumpParaRef = useRef<{
+    chapterIndex: number;
+    paraIndex: number;
+  } | null>(null);
   const lastSpokenVnKeyRef = useRef('');
   const lastOneShotIdRef = useRef(0);
+  const lastJumpIdRef = useRef(0);
 
   // ==================== FILE AUDIOBOOK STATE ====================
   const fileUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const subtitleUploadInputRef = useRef<HTMLInputElement | null>(null);
   const fileAudioRef = useRef<HTMLAudioElement | null>(null);
   const fileObjectUrlRef = useRef<string | null>(null);
   const pendingFileSeekRef = useRef(0);
+  const pendingTrackJumpParaRef = useRef<{
+    trackId: string;
+    chapterIndex: number;
+    paraIndex: number;
+  } | null>(null);
   const autoPlayTrackRef = useRef(false);
   const lastFilePersistMsRef = useRef(0);
 
   const [tracks, setTracks] = useState<StoredAudiobookTrack[]>([]);
   const [loadingTracks, setLoadingTracks] = useState(false);
   const [uploadingTracks, setUploadingTracks] = useState(false);
+  const [syncingAiAudio, setSyncingAiAudio] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [urlTitleInput, setUrlTitleInput] = useState('');
   const [activeTrackId, setActiveTrackId] = useState('');
@@ -199,11 +258,176 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
   const [fileDuration, setFileDuration] = useState(0);
   const [filePlaybackRate, setFilePlaybackRate] = useState(1.0);
   const [fileVolume, setFileVolume] = useState(1.0);
+  const [trackingPrefs, setTrackingPrefs] = useState<GlobalTrackingPrefs>(
+    loadGlobalTrackingPrefs
+  );
+  const [syncConfig, setSyncConfig] = useState<TrackSyncConfig>(() =>
+    createDefaultTrackSyncConfig(0)
+  );
 
   const activeTrack = useMemo(
     () => tracks.find((t) => t.id === activeTrackId) ?? tracks[0] ?? null,
     [tracks, activeTrackId]
   );
+
+  const activeTrackIdx = useMemo(() => {
+    if (!activeTrack) return 0;
+    const idx = tracks.findIndex((t) => t.id === activeTrack.id);
+    return idx >= 0 ? idx : 0;
+  }, [tracks, activeTrack]);
+
+  // Load per-track sync config when activeTrack changes
+  useEffect(() => {
+    if (!activeTrack) {
+      setSyncConfig(createDefaultTrackSyncConfig(currentChapterIndexRef.current));
+      return;
+    }
+    setSyncConfig(
+      loadTrackSyncConfig(
+        bookStorageKey,
+        activeTrack.id,
+        currentChapterIndexRef.current
+      )
+    );
+  }, [bookStorageKey, activeTrack?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const updateTrackingPrefs = useCallback(
+    (patch: Partial<GlobalTrackingPrefs>) => {
+      setTrackingPrefs((prev) => {
+        const next = { ...prev, ...patch };
+        saveGlobalTrackingPrefs(next);
+        return next;
+      });
+    },
+    []
+  );
+
+  const updateSyncConfig = useCallback(
+    (updater: TrackSyncConfig | ((prev: TrackSyncConfig) => TrackSyncConfig)) => {
+      if (!activeTrack) return;
+      setSyncConfig((prev) => {
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        saveTrackSyncConfig(bookStorageKey, activeTrack.id, next);
+        return next;
+      });
+    },
+    [activeTrack, bookStorageKey]
+  );
+
+  const activeTimeline = useMemo(() => {
+    if (!activeTrack || allSyncBlocks.length === 0) {
+      return {
+        segments: [] as SyncTimelineSegment[],
+        resolvedScope: 'chapter' as const,
+        resolvedChapterIndex: currentChapterIndex,
+        targetBlocks: [] as SyncParagraphMeta[],
+      };
+    }
+    const base = buildWeightedSyncTimeline(allSyncBlocks, {
+      durationSec: fileDuration,
+      trackCount: tracks.length,
+      trackIndex: activeTrackIdx,
+      currentChapterIndex,
+      chapterCount,
+      config: syncConfig,
+    });
+    if (syncConfig.cues && syncConfig.cues.length > 0) {
+      const aligned = buildSubtitleAlignedTimeline(
+        base.targetBlocks,
+        syncConfig.cues,
+        fileDuration,
+        syncConfig.anchors
+      );
+      return { ...base, segments: aligned };
+    }
+    return base;
+  }, [
+    activeTrack,
+    allSyncBlocks,
+    fileDuration,
+    tracks.length,
+    activeTrackIdx,
+    currentChapterIndex,
+    chapterCount,
+    syncConfig,
+  ]);
+
+  const fileTrackedSeg = useMemo(() => {
+    if (!activeTrack || activeTimeline.segments.length === 0) return null;
+    return findSegmentAtAudioTime(
+      activeTimeline.segments,
+      fileCurrentTime,
+      syncConfig.offsetSec
+    );
+  }, [activeTrack, activeTimeline.segments, fileCurrentTime, syncConfig.offsetSec]);
+
+  const syncLabel = useMemo(() => {
+    if (aiPlaying || aiLoading) {
+      return `AI ${aiSettings.provider.toUpperCase()}`;
+    }
+    if (syncConfig.cues && syncConfig.cues.length > 0) {
+      return syncConfig.cueSource === 'ai' ? 'AI Audio Sync' : 'Subtitle Sync';
+    }
+    if (syncConfig.anchors.length > 0) {
+      return `Kalibrasi (${syncConfig.anchors.length})`;
+    }
+    return 'Auto-Sync';
+  }, [
+    aiPlaying,
+    aiLoading,
+    aiSettings.provider,
+    syncConfig.cues,
+    syncConfig.cueSource,
+    syncConfig.anchors.length,
+  ]);
+
+  // Broadcast live tracking target to Reader Modal without re-rendering book DOM
+  useEffect(() => {
+    const isAiLive = (aiPlaying || aiLoading) && !isOneShotActive;
+    const isFileLive = !isAiLive && Boolean(activeTrack && fileTrackedSeg);
+
+    let activeTarget: AudioTrackingStatusPayload['activeTarget'] = null;
+    if (trackingPrefs.liveTracking) {
+      if (isAiLive) {
+        activeTarget = {
+          chapterIndex: currentChapterIndex,
+          paraIndex: aiCurrentParaIdx,
+          source: 'ai',
+        };
+      } else if (isFileLive && fileTrackedSeg) {
+        activeTarget = {
+          chapterIndex: fileTrackedSeg.chapterIndex,
+          paraIndex: fileTrackedSeg.paraIndex,
+          source: 'file',
+          timeSec: fileCurrentTime,
+        };
+      }
+    }
+
+    onTrackingStateChange?.({
+      activeTarget,
+      liveTrackingEnabled: trackingPrefs.liveTracking,
+      autoFollow: trackingPrefs.autoFollow,
+      clickToJump: trackingPrefs.clickToJump,
+      hasAudiobookTracks: tracks.length > 0,
+      syncLabel,
+      isPlaying: Boolean(aiPlaying || aiLoading || filePlaying),
+    });
+  }, [
+    aiPlaying,
+    aiLoading,
+    isOneShotActive,
+    currentChapterIndex,
+    aiCurrentParaIdx,
+    activeTrack,
+    fileTrackedSeg,
+    filePlaying,
+    fileCurrentTime,
+    trackingPrefs,
+    tracks.length,
+    syncLabel,
+    onTrackingStateChange,
+  ]);
 
   // Notify parent when audio activity toggles
   useEffect(() => {
@@ -672,6 +896,24 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     }
 
     if (
+      pendingAiJumpParaRef.current !== null &&
+      pendingAiJumpParaRef.current.chapterIndex === currentChapterIndex
+    ) {
+      const targetParaIdx = pendingAiJumpParaRef.current.paraIndex;
+      pendingAiJumpParaRef.current = null;
+      const target =
+        findNextSpeakableParagraphIdx(targetParaIdx) ??
+        findNextSpeakableParagraphIdx(0);
+      if (target) {
+        const myRunId = ++runIdRef.current;
+        void runSpeakLoop(target.text, target.idx, myRunId, false);
+      } else {
+        stopAiNarrator();
+      }
+      return;
+    }
+
+    if (
       pendingAiNextChapterRef.current !== null &&
       pendingAiNextChapterRef.current === currentChapterIndex
     ) {
@@ -950,7 +1192,12 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
       if (!activeTrackId && updated.length > 0) {
         setActiveTrackId(updated[0].id);
       }
-      toast.success(`${files.length} file audiobook disimpan permanen!`);
+      if (!trackingPrefs.liveTracking) {
+        updateTrackingPrefs({ liveTracking: true });
+      }
+      toast.success(
+        `${files.length} file audiobook disimpan & Live Tracking teks aktif! Klik paragraf mana saja untuk loncat ke sana.`
+      );
     } catch (err: unknown) {
       toast.error(
         err instanceof Error ? err.message : 'Gagal menyimpan file audio.'
@@ -977,7 +1224,12 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
       }
       setUrlInput('');
       setUrlTitleInput('');
-      toast.success('URL audio ditambahkan ke playlist novel ini!');
+      if (!trackingPrefs.liveTracking) {
+        updateTrackingPrefs({ liveTracking: true });
+      }
+      toast.success(
+        'URL audio ditambahkan & Live Tracking teks aktif! Klik paragraf mana saja untuk loncat ke sana.'
+      );
     } catch (err: unknown) {
       toast.error(
         err instanceof Error ? err.message : 'Gagal menambahkan URL audio.'
@@ -1002,6 +1254,276 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     toast.success('Track dihapus dari audiobook novel ini.');
   };
 
+  const handleAdjustSyncOffset = (deltaSec: number) => {
+    if (!activeTrack) return;
+    updateSyncConfig((prev) => ({
+      ...prev,
+      offsetSec: Math.min(
+        300,
+        Math.max(-300, Math.round((prev.offsetSec + deltaSec) * 10) / 10)
+      ),
+    }));
+  };
+
+  const handleCalibrateChapterStart = () => {
+    if (!activeTrack || !fileAudioRef.current) return;
+    const targetChap = activeTimeline.resolvedChapterIndex;
+    const firstPara = allSyncBlocks.find(
+      (b) => b.chapterIndex === targetChap && b.speechWeight > 0
+    );
+    if (!firstPara) {
+      toast.error('Paragraf awal bab ini tidak ditemukan.');
+      return;
+    }
+    const nowSec = fileAudioRef.current.currentTime;
+    updateSyncConfig((prev) => {
+      const filtered = prev.anchors.filter(
+        (a) => a.globalIndex !== firstPara.globalIndex
+      );
+      return {
+        ...prev,
+        anchors: [
+          ...filtered,
+          { globalIndex: firstPara.globalIndex, timeSec: nowSec },
+        ].sort((a, b) => a.globalIndex - b.globalIndex),
+      };
+    });
+    toast.success(
+      `Awal Bab ${targetChap + 1} disinkronkan ke ${formatAudioTime(nowSec)}!`
+    );
+  };
+
+  const handleResetSyncConfig = () => {
+    if (!activeTrack) return;
+    updateSyncConfig(createDefaultTrackSyncConfig(currentChapterIndex));
+    toast.success('Pengaturan sinkronisasi dikembalikan ke Auto-Sync.');
+  };
+
+  const handleUploadSubtitleFile = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !activeTrack) return;
+    try {
+      const raw = await file.text();
+      const cues = parseSubtitleTextToCues(raw);
+      if (cues.length === 0) {
+        toast.error(
+          'Format subtitle tidak dikenali. Gunakan .srt, .vtt, atau .lrc yang memiliki timestamp.'
+        );
+        return;
+      }
+      updateSyncConfig((prev) => ({
+        ...prev,
+        cues,
+        cueSource: 'subtitle',
+      }));
+      toast.success(`Subtitle sinkronisasi dimuat (${cues.length} baris)!`);
+    } catch {
+      toast.error('Gagal membaca file subtitle.');
+    }
+  };
+
+  const handleAiAudioSync = async () => {
+    if (!activeTrack || syncingAiAudio) return;
+    setSyncingAiAudio(true);
+    try {
+      const cues = await transcribeAudioCuesWithAi(activeTrack, aiSettings);
+      updateSyncConfig((prev) => ({
+        ...prev,
+        cues,
+        cueSource: 'ai',
+      }));
+      toast.success(
+        `Sinkronisasi AI berhasil (${cues.length} segmen suara dipetakan ke teks)!`
+      );
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : 'Gagal menyinkronkan audio dengan AI.'
+      );
+    } finally {
+      setSyncingAiAudio(false);
+    }
+  };
+
+  // Click any paragraph in book -> jump audio directly there (or Shift+Click -> calibrate anchor)
+  useEffect(() => {
+    if (!jumpAudioRequest) return;
+    if (jumpAudioRequest.id === lastJumpIdRef.current) return;
+    lastJumpIdRef.current = jumpAudioRequest.id;
+
+    const clickedBlock = allSyncBlocks.find(
+      (b) =>
+        b.chapterIndex === jumpAudioRequest.chapterIndex &&
+        b.paraIndex === jumpAudioRequest.paraIndex
+    );
+
+    if (jumpAudioRequest.calibrate) {
+      if (!activeTrack || !fileAudioRef.current) {
+        toast.error('Putar atau muat file audiobook dahulu untuk kalibrasi.');
+        return;
+      }
+      if (!clickedBlock) return;
+      const t = fileAudioRef.current.currentTime;
+      updateSyncConfig((prev) => {
+        const filtered = prev.anchors.filter(
+          (a) => a.globalIndex !== clickedBlock.globalIndex
+        );
+        return {
+          ...prev,
+          anchors: [
+            ...filtered,
+            { globalIndex: clickedBlock.globalIndex, timeSec: t },
+          ].sort((a, b) => a.globalIndex - b.globalIndex),
+        };
+      });
+      toast.success(
+        `Kalibrasi diset: Bab ${jumpAudioRequest.chapterIndex + 1} #${jumpAudioRequest.paraIndex + 1} ↔ ${formatAudioTime(t)}`
+      );
+      return;
+    }
+
+    const useFileMode =
+      tracks.length > 0 && (!aiPlayingRef.current || activeTab === 'file');
+
+    if (useFileMode) {
+      const seg = findSegmentForParagraph(
+        activeTimeline.segments,
+        jumpAudioRequest.chapterIndex,
+        jumpAudioRequest.paraIndex
+      );
+
+      if (tracks.length > 1) {
+        const expectedTrackIdx = Math.min(
+          tracks.length - 1,
+          Math.max(0, jumpAudioRequest.chapterIndex)
+        );
+        if (
+          (!seg || syncConfig.scope === 'auto') &&
+          expectedTrackIdx !== activeTrackIdx &&
+          tracks[expectedTrackIdx]
+        ) {
+          const nextTrack = tracks[expectedTrackIdx];
+          pendingTrackJumpParaRef.current = {
+            trackId: nextTrack.id,
+            chapterIndex: jumpAudioRequest.chapterIndex,
+            paraIndex: jumpAudioRequest.paraIndex,
+          };
+          handleSelectTrack(nextTrack, true);
+          return;
+        }
+      }
+
+      if (activeTrack && fileDuration <= 0) {
+        stopAiNarrator();
+        pendingTrackJumpParaRef.current = {
+          trackId: activeTrack.id,
+          chapterIndex: jumpAudioRequest.chapterIndex,
+          paraIndex: jumpAudioRequest.paraIndex,
+        };
+        autoPlayTrackRef.current = true;
+        if (fileAudioRef.current) {
+          void fileAudioRef.current.play().catch(() => {});
+        }
+        return;
+      }
+
+      let targetSeg = seg;
+      if (
+        !targetSeg &&
+        activeTrack &&
+        fileDuration > 0 &&
+        activeTimeline.resolvedScope === 'chapter' &&
+        jumpAudioRequest.chapterIndex !== activeTimeline.resolvedChapterIndex
+      ) {
+        const nextCfg = {
+          ...syncConfig,
+          scope: 'chapter' as const,
+          chapterIndex: jumpAudioRequest.chapterIndex,
+        };
+        const rebuilt = buildWeightedSyncTimeline(allSyncBlocks, {
+          durationSec: fileDuration,
+          trackCount: tracks.length,
+          trackIndex: Math.max(0, activeTrackIdx),
+          currentChapterIndex: jumpAudioRequest.chapterIndex,
+          chapterCount,
+          config: nextCfg,
+        });
+        const rebuiltSegs =
+          nextCfg.cues && nextCfg.cues.length > 0
+            ? buildSubtitleAlignedTimeline(
+                rebuilt.targetBlocks,
+                nextCfg.cues,
+                fileDuration,
+                nextCfg.anchors
+              )
+            : rebuilt.segments;
+        targetSeg = findSegmentForParagraph(
+          rebuiltSegs,
+          jumpAudioRequest.chapterIndex,
+          jumpAudioRequest.paraIndex
+        );
+        updateSyncConfig((prev) => ({
+          ...prev,
+          scope: 'chapter',
+          chapterIndex: jumpAudioRequest.chapterIndex,
+        }));
+      }
+
+      const audio = fileAudioRef.current;
+      if (targetSeg && audio) {
+        stopAiNarrator();
+        const targetTime = Math.max(
+          0,
+          targetSeg.startSec - syncConfig.offsetSec
+        );
+        audio.currentTime = targetTime;
+        setFileCurrentTime(targetTime);
+        audio.playbackRate = filePlaybackRate;
+        audio.volume = fileVolume;
+        void audio.play().catch(() => {});
+        persistFileState({ timeSec: targetTime });
+      }
+      return;
+    }
+
+    // AI Narator jump
+    if (jumpAudioRequest.chapterIndex !== currentChapterIndexRef.current) {
+      pendingAiJumpParaRef.current = {
+        chapterIndex: jumpAudioRequest.chapterIndex,
+        paraIndex: jumpAudioRequest.paraIndex,
+      };
+      aiPlayingRef.current = true;
+      setAiPlaying(true);
+      onSwitchChapterRef.current(jumpAudioRequest.chapterIndex);
+    } else {
+      startAiReadingFrom(jumpAudioRequest.paraIndex);
+    }
+  }, [
+    jumpAudioRequest,
+    allSyncBlocks,
+    activeTrack,
+    activeTrackIdx,
+    tracks,
+    activeTab,
+    fileDuration,
+    chapterCount,
+    activeTimeline.segments,
+    activeTimeline.resolvedScope,
+    activeTimeline.resolvedChapterIndex,
+    syncConfig,
+    filePlaybackRate,
+    fileVolume,
+    handleSelectTrack,
+    persistFileState,
+    stopAiNarrator,
+    startAiReadingFrom,
+    updateSyncConfig,
+  ]);
+
   const miniPlayerActive =
     !open && !isFullscreenOrZen && (aiPlaying || aiLoading || filePlaying);
 
@@ -1015,16 +1537,61 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
         onChange={handleUploadAudioFiles}
         className="hidden"
       />
+      <input
+        ref={subtitleUploadInputRef}
+        type="file"
+        accept=".srt,.vtt,.lrc,.txt"
+        onChange={handleUploadSubtitleFile}
+        className="hidden"
+      />
 
       <audio
         ref={fileAudioRef}
+        preload="metadata"
         onLoadedMetadata={(e) => {
           const el = e.currentTarget;
           const dur = Number.isFinite(el.duration) ? el.duration : 0;
           setFileDuration(dur);
           el.playbackRate = filePlaybackRate;
           el.volume = fileVolume;
-          if (pendingFileSeekRef.current > 0) {
+
+          const pendingJump = pendingTrackJumpParaRef.current;
+          if (pendingJump && activeTrack && pendingJump.trackId === activeTrack.id) {
+            pendingTrackJumpParaRef.current = null;
+            pendingFileSeekRef.current = 0;
+            const trackIdx = tracks.findIndex((t) => t.id === activeTrack.id);
+            const cfg = loadTrackSyncConfig(
+              bookStorageKey,
+              activeTrack.id,
+              pendingJump.chapterIndex
+            );
+            const tl = buildWeightedSyncTimeline(allSyncBlocks, {
+              durationSec: dur,
+              trackCount: tracks.length,
+              trackIndex: Math.max(0, trackIdx),
+              currentChapterIndex: pendingJump.chapterIndex,
+              chapterCount,
+              config: cfg,
+            });
+            const segs =
+              cfg.cues && cfg.cues.length > 0
+                ? buildSubtitleAlignedTimeline(
+                    tl.targetBlocks,
+                    cfg.cues,
+                    dur,
+                    cfg.anchors
+                  )
+                : tl.segments;
+            const seg = findSegmentForParagraph(
+              segs,
+              pendingJump.chapterIndex,
+              pendingJump.paraIndex
+            );
+            const targetSec = seg ? Math.max(0, seg.startSec - cfg.offsetSec) : 0;
+            el.currentTime = targetSec;
+            setFileCurrentTime(targetSec);
+            persistFileState({ trackId: activeTrack.id, timeSec: targetSec });
+          } else if (pendingFileSeekRef.current > 0) {
             const targetSec =
               dur > 0
                 ? Math.min(dur - 0.5, pendingFileSeekRef.current)
@@ -1033,6 +1600,7 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
             setFileCurrentTime(Math.max(0, targetSec));
             pendingFileSeekRef.current = 0;
           }
+
           if (autoPlayTrackRef.current) {
             autoPlayTrackRef.current = false;
             void el.play().catch(() => {});
@@ -1169,12 +1737,22 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
                 title="Buka panel File Audiobook"
                 className="min-w-0 flex-1 text-left cursor-pointer hover:opacity-90"
               >
-                <div className="text-[11px] font-bold truncate">
-                  {activeTrack?.name ?? 'Audiobook'}
+                <div className="text-[11px] font-bold truncate flex items-center gap-1.5">
+                  {trackingPrefs.liveTracking && fileTrackedSeg && (
+                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[9px] font-extrabold shrink-0">
+                      LIVE
+                    </span>
+                  )}
+                  <span className="truncate">
+                    {activeTrack?.name ?? 'Audiobook'}
+                  </span>
                 </div>
                 <div className={`text-[10px] font-mono ${themeStyle.mutedText}`}>
                   {formatAudioTime(fileCurrentTime)} /{' '}
-                  {formatAudioTime(fileDuration)} ({filePlaybackRate}x)
+                  {formatAudioTime(fileDuration)}
+                  {trackingPrefs.liveTracking && fileTrackedSeg
+                    ? ` • Bab ${fileTrackedSeg.chapterIndex + 1} #${fileTrackedSeg.paraIndex + 1}`
+                    : ` (${filePlaybackRate}x)`}
                 </div>
               </button>
               <button
@@ -1360,6 +1938,39 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
                         {aiSettings.autoAdvance
                           ? 'Auto-Lanjut: ON'
                           : 'Auto-Lanjut: OFF'}
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateTrackingPrefs({
+                            liveTracking: !trackingPrefs.liveTracking,
+                          })
+                        }
+                        className={`px-2 py-1.5 rounded-xl border text-[10px] font-bold transition cursor-pointer ${
+                          trackingPrefs.liveTracking
+                            ? 'bg-sky-500/20 border-sky-400/45 text-sky-300'
+                            : themeStyle.subtleBtn
+                        }`}
+                      >
+                        Sorot Teks: {trackingPrefs.liveTracking ? 'ON' : 'OFF'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateTrackingPrefs({
+                            clickToJump: !trackingPrefs.clickToJump,
+                          })
+                        }
+                        className={`px-2 py-1.5 rounded-xl border text-[10px] font-bold transition cursor-pointer ${
+                          trackingPrefs.clickToJump
+                            ? 'bg-sky-500/20 border-sky-400/45 text-sky-300'
+                            : themeStyle.subtleBtn
+                        }`}
+                      >
+                        Klik Teks: {trackingPrefs.clickToJump ? 'ON' : 'OFF'}
                       </button>
                     </div>
                   </div>
@@ -1881,6 +2492,223 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
                   ) : (
                     <div className={`p-4 rounded-2xl border border-dashed border-white/20 text-center text-xs ${themeStyle.mutedText}`}>
                       Belum ada file audiobook untuk novel ini. Unggah MP3/M4B/M4A atau tempel link audio di bawah — tersimpan permanen per novel beserta posisi detiknya.
+                    </div>
+                  )}
+
+                  {/* LIVE TRACKING & KALIBRASI TEKS ↔ AUDIOBOOK */}
+                  {activeTrack && (
+                    <div className="p-3 rounded-2xl border border-sky-400/25 bg-sky-500/10 space-y-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-extrabold text-sky-300 inline-flex items-center gap-1.5">
+                          <Radio
+                            className={`w-3.5 h-3.5 ${
+                              trackingPrefs.liveTracking
+                                ? 'text-emerald-400 animate-pulse'
+                                : 'opacity-50'
+                            }`}
+                          />
+                          <span>Live Tracking Teks</span>
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-black/30 border border-white/15 text-[10px] font-mono text-emerald-300">
+                          {syncLabel}
+                        </span>
+                      </div>
+
+                      {trackingPrefs.liveTracking && fileTrackedSeg && (
+                        <div className="text-[11px] font-mono px-2.5 py-1.5 rounded-xl bg-black/25 border border-white/10 flex items-center justify-between gap-2">
+                          <span className="text-emerald-300 font-bold">
+                            ● Posisi Teks: Bab {fileTrackedSeg.chapterIndex + 1} •
+                            Paragraf #{fileTrackedSeg.paraIndex + 1}
+                          </span>
+                          <span className="opacity-70 shrink-0">
+                            {activeTimeline.resolvedScope === 'book'
+                              ? 'Seluruh Buku'
+                              : `Bab ${activeTimeline.resolvedChapterIndex + 1}`}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-3 gap-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateTrackingPrefs({
+                              liveTracking: !trackingPrefs.liveTracking,
+                            })
+                          }
+                          className={`py-1.5 px-1.5 rounded-xl text-[10px] font-bold border transition cursor-pointer ${
+                            trackingPrefs.liveTracking
+                              ? 'bg-emerald-500/20 border-emerald-400/45 text-emerald-300'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          Sorot: {trackingPrefs.liveTracking ? 'ON' : 'OFF'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateTrackingPrefs({
+                              autoFollow: !trackingPrefs.autoFollow,
+                            })
+                          }
+                          className={`py-1.5 px-1.5 rounded-xl text-[10px] font-bold border transition cursor-pointer ${
+                            trackingPrefs.autoFollow
+                              ? 'bg-sky-500/20 border-sky-400/45 text-sky-300'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          Ikuti: {trackingPrefs.autoFollow ? 'ON' : 'OFF'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateTrackingPrefs({
+                              clickToJump: !trackingPrefs.clickToJump,
+                            })
+                          }
+                          className={`py-1.5 px-1.5 rounded-xl text-[10px] font-bold border transition cursor-pointer ${
+                            trackingPrefs.clickToJump
+                              ? 'bg-sky-500/20 border-sky-400/45 text-sky-300'
+                              : themeStyle.subtleBtn
+                          }`}
+                        >
+                          Klik Teks: {trackingPrefs.clickToJump ? 'ON' : 'OFF'}
+                        </button>
+                      </div>
+
+                      {/* Target Scope */}
+                      <div className="space-y-1">
+                        <span className={`block text-[10px] font-bold ${themeStyle.mutedText}`}>
+                          Cakupan Audio Track Ini
+                        </span>
+                        <div className="grid grid-cols-3 gap-1">
+                          {(
+                            [
+                              { id: 'auto', label: 'Otomatis' },
+                              { id: 'book', label: 'Seluruh Buku' },
+                              { id: 'chapter', label: 'Bab Ini Saja' },
+                            ] as const
+                          ).map((sc) => (
+                            <button
+                              key={sc.id}
+                              type="button"
+                              onClick={() =>
+                                updateSyncConfig((prev) => ({
+                                  ...prev,
+                                  scope: sc.id,
+                                  chapterIndex:
+                                    sc.id === 'chapter'
+                                      ? currentChapterIndex
+                                      : prev.chapterIndex,
+                                }))
+                              }
+                              className={`py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                                syncConfig.scope === sc.id
+                                  ? 'bg-sky-500 text-slate-950 border-sky-400'
+                                  : themeStyle.subtleBtn
+                              }`}
+                            >
+                              {sc.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Fine Offset & Anchor Controls */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className={`font-bold ${themeStyle.mutedText}`}>
+                            Geser Sinkronisasi (Offset)
+                          </span>
+                          <span className="font-mono font-bold text-sky-300">
+                            {syncConfig.offsetSec >= 0 ? '+' : ''}
+                            {syncConfig.offsetSec.toFixed(1)}s
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustSyncOffset(-2)}
+                            className={`py-1 rounded-lg text-[10px] font-mono font-bold border cursor-pointer ${themeStyle.subtleBtn}`}
+                          >
+                            -2s
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustSyncOffset(-0.5)}
+                            className={`py-1 rounded-lg text-[10px] font-mono font-bold border cursor-pointer ${themeStyle.subtleBtn}`}
+                          >
+                            -0.5s
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustSyncOffset(0.5)}
+                            className={`py-1 rounded-lg text-[10px] font-mono font-bold border cursor-pointer ${themeStyle.subtleBtn}`}
+                          >
+                            +0.5s
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustSyncOffset(2)}
+                            className={`py-1 rounded-lg text-[10px] font-mono font-bold border cursor-pointer ${themeStyle.subtleBtn}`}
+                          >
+                            +2s
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Precision Sync Buttons */}
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={handleCalibrateChapterStart}
+                          className={`py-1.5 px-2 rounded-xl border text-[10px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer ${themeStyle.subtleBtn}`}
+                        >
+                          <Crosshair className="w-3 h-3 text-sky-400 shrink-0" />
+                          <span>Pas Awal Bab</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => subtitleUploadInputRef.current?.click()}
+                          className={`py-1.5 px-2 rounded-xl border text-[10px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer ${themeStyle.subtleBtn}`}
+                        >
+                          <FileText className="w-3 h-3 text-emerald-400 shrink-0" />
+                          <span>+ .SRT / .LRC</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={syncingAiAudio}
+                          onClick={() => void handleAiAudioSync()}
+                          className="col-span-2 py-1.5 px-2 rounded-xl border border-violet-400/40 bg-violet-500/20 hover:bg-violet-500/30 text-violet-100 text-[10px] font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          {syncingAiAudio ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3 h-3" />
+                          )}
+                          <span>
+                            {syncingAiAudio
+                              ? 'AI Sedang Mendengarkan Audio...'
+                              : 'Sinkron Otomatis Pakai AI (Whisper / Gemini)'}
+                          </span>
+                        </button>
+                      </div>
+
+                      {(syncConfig.anchors.length > 0 ||
+                        syncConfig.offsetSec !== 0 ||
+                        (syncConfig.cues?.length ?? 0) > 0) && (
+                        <button
+                          type="button"
+                          onClick={handleResetSyncConfig}
+                          className="w-full py-1 rounded-lg border border-white/10 text-[10px] opacity-75 hover:opacity-100 cursor-pointer"
+                        >
+                          Reset Kalibrasi &amp; Subtitle Track Ini
+                        </button>
+                      )}
+
+                      <p className={`text-[10px] leading-relaxed ${themeStyle.mutedText}`}>
+                        Klik paragraf mana saja di novel untuk lompat audio ke bagian tersebut. Tahan <b>Shift + Klik</b> paragraf saat suara terdengar untuk mengunci kalibrasi presisi.
+                      </p>
                     </div>
                   )}
 
