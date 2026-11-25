@@ -19,6 +19,7 @@ import {
   Crosshair,
   Download,
   ExternalLink,
+  Eye,
   FileUp,
   FolderInput,
   HardDrive,
@@ -32,10 +33,12 @@ import {
   Maximize2,
   Minimize2,
   Minus,
+  Pause,
   Play,
   Plus,
   Radio,
   RotateCcw,
+  RotateCw,
   Save,
   Search,
   Settings2,
@@ -124,6 +127,7 @@ import {
 } from '../lib/audiobookSync';
 import {
   ReaderAudiobookDock,
+  type AudioFocusControlRequest,
   type AudioTrackingStatusPayload,
 } from './ReaderAudiobookDock';
 
@@ -301,6 +305,18 @@ const ReaderSessionTimerButton: React.FC<{
     </button>
   );
 });
+
+function formatFocusAudioTime(sec: number): string {
+  if (!Number.isFinite(sec) || sec <= 0) return '0:00';
+  const total = Math.floor(sec);
+  const hrs = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (hrs > 0) {
+    return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+}
 
 const PAGE_GAP = 48;
 
@@ -2752,6 +2768,77 @@ export const JapaneseNovelReaderModal: React.FC<
     useState<AudioTrackingStatusPayload | null>(null);
   const [calibrateClickMode, setCalibrateClickMode] = useState(false);
   const [spotSyncRequest, setSpotSyncRequest] = useState(0);
+  const [audioFocusMode, setAudioFocusMode] = useState(false);
+  const [audioFocusSource, setAudioFocusSource] = useState<'epub' | 'subtitle'>(
+    'epub'
+  );
+  const [audioFocusSourceManual, setAudioFocusSourceManual] = useState(false);
+  const [audioControlRequest, setAudioControlRequest] =
+    useState<AudioFocusControlRequest | null>(null);
+  const audioControlSeqRef = useRef(0);
+
+  const sendAudioControl = useCallback(
+    (action: AudioFocusControlRequest['action'], value?: number) => {
+      audioControlSeqRef.current += 1;
+      setAudioControlRequest({ id: audioControlSeqRef.current, action, value });
+    },
+    []
+  );
+
+  const speakableSyncBlocks = useMemo(
+    () => annotatedBook.syncBlocks.filter((b) => b.speechWeight > 0),
+    [annotatedBook.syncBlocks]
+  );
+
+  useEffect(() => {
+    setAudioFocusSourceManual(false);
+  }, [book?.storageKey]);
+
+  useEffect(() => {
+    if (!audioTrackingState) return;
+    if (audioTrackingState.subtitleCuesCount === 0) {
+      if (audioFocusSource !== 'epub') setAudioFocusSource('epub');
+      return;
+    }
+    if (!audioFocusSourceManual) {
+      const preferred: 'epub' | 'subtitle' =
+        audioTrackingState.subtitleMatchedCount < 3 ? 'subtitle' : 'epub';
+      if (audioFocusSource !== preferred) {
+        setAudioFocusSource(preferred);
+      }
+    }
+  }, [audioTrackingState, audioFocusSource, audioFocusSourceManual]);
+
+  const focusEpubView = useMemo(() => {
+    if (speakableSyncBlocks.length === 0) {
+      return {
+        activePos: -1,
+        items: [] as Array<{ pos: number; block: SyncParagraphMeta }>,
+      };
+    }
+    const tgt = audioTrackingState?.activeTarget;
+    let activePos = -1;
+    if (tgt) {
+      activePos = speakableSyncBlocks.findIndex(
+        (b) =>
+          b.chapterIndex === tgt.chapterIndex && b.paraIndex === tgt.paraIndex
+      );
+    }
+    if (activePos < 0 && book) {
+      activePos = speakableSyncBlocks.findIndex(
+        (b) => b.chapterIndex === book.currentChapter
+      );
+    }
+    if (activePos < 0) activePos = 0;
+    const start = Math.max(0, activePos - 2);
+    const end = Math.min(speakableSyncBlocks.length, activePos + 3);
+    const items: Array<{ pos: number; block: SyncParagraphMeta }> = [];
+    for (let p = start; p < end; p++) {
+      items.push({ pos: p, block: speakableSyncBlocks[p] });
+    }
+    return { activePos, items };
+  }, [speakableSyncBlocks, audioTrackingState?.activeTarget, book]);
+
   const chapterTitles = useMemo(
     () => book?.chapters.map((c) => c.title) ?? [],
     [book?.chapters]
@@ -3001,6 +3088,30 @@ export const JapaneseNovelReaderModal: React.FC<
     [isAudioClickable, calibrateClickMode, book]
   );
 
+  const handleJumpFocusBlock = useCallback(
+    (chIdx: number, paraIdx: number) => {
+      if (window.getSelection()?.toString().trim()) return;
+      userInteractedSinceRestoreRef.current = true;
+      jumpRequestSeqRef.current += 1;
+      setJumpAudioRequest({
+        id: jumpRequestSeqRef.current,
+        chapterIndex: chIdx,
+        paraIndex: paraIdx,
+      });
+    },
+    []
+  );
+
+  const handleCloseAudioFocusMode = useCallback(() => {
+    setAudioFocusMode(false);
+    const tgt = audioTrackingState?.activeTarget;
+    if (tgt) {
+      window.setTimeout(() => {
+        scrollToTrackedBlock(tgt, true);
+      }, 60);
+    }
+  }, [audioTrackingState?.activeTarget, scrollToTrackedBlock]);
+
   useEffect(() => {
     const prevEl = prevTrackedDomElRef.current;
     if (prevEl) {
@@ -3008,7 +3119,7 @@ export const JapaneseNovelReaderModal: React.FC<
       prevTrackedDomElRef.current = null;
     }
 
-    if (loadingBook || !book) {
+    if (loadingBook || !book || audioFocusMode) {
       lastAutoFollowKeyRef.current = '';
       return;
     }
@@ -3059,6 +3170,7 @@ export const JapaneseNovelReaderModal: React.FC<
     loadingBook,
     book?.storageKey,
     book?.currentChapter,
+    audioFocusMode,
     audioTrackingState,
     vnIndex,
     prefs.readingMode,
@@ -6195,8 +6307,9 @@ export const JapaneseNovelReaderModal: React.FC<
           hasActiveBg ? 'bg-transparent' : themeStyle.articleBg
         }`}
       >
-        {/* Live Audiobook ↔ Text Tracking Status & Quick 1-Tap Calibration Pills */}
-        {book &&
+        {/* Live Audiobook ↔ Text Tracking Status, Quick Calibration & Focus Mode Pills */}
+        {!audioFocusMode &&
+          book &&
           activeChapter &&
           audioTrackingState &&
           ((audioTrackingState.liveTrackingEnabled &&
@@ -6248,6 +6361,19 @@ export const JapaneseNovelReaderModal: React.FC<
                   </button>
                 )}
 
+              <button
+                type="button"
+                onClick={() => {
+                  setAudioFocusMode(true);
+                  setShowAudioPanel(false);
+                }}
+                title="Buka Layar Fokus Audio — teks terkunci di tengah mengikuti audio tanpa perlu scroll"
+                className="px-2.5 py-1 rounded-full border border-emerald-400/50 bg-emerald-950/85 hover:bg-emerald-500/25 text-emerald-200 text-[11px] font-extrabold backdrop-blur-md shadow-lg inline-flex items-center gap-1 transition cursor-pointer"
+              >
+                <Eye className="w-3 h-3 shrink-0" />
+                <span>Mode Fokus</span>
+              </button>
+
               {audioTrackingState.hasAudiobookTracks && (
                 <>
                   <button
@@ -6296,7 +6422,10 @@ export const JapaneseNovelReaderModal: React.FC<
           )}
 
         {/* Floating Paginated Side Arrow Buttons */}
-        {book && activeChapter && prefs.readingMode === 'paginated' && (
+        {!audioFocusMode &&
+          book &&
+          activeChapter &&
+          prefs.readingMode === 'paginated' && (
           <>
             <button
               type="button"
@@ -6338,6 +6467,422 @@ export const JapaneseNovelReaderModal: React.FC<
             <div className="flex items-center gap-2 text-sm font-semibold opacity-75">
               <Loader2 className="w-5 h-5 animate-spin text-sky-400" />
               <span>Memuat novel dari penyimpanan browser...</span>
+            </div>
+          </div>
+        ) : book && activeChapter && audioFocusMode ? (
+          /* ZERO-SCROLL AUDIO FOCUS MODE STAGE — Locked to Active Audio Track / SRT */
+          <div className="flex-1 min-h-0 flex flex-col justify-between overflow-hidden">
+            {/* Focus Top Status & Source Toggle Bar */}
+            <div
+              className={`shrink-0 px-3 sm:px-5 py-2 border-b backdrop-blur-md flex flex-wrap items-center justify-between gap-2 ${
+                hasActiveBg ? themeStyle.toolbarGlass : themeStyle.toolbar
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-500/15 border border-sky-400/40 text-sky-300 text-[11px] font-extrabold shrink-0">
+                  <Radio
+                    className={`w-3.5 h-3.5 ${
+                      audioTrackingState?.isPlaying ? 'animate-pulse' : 'opacity-70'
+                    }`}
+                  />
+                  <span>
+                    {audioFocusSource === 'subtitle' &&
+                    audioTrackingState &&
+                    audioTrackingState.subtitleCuesCount > 0
+                      ? `LIVE SRT • Baris #${
+                          audioTrackingState.activeCueIndex >= 0
+                            ? audioTrackingState.activeCueIndex + 1
+                            : 1
+                        }/${audioTrackingState.subtitleCuesCount}`
+                      : audioTrackingState?.activeTarget
+                        ? `LIVE FOKUS • Bab ${
+                            audioTrackingState.activeTarget.chapterIndex + 1
+                          } • #${audioTrackingState.activeTarget.paraIndex + 1}`
+                        : `FOKUS AUDIO • Bab ${book.currentChapter + 1}`}
+                  </span>
+                </span>
+                {audioTrackingState?.syncLabel && (
+                  <span
+                    className={`hidden md:inline text-[11px] font-mono truncate ${themeStyle.mutedText}`}
+                  >
+                    ({audioTrackingState.syncLabel})
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {audioTrackingState && audioTrackingState.subtitleCuesCount > 0 && (
+                  <div className="inline-flex items-center p-0.5 rounded-xl border border-white/15 bg-black/25">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAudioFocusSource('epub');
+                        setAudioFocusSourceManual(true);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                        audioFocusSource === 'epub'
+                          ? 'bg-sky-500 text-slate-950'
+                          : 'opacity-75 hover:opacity-100'
+                      }`}
+                    >
+                      Teks Novel (EPUB)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAudioFocusSource('subtitle');
+                        setAudioFocusSourceManual(true);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                        audioFocusSource === 'subtitle'
+                          ? 'bg-emerald-400 text-slate-950'
+                          : 'opacity-75 hover:opacity-100'
+                      }`}
+                    >
+                      Subtitle (.SRT) Langsung
+                    </button>
+                  </div>
+                )}
+
+                {audioTrackingState?.hasAudiobookTracks && (
+                  <button
+                    type="button"
+                    disabled={audioTrackingState.syncingSpotAudio}
+                    onClick={() => setSpotSyncRequest((c) => c + 1)}
+                    title="Biarkan AI mendengarkan cuplikan audio saat ini & kunci ke teks"
+                    className="px-2.5 py-1 rounded-xl border border-cyan-400/45 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-60"
+                  >
+                    {audioTrackingState.syncingSpotAudio ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3 h-3" />
+                    )}
+                    <span>
+                      {audioTrackingState.syncingSpotAudio
+                        ? 'AI Mencari...'
+                        : 'AI Cari'}
+                    </span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleCloseAudioFocusMode}
+                  className={`px-2.5 py-1 rounded-xl border text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer ${themeStyle.subtleBtn}`}
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Tutup Fokus</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Centered Zero-Scroll Reading Viewport */}
+            <div
+              onMouseUp={handleMouseOrKeySelection}
+              onKeyUp={handleMouseOrKeySelection}
+              className="flex-1 min-h-0 flex flex-col items-center justify-center px-3 sm:px-6 py-4 overflow-y-auto"
+            >
+              <div
+                data-furigana={prefs.furigana}
+                className={`jp-novel-reader-content w-full mx-auto space-y-3 ${
+                  hasActiveBg && prefs.bgPanelOpacity > 0 && !prefs.cleanMode
+                    ? 'p-4 sm:p-7 rounded-3xl shadow-xl'
+                    : 'px-1 sm:px-3'
+                }`}
+                style={
+                  {
+                    maxWidth:
+                      resolvedMaxWidthPx === null
+                        ? '760px'
+                        : `${resolvedMaxWidthPx}px`,
+                    fontFamily: activeFontCss,
+                    fontSize: `${prefs.fontSize}px`,
+                    fontWeight: prefs.fontWeight,
+                    lineHeight: prefs.lineHeight,
+                    letterSpacing: `${prefs.letterSpacing}em`,
+                    ...articleGlassStyle,
+                  } as React.CSSProperties
+                }
+              >
+                {audioFocusSource === 'subtitle' &&
+                audioTrackingState &&
+                audioTrackingState.subtitleCuesCount > 0 ? (
+                  audioTrackingState.subtitleWindow.length === 0 ? (
+                    <div className="py-8 text-center text-sm opacity-75">
+                      Tekan Play untuk memulai tampilan subtitle langsung.
+                    </div>
+                  ) : (
+                    audioTrackingState.subtitleWindow.map((item) => {
+                      const isActive =
+                        item.index === audioTrackingState.activeCueIndex;
+                      return (
+                        <div
+                          key={`srt-cue-${item.index}`}
+                          onClick={() => {
+                            if (window.getSelection()?.toString().trim()) return;
+                            sendAudioControl('seekExact', item.startSec);
+                          }}
+                          title="Klik baris subtitle ini untuk langsung loncat audio ke detik tersebut"
+                          className={`rounded-2xl transition-all duration-200 cursor-pointer ${
+                            isActive
+                              ? 'bg-sky-500/15 border-l-4 border-sky-400 px-4 sm:px-6 py-4 shadow-lg'
+                              : 'opacity-40 hover:opacity-85 px-4 py-1.5 text-[0.9em]'
+                          }`}
+                        >
+                          <div
+                            className={`text-[11px] font-mono mb-1 flex items-center gap-2 ${
+                              isActive
+                                ? 'text-sky-400 font-bold'
+                                : themeStyle.mutedText
+                            }`}
+                          >
+                            <span>{formatFocusAudioTime(item.startSec)}</span>
+                            <span>• Baris #{item.index + 1}</span>
+                          </div>
+                          <div className={isActive ? 'leading-relaxed' : ''}>
+                            {item.text}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )
+                ) : focusEpubView.items.length === 0 ? (
+                  <div className="py-8 text-center text-sm opacity-75">
+                    Belum ada paragraf teks di buku ini.
+                  </div>
+                ) : (
+                  focusEpubView.items.map(({ pos, block: blk }) => {
+                    const isActive = pos === focusEpubView.activePos;
+                    return (
+                      <div
+                        key={`focus-blk-${blk.globalIndex}`}
+                        onClick={() =>
+                          handleJumpFocusBlock(blk.chapterIndex, blk.paraIndex)
+                        }
+                        title="Klik paragraf ini untuk langsung loncat audio ke bagian ini"
+                        className={`rounded-2xl transition-all duration-200 cursor-pointer ${
+                          isActive
+                            ? 'bg-sky-500/15 border-l-4 border-sky-400 px-4 sm:px-6 py-4 shadow-lg'
+                            : pos < focusEpubView.activePos
+                              ? 'opacity-35 hover:opacity-85 px-4 py-1.5 text-[0.9em]'
+                              : 'opacity-50 hover:opacity-90 px-4 py-1.5 text-[0.9em]'
+                        }`}
+                      >
+                        {isActive && (
+                          <div className="text-[11px] font-mono font-bold text-sky-400 mb-1.5 flex items-center justify-between gap-2">
+                            <span>
+                              ● Bab {blk.chapterIndex + 1} • Paragraf #
+                              {blk.paraIndex + 1}
+                            </span>
+                            <span className="opacity-75 font-normal">
+                              Klik teks mana saja untuk lompat audio
+                            </span>
+                          </div>
+                        )}
+                        <div dangerouslySetInnerHTML={{ __html: blk.html }} />
+                        {isActive && audioTrackingState?.activeCueText && (
+                          <div className="mt-2.5 pt-2 border-t border-sky-400/25 text-xs font-sans text-emerald-300/95 flex items-start gap-1.5">
+                            <span className="shrink-0">♪</span>
+                            <span>{audioTrackingState.activeCueText}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Bottom Compact Inline Focus Audio Controls Bar */}
+            <div
+              className={`relative shrink-0 px-3 sm:px-5 py-2.5 border-t backdrop-blur-md space-y-2 pb-[max(0.65rem,env(safe-area-inset-bottom))] ${
+                hasActiveBg ? themeStyle.toolbarGlass : themeStyle.toolbar
+              }`}
+            >
+              {/* Seekable Timeline Progress Bar */}
+              {audioTrackingState && audioTrackingState.durationSec > 0 && (
+                <div
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const frac = Math.min(
+                      1,
+                      Math.max(0, (e.clientX - rect.left) / Math.max(1, rect.width))
+                    );
+                    sendAudioControl(
+                      'seekExact',
+                      frac * audioTrackingState.durationSec
+                    );
+                  }}
+                  title="Klik garis waktu untuk melompat ke detik mana saja"
+                  className="w-full h-2.5 cursor-pointer flex items-center group"
+                >
+                  <div className="w-full h-1 group-hover:h-1.5 rounded-full bg-white/15 overflow-hidden transition-all">
+                    <div
+                      className="h-full bg-gradient-to-r from-sky-400 to-emerald-400 transition-[width] duration-150"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          Math.max(
+                            0,
+                            (audioTrackingState.currentTimeSec /
+                              Math.max(0.1, audioTrackingState.durationSec)) *
+                              100
+                          )
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                {/* Timestamp */}
+                <div
+                  className={`text-[11px] font-mono shrink-0 ${themeStyle.mutedText}`}
+                >
+                  {formatFocusAudioTime(audioTrackingState?.currentTimeSec ?? 0)}{' '}
+                  /{' '}
+                  {formatFocusAudioTime(audioTrackingState?.durationSec ?? 0)}
+                </div>
+
+                {/* Main Transport Controls */}
+                <div className="flex items-center gap-1 sm:gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (
+                        audioFocusSource === 'epub' &&
+                        focusEpubView.activePos > 0
+                      ) {
+                        const prevBlk =
+                          speakableSyncBlocks[focusEpubView.activePos - 1];
+                        if (prevBlk) {
+                          handleJumpFocusBlock(
+                            prevBlk.chapterIndex,
+                            prevBlk.paraIndex
+                          );
+                          return;
+                        }
+                      }
+                      sendAudioControl('prevItem');
+                    }}
+                    title="Baris / Paragraf Sebelumnya"
+                    className={`px-2 py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-0.5 cursor-pointer ${themeStyle.subtleBtn}`}
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Prev</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => sendAudioControl('seekDelta', -5)}
+                    title="Mundur 5 detik"
+                    className={`px-2 py-1.5 rounded-xl border text-[11px] font-bold inline-flex items-center gap-0.5 cursor-pointer ${themeStyle.subtleBtn}`}
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>5s</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => sendAudioControl('togglePlay')}
+                    title={
+                      audioTrackingState?.isPlaying
+                        ? 'Jeda Audio'
+                        : 'Putar Audio'
+                    }
+                    className="px-4 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer shadow-md"
+                  >
+                    {audioTrackingState?.isPlaying ? (
+                      <>
+                        <Pause className="w-3.5 h-3.5 fill-current" />
+                        <span>Jeda</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Putar</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => sendAudioControl('seekDelta', 5)}
+                    title="Maju 5 detik"
+                    className={`px-2 py-1.5 rounded-xl border text-[11px] font-bold inline-flex items-center gap-0.5 cursor-pointer ${themeStyle.subtleBtn}`}
+                  >
+                    <span>5s</span>
+                    <RotateCw className="w-3 h-3" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (
+                        audioFocusSource === 'epub' &&
+                        focusEpubView.activePos >= 0 &&
+                        focusEpubView.activePos + 1 < speakableSyncBlocks.length
+                      ) {
+                        const nextBlk =
+                          speakableSyncBlocks[focusEpubView.activePos + 1];
+                        if (nextBlk) {
+                          handleJumpFocusBlock(
+                            nextBlk.chapterIndex,
+                            nextBlk.paraIndex
+                          );
+                          return;
+                        }
+                      }
+                      sendAudioControl('nextItem');
+                    }}
+                    title="Baris / Paragraf Berikutnya"
+                    className={`px-2 py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-0.5 cursor-pointer ${themeStyle.subtleBtn}`}
+                  >
+                    <span className="hidden sm:inline">Next</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Offset Quick Fine-Tune & Audio/SRT Drawer */}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => sendAudioControl('offsetDelta', -0.5)}
+                    title="Geser teks -0.5 detik"
+                    className={`px-1.5 py-1 rounded-lg border text-[10px] font-mono font-bold cursor-pointer ${themeStyle.subtleBtn}`}
+                  >
+                    -0.5s
+                  </button>
+                  <span className="text-[10px] font-mono font-bold text-sky-400 px-1">
+                    {(audioTrackingState?.offsetSec ?? 0) >= 0 ? '+' : ''}
+                    {(audioTrackingState?.offsetSec ?? 0).toFixed(1)}s
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => sendAudioControl('offsetDelta', 0.5)}
+                    title="Geser teks +0.5 detik"
+                    className={`px-1.5 py-1 rounded-lg border text-[10px] font-mono font-bold cursor-pointer ${themeStyle.subtleBtn}`}
+                  >
+                    +0.5s
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAudioPanelTab('file');
+                      setShowAudioPanel(true);
+                      setShowSettings(false);
+                      setShowToc(false);
+                      setShowBacklog(false);
+                    }}
+                    title="Buka panel Upload Audio / .SRT"
+                    className={`ml-1 px-2.5 py-1 rounded-xl border text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer ${themeStyle.subtleBtn}`}
+                  >
+                    <Headphones className="w-3 h-3" />
+                    <span className="hidden sm:inline">Audio/SRT</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         ) : book && activeChapter && prefs.readingMode === 'vn' ? (
@@ -7076,6 +7621,16 @@ export const JapaneseNovelReaderModal: React.FC<
           oneShotSpeakRequest={oneShotSpeakRequest}
           jumpAudioRequest={jumpAudioRequest}
           spotSyncRequest={spotSyncRequest}
+          audioFocusMode={audioFocusMode}
+          onToggleFocusMode={() => {
+            if (audioFocusMode) {
+              handleCloseAudioFocusMode();
+            } else {
+              setAudioFocusMode(true);
+            }
+            setShowAudioPanel(false);
+          }}
+          audioControlRequest={audioControlRequest}
           onAdvanceVnStep={handleStepForward}
           onSwitchChapter={(idx) => handleSwitchChapter(idx)}
           onPlaybackStatusChange={(st) => setAudioPlaybackActive(st.active)}
@@ -7085,6 +7640,7 @@ export const JapaneseNovelReaderModal: React.FC<
 
       {/* BOTTOM SLIDE / PAGE & CHAPTER NAVIGATION BAR */}
       {!hideChrome &&
+        !audioFocusMode &&
         book &&
         activeChapter &&
         prefs.readingMode !== 'vn' && (

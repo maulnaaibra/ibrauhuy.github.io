@@ -7,6 +7,7 @@ export interface SyncParagraphMeta {
   paraIndex: number;
   text: string;
   readingText: string;
+  html: string;
   charCount: number;
   speechWeight: number;
   isMediaOnly: boolean;
@@ -457,6 +458,12 @@ export function annotateBookChaptersForSync(chapters: StoredNovelChapter[]): {
       const paraIdx = paraCounter++;
       const globalIdx = globalCounter++;
       const isMediaOnly = charCount === 0 && hasMedia;
+      const paraHtml =
+        el === body
+          ? body.innerHTML
+          : el.tagName === 'IMG' || el.tagName === 'SVG'
+            ? el.outerHTML
+            : el.innerHTML;
 
       if (el !== body) {
         el.setAttribute('data-sync-chapter', String(chIdx));
@@ -478,6 +485,7 @@ export function annotateBookChaptersForSync(chapters: StoredNovelChapter[]): {
         paraIndex: paraIdx,
         text,
         readingText,
+        html: paraHtml,
         charCount,
         speechWeight: isMediaOnly ? 0 : speechWeight,
         isMediaOnly,
@@ -1190,6 +1198,7 @@ function cleanSubtitleCueText(raw: string): string {
   return raw
     .replace(/<rt[^>]*>[\s\S]*?<\/rt>/gi, '')
     .replace(/<rp[^>]*>[\s\S]*?<\/rp>/gi, '')
+    .replace(/\{\\[^}]*\}/g, '')
     .replace(/<[^>]+>/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -1197,65 +1206,124 @@ function cleanSubtitleCueText(raw: string): string {
 
 export function parseSubtitleTextToCues(rawText: string): SubtitleCue[] {
   const text = rawText.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  const lines = text.split('\n');
   const cues: SubtitleCue[] = [];
 
-  // 1. Try SRT / VTT cue blocks first
-  const blocks = text.split(/\n{2,}/);
-  for (const blk of blocks) {
-    const lines = blk
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
-    if (lines.length === 0) continue;
-    const timingIdx = lines.findIndex((l) => l.includes('-->'));
-    if (timingIdx === -1) continue;
-    const [left, right] = lines[timingIdx].split('-->');
-    if (!left || !right) continue;
-    const startSec = parseTimestampSec(left.trim().split(/\s+/)[0]);
-    const endSec = parseTimestampSec(right.trim().split(/\s+/)[0]);
+  // 1. Line-by-line SRT / VTT parser (resilient to whitespace blank lines or missing blank lines)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.includes('-->')) continue;
+    const arrowIdx = line.indexOf('-->');
+    const leftPart = line.slice(0, arrowIdx).trim().split(/\s+/).pop() ?? '';
+    const rightPart = line.slice(arrowIdx + 3).trim().split(/\s+/)[0] ?? '';
+    const startSec = parseTimestampSec(leftPart);
+    const endSec = parseTimestampSec(rightPart);
     if (startSec === null || endSec === null) continue;
-    const cueText = cleanSubtitleCueText(lines.slice(timingIdx + 1).join(' '));
+
+    const collected: string[] = [];
+    let j = i + 1;
+    while (j < lines.length) {
+      const nextLine = lines[j];
+      const trimmed = nextLine.trim();
+      if (trimmed === '') break;
+      if (nextLine.includes('-->')) break;
+      if (
+        /^\d+$/.test(trimmed) &&
+        j + 1 < lines.length &&
+        lines[j + 1].includes('-->')
+      ) {
+        break;
+      }
+      collected.push(trimmed);
+      j++;
+    }
+    i = j - 1;
+
+    const cueText = cleanSubtitleCueText(collected.join(' '));
     if (!cueText) continue;
     cues.push({
       startSec: Math.max(0, startSec),
-      endSec: Math.max(startSec, endSec),
+      endSec: Math.max(startSec + 0.1, endSec),
       text: cueText,
     });
   }
 
-  if (cues.length > 0) {
-    return cues.sort((a, b) => a.startSec - b.startSec);
+  // 2. ASS / SSA Dialogue lines
+  if (cues.length === 0) {
+    for (const rawLine of lines) {
+      if (!/^\s*dialogue\s*:/i.test(rawLine)) continue;
+      const colonIdx = rawLine.indexOf(':');
+      const body = rawLine.slice(colonIdx + 1);
+      const parts = body.split(',');
+      if (parts.length < 10) continue;
+      const startSec = parseTimestampSec(parts[1]);
+      const endSec = parseTimestampSec(parts[2]);
+      if (startSec === null || endSec === null) continue;
+      const dialogue = parts.slice(9).join(',').replace(/\\[Nn]/g, ' ');
+      const cueText = cleanSubtitleCueText(dialogue);
+      if (!cueText) continue;
+      cues.push({
+        startSec: Math.max(0, startSec),
+        endSec: Math.max(startSec + 0.1, endSec),
+        text: cueText,
+      });
+    }
   }
 
-  // 2. Fallback: LRC [MM:SS.xx] lines
-  const lrcLines = text.split('\n');
-  const lrcRaw: Array<{ startSec: number; text: string }> = [];
-  const lrcRe = /\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/;
-  for (const line of lrcLines) {
-    const m = line.match(lrcRe);
-    if (!m) continue;
-    const mins = Number(m[1]);
-    const secs = Number(m[2]);
-    const sub = m[3] ? Number(m[3].padEnd(3, '0')) / 1000 : 0;
-    const startSec = mins * 60 + secs + sub;
-    const cueText = cleanSubtitleCueText(
-      line.replace(/\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]/g, '')
-    );
-    if (!cueText) continue;
-    lrcRaw.push({ startSec, text: cueText });
+  // 3. Fallback: LRC [MM:SS.xx] (including multi-timestamp lines)
+  if (cues.length === 0) {
+    const lrcRaw: Array<{ startSec: number; text: string }> = [];
+    const lrcTagRe = /\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
+    for (const line of lines) {
+      const matches = Array.from(line.matchAll(lrcTagRe));
+      if (matches.length === 0) continue;
+      const lyric = cleanSubtitleCueText(line.replace(lrcTagRe, ''));
+      if (!lyric) continue;
+      for (const m of matches) {
+        const mins = Number(m[1]);
+        const secs = Number(m[2]);
+        const sub = m[3] ? Number(m[3].padEnd(3, '0')) / 1000 : 0;
+        const startSec = mins * 60 + secs + sub;
+        lrcRaw.push({ startSec, text: lyric });
+      }
+    }
+
+    lrcRaw.sort((a, b) => a.startSec - b.startSec);
+    for (let k = 0; k < lrcRaw.length; k++) {
+      const startSec = Math.max(0, lrcRaw[k].startSec);
+      const endSec =
+        k + 1 < lrcRaw.length
+          ? Math.max(startSec + 0.1, lrcRaw[k + 1].startSec)
+          : startSec + 5;
+      cues.push({ startSec, endSec, text: lrcRaw[k].text });
+    }
   }
 
-  lrcRaw.sort((a, b) => a.startSec - b.startSec);
-  for (let i = 0; i < lrcRaw.length; i++) {
-    const startSec = lrcRaw[i].startSec;
-    const endSec =
-      i + 1 < lrcRaw.length
-        ? Math.max(startSec, lrcRaw[i + 1].startSec)
-        : startSec + 5;
-    cues.push({ startSec, endSec, text: lrcRaw[i].text });
-  }
+  return cues.sort((a, b) => a.startSec - b.startSec);
+}
 
-  return cues;
+export function findCueAtAudioTime(
+  cues: SubtitleCue[],
+  timeSec: number,
+  offsetSec = 0
+): { cue: SubtitleCue; index: number } | null {
+  const n = cues.length;
+  if (n === 0) return null;
+  const effectiveTime = Math.max(0, timeSec + offsetSec);
+  let lo = 0;
+  let hi = n - 1;
+  let lastStarted = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (cues[mid].startSec <= effectiveTime) {
+      lastStarted = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  const idx = lastStarted >= 0 ? lastStarted : 0;
+  return { cue: cues[idx], index: idx };
 }
 
 function normalizeJaForMatch(raw: string): string {
@@ -1303,6 +1371,276 @@ function computeDualJaSimilarity(
   return Math.max(s1, s2);
 }
 
+export interface BookSubtitleAlignmentResult {
+  segments: SyncTimelineSegment[];
+  matchedCount: number;
+  totalCues: number;
+  coveredChapters: number[];
+  firstChapterIndex: number;
+  lastChapterIndex: number;
+}
+
+export function alignSubtitlesToBook(
+  allSyncBlocks: SyncParagraphMeta[],
+  cues: SubtitleCue[],
+  durationSec: number,
+  extraAnchors: SyncAnchorPoint[] = [],
+  speechEnvelope?: AudioSpeechEnvelope | null
+): BookSubtitleAlignmentResult {
+  const speakable = allSyncBlocks.filter((b) => b.speechWeight > 0);
+  const sortedCues = [...cues].sort((a, b) => a.startSec - b.startSec);
+  if (speakable.length === 0 || sortedCues.length === 0) {
+    return {
+      segments: [],
+      matchedCount: 0,
+      totalCues: sortedCues.length,
+      coveredChapters: [],
+      firstChapterIndex: 0,
+      lastChapterIndex: 0,
+    };
+  }
+
+  const n = speakable.length;
+  const paraSurf = new Array<string>(n);
+  const paraRead = new Array<string>(n);
+  const cumWeights = new Array<number>(n + 1);
+  cumWeights[0] = 0;
+
+  const triIndex = new Map<string, number[]>();
+  const biIndex = new Map<string, number[]>();
+
+  const pushPosting = (map: Map<string, number[]>, key: string, p: number) => {
+    let list = map.get(key);
+    if (!list) {
+      map.set(key, [p]);
+    } else if (list[list.length - 1] !== p) {
+      list.push(p);
+    }
+  };
+
+  for (let p = 0; p < n; p++) {
+    const s = normalizeJaForMatch(speakable[p].text);
+    const r = normalizeJaForMatch(speakable[p].readingText || speakable[p].text);
+    paraSurf[p] = s;
+    paraRead[p] = r;
+    cumWeights[p + 1] = cumWeights[p] + speakable[p].speechWeight;
+
+    const forms = r && r !== s ? [s, r] : [s];
+    for (const f of forms) {
+      for (let k = 0; k <= f.length - 2; k++) {
+        pushPosting(biIndex, f.slice(k, k + 2), p);
+        if (k <= f.length - 3) {
+          pushPosting(triIndex, f.slice(k, k + 3), p);
+        }
+      }
+    }
+  }
+
+  interface CandidateHit {
+    cueIdx: number;
+    paraIdx: number;
+    startSec: number;
+    endSec: number;
+    weight: number;
+  }
+
+  const hits: CandidateHit[] = [];
+  const candVotes = new Map<number, number>();
+  const MAX_TRI_DF = 80;
+  const MAX_BI_DF = 120;
+
+  for (let ci = 0; ci < sortedCues.length; ci++) {
+    const cNorm = normalizeJaForMatch(sortedCues[ci].text);
+    if (cNorm.length < 2) continue;
+
+    candVotes.clear();
+    for (let k = 0; k <= cNorm.length - 3; k++) {
+      const list = triIndex.get(cNorm.slice(k, k + 3));
+      if (list && list.length <= MAX_TRI_DF) {
+        for (let t = 0; t < list.length; t++) {
+          const p = list[t];
+          candVotes.set(p, (candVotes.get(p) ?? 0) + 3);
+        }
+      }
+    }
+    for (let k = 0; k <= cNorm.length - 2; k++) {
+      const list = biIndex.get(cNorm.slice(k, k + 2));
+      if (list && list.length <= MAX_BI_DF) {
+        for (let t = 0; t < list.length; t++) {
+          const p = list[t];
+          candVotes.set(p, (candVotes.get(p) ?? 0) + 1);
+        }
+      }
+    }
+
+    if (candVotes.size === 0) continue;
+
+    const topCands = Array.from(candVotes.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 14);
+
+    const minSim =
+      cNorm.length >= 5 ? 0.34 : cNorm.length >= 3 ? 0.48 : 0.72;
+    const lenFactor = Math.min(22, cNorm.length);
+
+    const scored: Array<{ paraIdx: number; sim: number }> = [];
+    for (const [p] of topCands) {
+      const sim = computeDualJaSimilarity(cNorm, paraSurf[p], paraRead[p]);
+      if (sim >= minSim) {
+        scored.push({ paraIdx: p, sim });
+      }
+    }
+    if (scored.length === 0) continue;
+
+    scored.sort((a, b) => b.sim - a.sim);
+    const keep = scored.slice(0, 6).sort((a, b) => a.paraIdx - b.paraIdx);
+    for (const item of keep) {
+      hits.push({
+        cueIdx: ci,
+        paraIdx: item.paraIdx,
+        startSec: sortedCues[ci].startSec,
+        endSec: sortedCues[ci].endSec,
+        weight: item.sim * lenFactor,
+      });
+    }
+  }
+
+  if (hits.length === 0) {
+    return {
+      segments: [],
+      matchedCount: 0,
+      totalCues: sortedCues.length,
+      coveredChapters: [],
+      firstChapterIndex: 0,
+      lastChapterIndex: 0,
+    };
+  }
+
+  // Windowed Maximum-Weight Monotonic Chain DP
+  const L = hits.length;
+  const dpScore = new Float64Array(L);
+  const parent = new Int32Array(L);
+  parent.fill(-1);
+
+  let bestEndIdx = 0;
+  let bestEndScore = -1;
+
+  for (let i = 0; i < L; i++) {
+    const hi = hits[i];
+    let bestScore = hi.weight;
+    let bestPrev = -1;
+
+    const lookStart = Math.max(0, i - 220);
+    for (let j = i - 1; j >= lookStart; j--) {
+      const hj = hits[j];
+      if (hj.cueIdx === hi.cueIdx) continue;
+      if (hj.paraIdx > hi.paraIdx) continue;
+      if (hj.startSec > hi.startSec) continue;
+
+      if (hi.paraIdx > hj.paraIdx) {
+        const dw = cumWeights[hi.paraIdx] - cumWeights[hj.paraIdx];
+        const dt = Math.max(0.5, hi.startSec - hj.startSec);
+        const rate = dw / dt;
+        if ((dw > 80 && rate > 35) || (dt > 20 && rate < 0.35)) continue;
+      }
+
+      const paraGap = hi.paraIdx - hj.paraIdx;
+      const chapJump =
+        speakable[hi.paraIdx].chapterIndex !== speakable[hj.paraIdx].chapterIndex;
+      const bonus = paraGap <= 3 ? 0.5 : chapJump && paraGap > 25 ? -0.8 : 0;
+
+      const candScore = dpScore[j] + hi.weight + bonus;
+      if (candScore > bestScore) {
+        bestScore = candScore;
+        bestPrev = j;
+      }
+    }
+
+    dpScore[i] = bestScore;
+    parent[i] = bestPrev;
+    if (bestScore > bestEndScore) {
+      bestEndScore = bestScore;
+      bestEndIdx = i;
+    }
+  }
+
+  const chain: CandidateHit[] = [];
+  let cur = bestEndIdx;
+  while (cur !== -1) {
+    chain.push(hits[cur]);
+    cur = parent[cur];
+  }
+  chain.reverse();
+
+  const paraMatchMap = new Map<
+    number,
+    { firstStartSec: number; lastEndSec: number }
+  >();
+  for (const h of chain) {
+    const existing = paraMatchMap.get(h.paraIdx);
+    if (!existing) {
+      paraMatchMap.set(h.paraIdx, {
+        firstStartSec: h.startSec,
+        lastEndSec: h.endSec,
+      });
+    } else {
+      existing.firstStartSec = Math.min(existing.firstStartSec, h.startSec);
+      existing.lastEndSec = Math.max(existing.lastEndSec, h.endSec);
+    }
+  }
+
+  const coveredChapSet = new Set<number>();
+  paraMatchMap.forEach((_, p) => {
+    coveredChapSet.add(speakable[p].chapterIndex);
+  });
+  const coveredChapters = Array.from(coveredChapSet).sort((a, b) => a - b);
+  if (coveredChapters.length === 0) {
+    return {
+      segments: [],
+      matchedCount: 0,
+      totalCues: sortedCues.length,
+      coveredChapters: [],
+      firstChapterIndex: 0,
+      lastChapterIndex: 0,
+    };
+  }
+
+  const firstChapterIndex = coveredChapters[0];
+  const lastChapterIndex = coveredChapters[coveredChapters.length - 1];
+  const targetSpeakable = speakable.filter(
+    (b) => b.chapterIndex >= firstChapterIndex && b.chapterIndex <= lastChapterIndex
+  );
+
+  const anchorByGlobal = new Map<number, SyncAnchorPoint>();
+  paraMatchMap.forEach((info, p) => {
+    const g = speakable[p].globalIndex;
+    anchorByGlobal.set(g, { globalIndex: g, timeSec: info.firstStartSec });
+  });
+  for (const a of extraAnchors) {
+    anchorByGlobal.set(a.globalIndex, a);
+  }
+
+  const maxCueSec = sortedCues[sortedCues.length - 1]?.endSec ?? 0;
+  const effDur = durationSec > 0 ? durationSec : Math.max(10, maxCueSec + 2);
+
+  const segments = interpolateBlocksWithAnchors(
+    targetSpeakable,
+    Array.from(anchorByGlobal.values()),
+    effDur,
+    undefined,
+    speechEnvelope
+  );
+
+  return {
+    segments,
+    matchedCount: paraMatchMap.size,
+    totalCues: sortedCues.length,
+    coveredChapters,
+    firstChapterIndex,
+    lastChapterIndex,
+  };
+}
+
 export function buildSubtitleAlignedTimeline(
   targetBlocks: SyncParagraphMeta[],
   cues: SubtitleCue[],
@@ -1321,136 +1659,19 @@ export function buildSubtitleAlignedTimeline(
       speechEnvelope
     );
   }
-
-  const paraSurfaceNorms = speakable.map((b) => normalizeJaForMatch(b.text));
-  const paraReadingNorms = speakable.map((b) =>
-    normalizeJaForMatch(b.readingText || b.text)
+  const res = alignSubtitlesToBook(
+    speakable,
+    cues,
+    durationSec,
+    extraAnchors,
+    speechEnvelope
   );
-  const sortedCues = [...cues].sort((a, b) => a.startSec - b.startSec);
-  const cueNorms = sortedCues.map((c) => normalizeJaForMatch(c.text));
-
-  // Global seed search across ALL target paragraphs (handles skips / front-matter / late starts)
-  let seedCueIdx = 0;
-  let seedParaIdx = 0;
-  let bestSeedScore = 0;
-  const maxSeedCues = Math.min(15, sortedCues.length);
-  for (let ci = 0; ci < maxSeedCues; ci++) {
-    const cNorm = cueNorms[ci];
-    if (cNorm.length < 4) continue;
-    for (let p = 0; p < speakable.length; p++) {
-      let score = computeDualJaSimilarity(
-        cNorm,
-        paraSurfaceNorms[p],
-        paraReadingNorms[p]
-      );
-      if (score < 0.45) continue;
-      // Bonus when the following cue also aligns near p
-      if (ci + 1 < sortedCues.length && cueNorms[ci + 1].length >= 2) {
-        let nextConfirm = 0;
-        const pEnd = Math.min(speakable.length, p + 6);
-        for (let np = p; np < pEnd; np++) {
-          nextConfirm = Math.max(
-            nextConfirm,
-            computeDualJaSimilarity(
-              cueNorms[ci + 1],
-              paraSurfaceNorms[np],
-              paraReadingNorms[np]
-            )
-          );
-        }
-        score += nextConfirm * 0.35;
-      }
-      if (score > bestSeedScore) {
-        bestSeedScore = score;
-        seedCueIdx = ci;
-        seedParaIdx = p;
-      }
-    }
+  if (res.matchedCount >= 1 && res.segments.length > 0) {
+    return res.segments;
   }
-
-  let cursorP = bestSeedScore >= 0.48 ? seedParaIdx : 0;
-  const startCi = bestSeedScore >= 0.48 ? seedCueIdx : 0;
-
-  const paraFirstTime = new Map<number, number>();
-
-  for (let ci = startCi; ci < sortedCues.length; ci++) {
-    const cueNorm = cueNorms[ci];
-    if (cueNorm.length < 2) continue;
-
-    const searchLimit = Math.min(speakable.length, cursorP + 45);
-    const threshold = cueNorm.length >= 4 ? 0.34 : 0.48;
-    let bestScore = 0;
-    let bestP = -1;
-
-    // Start AT cursorP (NOT cursorP + 1) so multiple cues per paragraph don't falsely push cursor forward!
-    for (let p = cursorP; p < searchLimit; p++) {
-      const rawSim = computeDualJaSimilarity(
-        cueNorm,
-        paraSurfaceNorms[p],
-        paraReadingNorms[p]
-      );
-      if (rawSim < threshold) continue;
-      const proxScore = rawSim - 0.002 * (p - cursorP);
-      if (proxScore > bestScore) {
-        bestScore = proxScore;
-        bestP = p;
-      }
-    }
-
-    if (bestP !== -1) {
-      if (!paraFirstTime.has(bestP)) {
-        paraFirstTime.set(bestP, sortedCues[ci].startSec);
-      }
-      cursorP = bestP;
-    }
-  }
-
-  // Filter monotonic speed-consistent anchors (reject wild outlier jumps)
-  const rawMatched = Array.from(paraFirstTime.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([pos, timeSec]) => ({ pos, timeSec }));
-
-  const cumWeights = new Array<number>(speakable.length + 1);
-  cumWeights[0] = 0;
-  for (let i = 0; i < speakable.length; i++) {
-    cumWeights[i + 1] = cumWeights[i] + speakable[i].speechWeight;
-  }
-
-  const verifiedAligned: SyncAnchorPoint[] = [];
-  let lastPos = -1;
-  let lastTime = -1;
-  for (const cand of rawMatched) {
-    if (lastPos === -1) {
-      verifiedAligned.push({
-        globalIndex: speakable[cand.pos].globalIndex,
-        timeSec: cand.timeSec,
-      });
-      lastPos = cand.pos;
-      lastTime = cand.timeSec;
-      continue;
-    }
-    if (cand.timeSec < lastTime) continue;
-    const dw = cumWeights[cand.pos] - cumWeights[lastPos];
-    const dt = cand.timeSec - lastTime;
-    const rate = dt > 0.25 ? dw / dt : 999;
-    if (rate >= 1.0 && rate <= 24.0) {
-      verifiedAligned.push({
-        globalIndex: speakable[cand.pos].globalIndex,
-        timeSec: cand.timeSec,
-      });
-      lastPos = cand.pos;
-      lastTime = cand.timeSec;
-    }
-  }
-
-  // Extra manual/M4B anchors override aligned anchors on same globalIndex
-  const anchorByGlobal = new Map<number, SyncAnchorPoint>();
-  for (const a of verifiedAligned) anchorByGlobal.set(a.globalIndex, a);
-  for (const a of extraAnchors) anchorByGlobal.set(a.globalIndex, a);
-
   return interpolateBlocksWithAnchors(
     speakable,
-    Array.from(anchorByGlobal.values()),
+    extraAnchors,
     durationSec,
     undefined,
     speechEnvelope
@@ -2216,6 +2437,7 @@ export async function alignTrackWithAi(
   }
 
   const jobs: AudioChunkJob[] = [];
+  let expectedSpanSec = 0;
 
   if (
     track.kind === 'blob' &&
@@ -2225,6 +2447,7 @@ export async function alignTrackWithAi(
     onProgress?.(0, 1, 'Mendekode audio track...');
     const audioBuf = await decodeAudioBlobOnce(track.blob);
     const totalDur = audioBuf.duration;
+    expectedSpanSec = Math.max(1, totalDur);
     const stepSec = 202; // 3m22s step + 8s overlap = 210s chunk (~5.0 MB WAV)
     const winSec = 210;
     for (let t = 0; t < totalDur; t += stepSec) {
@@ -2270,6 +2493,7 @@ export async function alignTrackWithAi(
             ((wBefore + wTarget) / totalAllW + 0.03) * durationSec
           )
         : durationSec;
+    expectedSpanSec = Math.max(1, tEnd - tStart);
 
     const maxBytesWindow = 18 * 1024 * 1024;
     let bStart = Math.floor((tStart / durationSec) * blob.size);
@@ -2379,10 +2603,14 @@ export async function alignTrackWithAi(
       `Gemini melacak teks bagian ${j + 1}/${jobs.length}...`
     );
 
-    const fracStart = Math.max(0, (job.chunkStartSec - minJobT) / jobsSpanT - 0.12);
+    const spanForFrac = expectedSpanSec > 0 ? expectedSpanSec : jobsSpanT;
+    const fracStart = Math.max(
+      0,
+      (job.chunkStartSec - minJobT) / spanForFrac - 0.12
+    );
     const fracEnd = Math.min(
       1,
-      (job.chunkStartSec + job.chunkDurSec - minJobT) / jobsSpanT + 0.12
+      (job.chunkStartSec + job.chunkDurSec - minJobT) / spanForFrac + 0.12
     );
     const targetW0 = fracStart * totalTargetW;
     const targetW1 = fracEnd * totalTargetW;

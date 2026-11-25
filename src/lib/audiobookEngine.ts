@@ -65,8 +65,9 @@ export interface AudiobookPlaybackState {
 const AI_TTS_SETTINGS_KEY = 'immersiontrack_ai_tts_settings_v1';
 const AUDIOBOOK_STATE_KEY = 'immersiontrack_audiobook_state_v1';
 const AUDIOBOOK_DB_NAME = 'immersiontrack-novel-audiobooks';
-const AUDIOBOOK_DB_VERSION = 1;
+const AUDIOBOOK_DB_VERSION = 2;
 const AUDIOBOOK_STORE_NAME = 'audiobook_tracks';
+const AUDIOBOOK_SUBTITLE_STORE_NAME = 'audiobook_subtitles';
 
 export const DEFAULT_AI_TTS_SETTINGS: AiTtsSettings = {
   provider: 'browser',
@@ -201,6 +202,11 @@ function openAudiobookDb(): Promise<IDBDatabase> {
           keyPath: 'id',
         });
         store.createIndex('by_storageKey', 'storageKey', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(AUDIOBOOK_SUBTITLE_STORE_NAME)) {
+        db.createObjectStore(AUDIOBOOK_SUBTITLE_STORE_NAME, {
+          keyPath: 'key',
+        });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -364,7 +370,93 @@ export async function deleteNovelAudiobookTrack(
   } catch {
     // ignore delete error
   }
+  void deleteTrackSubtitlesIdb(storageKey, trackId);
   return listNovelAudiobookTracks(storageKey);
+}
+
+export async function saveTrackSubtitlesIdb<T>(
+  storageKey: string,
+  trackId: string,
+  cues: T[]
+): Promise<void> {
+  if (!storageKey || !trackId) return;
+  try {
+    const db = await openAudiobookDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(AUDIOBOOK_SUBTITLE_STORE_NAME, 'readwrite');
+      tx.objectStore(AUDIOBOOK_SUBTITLE_STORE_NAME).put({
+        key: `${storageKey}::${trackId}`,
+        storageKey,
+        trackId,
+        cues,
+        updatedAt: Date.now(),
+      });
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        reject(tx.error ?? new Error('Gagal menyimpan subtitle audiobook.'));
+      };
+    });
+  } catch {
+    // ignore IDB write error
+  }
+}
+
+export async function loadTrackSubtitlesIdb<T>(
+  storageKey: string,
+  trackId: string
+): Promise<T[]> {
+  if (!storageKey || !trackId) return [];
+  try {
+    const db = await openAudiobookDb();
+    const cues = await new Promise<T[]>((resolve, reject) => {
+      const tx = db.transaction(AUDIOBOOK_SUBTITLE_STORE_NAME, 'readonly');
+      const req = tx
+        .objectStore(AUDIOBOOK_SUBTITLE_STORE_NAME)
+        .get(`${storageKey}::${trackId}`);
+      req.onsuccess = () => {
+        db.close();
+        const row = req.result as { cues?: T[] } | undefined;
+        resolve(Array.isArray(row?.cues) ? row.cues : []);
+      };
+      req.onerror = () => {
+        db.close();
+        reject(req.error ?? new Error('Gagal memuat subtitle audiobook.'));
+      };
+    });
+    return cues;
+  } catch {
+    return [];
+  }
+}
+
+export async function deleteTrackSubtitlesIdb(
+  storageKey: string,
+  trackId: string
+): Promise<void> {
+  if (!storageKey || !trackId) return;
+  try {
+    const db = await openAudiobookDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(AUDIOBOOK_SUBTITLE_STORE_NAME, 'readwrite');
+      tx.objectStore(AUDIOBOOK_SUBTITLE_STORE_NAME).delete(
+        `${storageKey}::${trackId}`
+      );
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        reject(tx.error ?? new Error('Gagal menghapus subtitle audiobook.'));
+      };
+    });
+  } catch {
+    // ignore IDB delete error
+  }
 }
 
 export function loadAudiobookPlaybackState(

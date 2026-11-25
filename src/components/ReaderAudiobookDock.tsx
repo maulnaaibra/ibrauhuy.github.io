@@ -31,6 +31,7 @@ import {
   addNovelAudiobookFiles,
   addNovelAudiobookUrl,
   deleteNovelAudiobookTrack,
+  deleteTrackSubtitlesIdb,
   extractSpeakableJapaneseText,
   fetchVoicevoxSpeakers,
   GEMINI_TTS_VOICES,
@@ -38,9 +39,11 @@ import {
   listNovelAudiobookTracks,
   loadAiTtsSettings,
   loadAudiobookPlaybackState,
+  loadTrackSubtitlesIdb,
   OPENAI_TTS_VOICES,
   saveAiTtsSettings,
   saveAudiobookPlaybackState,
+  saveTrackSubtitlesIdb,
   splitLongJapaneseTextForTts,
   synthesizeAiSpeechBlob,
   type AiTtsProvider,
@@ -48,13 +51,14 @@ import {
   type StoredAudiobookTrack,
 } from '../lib/audiobookEngine';
 import {
+  alignSubtitlesToBook,
   alignTrackWithAi,
   analyzeAudioSpeechEnvelope,
-  buildSubtitleAlignedTimeline,
   buildWeightedSyncTimeline,
   classifyStoryChapters,
   createDefaultTrackSyncConfig,
   extractMp4EmbeddedChapters,
+  findCueAtAudioTime,
   findSegmentAtAudioTime,
   findSegmentForParagraph,
   loadGlobalTrackingPrefs,
@@ -67,6 +71,7 @@ import {
   spotSyncAudioAtCurrentTimeWithAi,
   type AudioSpeechEnvelope,
   type GlobalTrackingPrefs,
+  type SubtitleCue,
   type SyncParagraphMeta,
   type SyncTimelineSegment,
   type TrackSyncConfig,
@@ -90,6 +95,31 @@ export interface AudioTrackingStatusPayload {
   hasAiKey: boolean;
   resolvedScope: 'book' | 'chapter';
   resolvedChapterIndex: number;
+  currentTimeSec: number;
+  durationSec: number;
+  offsetSec: number;
+  subtitleCuesCount: number;
+  subtitleMatchedCount: number;
+  activeCueIndex: number;
+  activeCueText: string;
+  subtitleWindow: Array<{
+    index: number;
+    startSec: number;
+    endSec: number;
+    text: string;
+  }>;
+}
+
+export interface AudioFocusControlRequest {
+  id: number;
+  action:
+    | 'togglePlay'
+    | 'seekDelta'
+    | 'seekExact'
+    | 'prevItem'
+    | 'nextItem'
+    | 'offsetDelta';
+  value?: number;
 }
 
 interface ReaderAudiobookDockProps {
@@ -125,6 +155,9 @@ interface ReaderAudiobookDockProps {
     calibrate?: boolean;
   } | null;
   spotSyncRequest: number;
+  audioFocusMode?: boolean;
+  onToggleFocusMode?: () => void;
+  audioControlRequest?: AudioFocusControlRequest | null;
   onAdvanceVnStep: () => void;
   onSwitchChapter: (chapterIndex: number) => void;
   onOpenDrawer?: (tab: 'ai' | 'file') => void;
@@ -177,6 +210,9 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
   oneShotSpeakRequest,
   jumpAudioRequest,
   spotSyncRequest,
+  audioFocusMode = false,
+  onToggleFocusMode,
+  audioControlRequest,
   onAdvanceVnStep,
   onSwitchChapter,
   onOpenDrawer,
@@ -252,7 +288,7 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
   const subtitleUploadInputRef = useRef<HTMLInputElement | null>(null);
   const fileAudioRef = useRef<HTMLAudioElement | null>(null);
   const fileObjectUrlRef = useRef<string | null>(null);
-  const pendingFileSeekRef = useRef(0);
+  const pendingFileSeekRef = useRef<number | null>(null);
   const pendingTrackJumpParaRef = useRef<{
     trackId: string;
     chapterIndex: number;
@@ -269,6 +305,9 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
   const [syncingSpotAudio, setSyncingSpotAudio] = useState(false);
   const [speechEnvelope, setSpeechEnvelope] =
     useState<AudioSpeechEnvelope | null>(null);
+  const [trackSubtitles, setTrackSubtitles] = useState<SubtitleCue[]>([]);
+  const trackSubtitlesRef = useRef(trackSubtitles);
+  trackSubtitlesRef.current = trackSubtitles;
   const [urlInput, setUrlInput] = useState('');
   const [urlTitleInput, setUrlTitleInput] = useState('');
   const [activeTrackId, setActiveTrackId] = useState('');
@@ -295,20 +334,48 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     return idx >= 0 ? idx : 0;
   }, [tracks, activeTrack]);
 
-  // Load per-track sync config when activeTrack changes
+  // Load per-track sync config & IndexedDB subtitles when activeTrack changes
   useEffect(() => {
     setSpeechEnvelope(null);
     if (!activeTrack) {
       setSyncConfig(createDefaultTrackSyncConfig(currentChapterIndexRef.current));
+      setTrackSubtitles([]);
       return;
     }
-    setSyncConfig(
-      loadTrackSyncConfig(
-        bookStorageKey,
-        activeTrack.id,
-        currentChapterIndexRef.current
-      )
+    const cfg = loadTrackSyncConfig(
+      bookStorageKey,
+      activeTrack.id,
+      currentChapterIndexRef.current
     );
+    setSyncConfig(cfg);
+
+    let cancelled = false;
+    const trackId = activeTrack.id;
+    void loadTrackSubtitlesIdb<SubtitleCue>(bookStorageKey, trackId).then(
+      (idbCues) => {
+        if (cancelled) return;
+        if (idbCues.length > 0) {
+          setTrackSubtitles(idbCues);
+        } else if (cfg.cues && cfg.cues.length > 0) {
+          setTrackSubtitles(cfg.cues);
+          void saveTrackSubtitlesIdb(bookStorageKey, trackId, cfg.cues);
+          const migrated: TrackSyncConfig = {
+            ...cfg,
+            cues: undefined,
+            cueSource: cfg.cueSource ?? 'subtitle',
+            syncMode: cfg.syncMode ?? 'subtitle',
+          };
+          setSyncConfig(migrated);
+          saveTrackSyncConfig(bookStorageKey, trackId, migrated);
+        } else {
+          setTrackSubtitles([]);
+        }
+      }
+    );
+
+    return () => {
+      cancelled = true;
+    };
   }, [bookStorageKey, activeTrack?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateTrackingPrefs = useCallback(
@@ -434,6 +501,7 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
         resolvedScope: 'chapter' as const,
         resolvedChapterIndex: currentChapterIndex,
         targetBlocks: [] as SyncParagraphMeta[],
+        subtitleMatchedCount: 0,
       };
     }
     const base = buildWeightedSyncTimeline(allSyncBlocks, {
@@ -447,17 +515,28 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
       config: syncConfig,
       speechEnvelope,
     });
-    if (syncConfig.cues && syncConfig.cues.length > 0) {
-      const aligned = buildSubtitleAlignedTimeline(
-        base.targetBlocks,
-        syncConfig.cues,
+    if (trackSubtitles.length > 0) {
+      const subRes = alignSubtitlesToBook(
+        allSyncBlocks,
+        trackSubtitles,
         fileDuration,
         syncConfig.anchors,
         speechEnvelope
       );
-      return { ...base, segments: aligned };
+      if (subRes.matchedCount >= 3 && subRes.segments.length > 0) {
+        return {
+          segments: subRes.segments,
+          resolvedScope: (subRes.coveredChapters.length > 1
+            ? 'book'
+            : 'chapter') as 'book' | 'chapter',
+          resolvedChapterIndex: subRes.firstChapterIndex,
+          targetBlocks: base.targetBlocks,
+          subtitleMatchedCount: subRes.matchedCount,
+        };
+      }
+      return { ...base, subtitleMatchedCount: subRes.matchedCount };
     }
-    return base;
+    return { ...base, subtitleMatchedCount: 0 };
   }, [
     activeTrack,
     allSyncBlocks,
@@ -469,6 +548,7 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     chapterTitles,
     syncConfig,
     speechEnvelope,
+    trackSubtitles,
   ]);
 
   const fileTrackedSeg = useMemo(() => {
@@ -480,12 +560,36 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     );
   }, [activeTrack, activeTimeline.segments, fileCurrentTime, syncConfig.offsetSec]);
 
+  const activeCueInfo = useMemo(() => {
+    if (trackSubtitles.length === 0) return null;
+    return findCueAtAudioTime(
+      trackSubtitles,
+      fileCurrentTime,
+      syncConfig.offsetSec
+    );
+  }, [trackSubtitles, fileCurrentTime, syncConfig.offsetSec]);
+
+  const subtitleWindow = useMemo(() => {
+    if (trackSubtitles.length === 0) return [];
+    const centerIdx = activeCueInfo ? activeCueInfo.index : 0;
+    const wStart = Math.max(0, centerIdx - 2);
+    const wEnd = Math.min(trackSubtitles.length, wStart + 5);
+    return trackSubtitles.slice(wStart, wEnd).map((c, offset) => ({
+      index: wStart + offset,
+      startSec: c.startSec,
+      endSec: c.endSec,
+      text: c.text,
+    }));
+  }, [trackSubtitles, activeCueInfo]);
+
   const syncLabel = useMemo(() => {
     if (aiPlaying || aiLoading) {
       return `AI ${aiSettings.provider.toUpperCase()}`;
     }
-    if (syncConfig.cues && syncConfig.cues.length > 0) {
-      return syncConfig.cueSource === 'ai' ? 'AI Audio Sync' : 'Subtitle Sync';
+    if (trackSubtitles.length > 0) {
+      return activeTimeline.subtitleMatchedCount >= 3
+        ? 'Subtitle Match'
+        : 'SRT Langsung';
     }
     if (syncConfig.syncMode === 'ai' && syncConfig.anchors.length > 0) {
       return `AI Forced Sync`;
@@ -504,8 +608,8 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     aiPlaying,
     aiLoading,
     aiSettings.provider,
-    syncConfig.cues,
-    syncConfig.cueSource,
+    trackSubtitles.length,
+    activeTimeline.subtitleMatchedCount,
     syncConfig.syncMode,
     syncConfig.anchors.length,
     speechEnvelope,
@@ -550,6 +654,14 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
       hasAiKey: hasAudioAiKey,
       resolvedScope: activeTimeline.resolvedScope,
       resolvedChapterIndex: activeTimeline.resolvedChapterIndex,
+      currentTimeSec: fileCurrentTime,
+      durationSec: fileDuration,
+      offsetSec: syncConfig.offsetSec,
+      subtitleCuesCount: trackSubtitles.length,
+      subtitleMatchedCount: activeTimeline.subtitleMatchedCount,
+      activeCueIndex: activeCueInfo?.index ?? -1,
+      activeCueText: activeCueInfo?.cue.text ?? '',
+      subtitleWindow,
     });
   }, [
     aiPlaying,
@@ -561,6 +673,12 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     fileTrackedSeg,
     filePlaying,
     fileCurrentTime,
+    fileDuration,
+    syncConfig.offsetSec,
+    trackSubtitles.length,
+    activeTimeline.subtitleMatchedCount,
+    activeCueInfo,
+    subtitleWindow,
     trackingPrefs,
     tracks.length,
     syncLabel,
@@ -1169,16 +1287,17 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
       const saved = loadAudiobookPlaybackState(bookStorageKey);
       if (saved && loaded.some((t) => t.id === saved.trackId)) {
         setActiveTrackId(saved.trackId);
-        pendingFileSeekRef.current = saved.currentTimeSec;
+        pendingFileSeekRef.current =
+          saved.currentTimeSec > 0 ? saved.currentTimeSec : null;
         setFileCurrentTime(saved.currentTimeSec);
         setFilePlaybackRate(saved.playbackRate);
         setFileVolume(saved.volume);
       } else if (loaded.length > 0) {
         setActiveTrackId(loaded[0].id);
-        pendingFileSeekRef.current = 0;
+        pendingFileSeekRef.current = null;
       } else {
         setActiveTrackId('');
-        pendingFileSeekRef.current = 0;
+        pendingFileSeekRef.current = null;
       }
       setLoadingTracks(false);
     });
@@ -1250,6 +1369,59 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const seekFileAudioSafe = useCallback(
+    (targetTimeSec: number, autoPlay = true) => {
+      const audio = fileAudioRef.current;
+      if (!audio) return;
+      const dur =
+        Number.isFinite(audio.duration) && audio.duration > 0
+          ? audio.duration
+          : fileDuration;
+      const rawClamped = Math.max(
+        0,
+        Number.isFinite(targetTimeSec) ? targetTimeSec : 0
+      );
+      const clamped = dur > 0 ? Math.min(dur, rawClamped) : rawClamped;
+      if (autoPlay) {
+        stopAiNarrator();
+      }
+      audio.playbackRate = filePlaybackRate;
+      audio.volume = fileVolume;
+      if (audio.readyState < 1) {
+        pendingFileSeekRef.current = clamped;
+        autoPlayTrackRef.current = autoPlay;
+        setFileCurrentTime(clamped);
+        if (activeTrack?.id) {
+          persistFileState({ trackId: activeTrack.id, timeSec: clamped });
+        }
+        if (audio.networkState === 0) {
+          audio.load();
+        }
+        if (autoPlay) {
+          void audio.play().catch(() => {});
+        }
+        return;
+      }
+      pendingFileSeekRef.current = null;
+      audio.currentTime = clamped;
+      setFileCurrentTime(clamped);
+      if (activeTrack?.id) {
+        persistFileState({ trackId: activeTrack.id, timeSec: clamped });
+      }
+      if (autoPlay) {
+        void audio.play().catch(() => {});
+      }
+    },
+    [
+      activeTrack?.id,
+      fileDuration,
+      filePlaybackRate,
+      fileVolume,
+      persistFileState,
+      stopAiNarrator,
+    ]
+  );
+
   const handleToggleFilePlay = useCallback(() => {
     const audio = fileAudioRef.current;
     if (!audio || !activeTrack) {
@@ -1281,7 +1453,7 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     (track: StoredAudiobookTrack, autoPlay = true) => {
       persistFileState();
       stopAiNarrator();
-      pendingFileSeekRef.current = 0;
+      pendingFileSeekRef.current = null;
       autoPlayTrackRef.current = autoPlay;
       setActiveTrackId(track.id);
       setFileCurrentTime(0);
@@ -1309,18 +1481,26 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     [activeTrack?.id, handleSelectTrack, tracks]
   );
 
-  const handleSeekFileBy = (deltaSec: number) => {
-    const audio = fileAudioRef.current;
-    if (!audio) return;
-    const dur = Number.isFinite(audio.duration) ? audio.duration : fileDuration;
-    const next = Math.min(
-      dur > 0 ? dur : audio.currentTime + Math.max(0, deltaSec),
-      Math.max(0, audio.currentTime + deltaSec)
-    );
-    audio.currentTime = next;
-    setFileCurrentTime(next);
-    persistFileState({ timeSec: next });
-  };
+  const handleSeekFileBy = useCallback(
+    (deltaSec: number) => {
+      const audio = fileAudioRef.current;
+      if (!audio) return;
+      const dur =
+        Number.isFinite(audio.duration) && audio.duration > 0
+          ? audio.duration
+          : fileDuration;
+      const baseCur =
+        audio.readyState < 1 && pendingFileSeekRef.current !== null
+          ? pendingFileSeekRef.current
+          : audio.currentTime;
+      const next = Math.min(
+        dur > 0 ? dur : baseCur + Math.max(0, deltaSec),
+        Math.max(0, baseCur + deltaSec)
+      );
+      seekFileAudioSafe(next, !audio.paused);
+    },
+    [fileDuration, seekFileAudioSafe]
+  );
 
   const handleUploadAudioFiles = async (
     e: React.ChangeEvent<HTMLInputElement>
@@ -1396,16 +1576,19 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     toast.success('Track dihapus dari audiobook novel ini.');
   };
 
-  const handleAdjustSyncOffset = (deltaSec: number) => {
-    if (!activeTrack) return;
-    updateSyncConfig((prev) => ({
-      ...prev,
-      offsetSec: Math.min(
-        300,
-        Math.max(-300, Math.round((prev.offsetSec + deltaSec) * 10) / 10)
-      ),
-    }));
-  };
+  const handleAdjustSyncOffset = useCallback(
+    (deltaSec: number) => {
+      if (!activeTrack) return;
+      updateSyncConfig((prev) => ({
+        ...prev,
+        offsetSec: Math.min(
+          300,
+          Math.max(-300, Math.round((prev.offsetSec + deltaSec) * 10) / 10)
+        ),
+      }));
+    },
+    [activeTrack, updateSyncConfig]
+  );
 
   const handleCalibrateChapterStart = () => {
     if (!activeTrack || !fileAudioRef.current) return;
@@ -1437,6 +1620,8 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
 
   const handleResetSyncConfig = () => {
     if (!activeTrack) return;
+    setTrackSubtitles([]);
+    void deleteTrackSubtitlesIdb(bookStorageKey, activeTrack.id);
     updateSyncConfig(createDefaultTrackSyncConfig(currentChapterIndex));
     toast.success('Pengaturan sinkronisasi dikembalikan ke Auto-Sync.');
   };
@@ -1452,16 +1637,36 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
       const cues = parseSubtitleTextToCues(raw);
       if (cues.length === 0) {
         toast.error(
-          'Format subtitle tidak dikenali. Gunakan .srt, .vtt, atau .lrc yang memiliki timestamp.'
+          'Format subtitle tidak dikenali. Gunakan .srt, .vtt, .ass, atau .lrc yang memiliki timestamp.'
         );
         return;
       }
+      setTrackSubtitles(cues);
+      await saveTrackSubtitlesIdb(bookStorageKey, activeTrack.id, cues);
       updateSyncConfig((prev) => ({
         ...prev,
-        cues,
+        syncMode: 'subtitle',
+        cues: undefined,
         cueSource: 'subtitle',
       }));
-      toast.success(`Subtitle sinkronisasi dimuat (${cues.length} baris)!`);
+
+      const diag = alignSubtitlesToBook(
+        allSyncBlocks,
+        cues,
+        fileDuration,
+        syncConfig.anchors,
+        speechEnvelope
+      );
+      if (diag.matchedCount >= 3) {
+        toast.success(
+          `Subtitle cocok! ${diag.matchedCount} paragraf (Bab ${diag.firstChapterIndex + 1}–${diag.lastChapterIndex + 1}) terkunci presisi ke audio.`
+        );
+      } else {
+        toast(
+          `Subtitle dimuat (${cues.length} baris), tapi hanya ${diag.matchedCount} cocok dengan teks EPUB. Gunakan Mode Fokus → Subtitle (.SRT) Langsung agar tetap 100% pas!`,
+          { duration: 5500 }
+        );
+      }
     } catch {
       toast.error('Gagal membaca file subtitle.');
     }
@@ -1600,6 +1805,89 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     }
   }, [spotSyncRequest]);
 
+  // Unified Focus Mode control dispatcher (play/pause, seek, prev/next, offset)
+  const lastControlIdRef = useRef(0);
+  useEffect(() => {
+    if (!audioControlRequest) return;
+    if (audioControlRequest.id === lastControlIdRef.current) return;
+    lastControlIdRef.current = audioControlRequest.id;
+
+    const { action, value } = audioControlRequest;
+    if (action === 'togglePlay') {
+      if (aiPlayingRef.current || aiLoading) {
+        stopAiNarrator();
+      } else {
+        handleToggleFilePlay();
+      }
+      return;
+    }
+    if (action === 'offsetDelta') {
+      handleAdjustSyncOffset(value ?? 0);
+      return;
+    }
+    if (action === 'seekDelta') {
+      handleSeekFileBy(value ?? 0);
+      return;
+    }
+    if (action === 'seekExact') {
+      const targetTime = Math.max(0, (value ?? 0) - syncConfig.offsetSec);
+      seekFileAudioSafe(targetTime, true);
+      return;
+    }
+    if (action === 'prevItem' || action === 'nextItem') {
+      const dir = action === 'nextItem' ? 1 : -1;
+      if (aiPlayingRef.current) {
+        if (dir > 0) handleAiNextParagraph();
+        else handleAiPrevParagraph();
+        return;
+      }
+      if (
+        trackSubtitles.length > 0 &&
+        (audioFocusMode || activeTimeline.subtitleMatchedCount < 3)
+      ) {
+        const curIdx = activeCueInfo ? activeCueInfo.index : 0;
+        const nextIdx = Math.max(
+          0,
+          Math.min(trackSubtitles.length - 1, curIdx + dir)
+        );
+        const cue = trackSubtitles[nextIdx];
+        if (cue) {
+          seekFileAudioSafe(Math.max(0, cue.startSec - syncConfig.offsetSec), true);
+        }
+        return;
+      }
+      const segs = activeTimeline.segments;
+      if (segs.length > 0) {
+        const curIdx = fileTrackedSeg
+          ? segs.findIndex((s) => s.globalIndex === fileTrackedSeg.globalIndex)
+          : 0;
+        const safeCur = curIdx >= 0 ? curIdx : 0;
+        const nextIdx = Math.max(0, Math.min(segs.length - 1, safeCur + dir));
+        const seg = segs[nextIdx];
+        if (seg) {
+          seekFileAudioSafe(Math.max(0, seg.startSec - syncConfig.offsetSec), true);
+        }
+      }
+    }
+  }, [
+    audioControlRequest,
+    aiLoading,
+    stopAiNarrator,
+    handleToggleFilePlay,
+    handleAdjustSyncOffset,
+    handleSeekFileBy,
+    syncConfig.offsetSec,
+    seekFileAudioSafe,
+    handleAiNextParagraph,
+    handleAiPrevParagraph,
+    trackSubtitles,
+    audioFocusMode,
+    activeTimeline.subtitleMatchedCount,
+    activeTimeline.segments,
+    activeCueInfo,
+    fileTrackedSeg,
+  ]);
+
   // Click any paragraph in book -> jump audio directly there (or Shift+Click / Pas Teks -> calibrate anchor)
   useEffect(() => {
     if (!jumpAudioRequest) return;
@@ -1698,7 +1986,7 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
         }
       }
 
-      if (activeTrack && fileDuration <= 0) {
+      if (activeTrack && fileDuration <= 0 && activeTimeline.segments.length === 0) {
         stopAiNarrator();
         pendingTrackJumpParaRef.current = {
           trackId: activeTrack.id,
@@ -1707,6 +1995,9 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
         };
         autoPlayTrackRef.current = true;
         if (fileAudioRef.current) {
+          if (fileAudioRef.current.networkState === 0) {
+            fileAudioRef.current.load();
+          }
           void fileAudioRef.current.play().catch(() => {});
         }
         return;
@@ -1736,18 +2027,8 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
           config: nextCfg,
           speechEnvelope,
         });
-        const rebuiltSegs =
-          nextCfg.cues && nextCfg.cues.length > 0
-            ? buildSubtitleAlignedTimeline(
-                rebuilt.targetBlocks,
-                nextCfg.cues,
-                fileDuration,
-                nextCfg.anchors,
-                speechEnvelope
-              )
-            : rebuilt.segments;
         targetSeg = findSegmentForParagraph(
-          rebuiltSegs,
+          rebuilt.segments,
           jumpAudioRequest.chapterIndex,
           jumpAudioRequest.paraIndex
         );
@@ -1758,19 +2039,12 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
         }));
       }
 
-      const audio = fileAudioRef.current;
-      if (targetSeg && audio) {
-        stopAiNarrator();
+      if (targetSeg) {
         const targetTime = Math.max(
           0,
           targetSeg.startSec - syncConfig.offsetSec
         );
-        audio.currentTime = targetTime;
-        setFileCurrentTime(targetTime);
-        audio.playbackRate = filePlaybackRate;
-        audio.volume = fileVolume;
-        void audio.play().catch(() => {});
-        persistFileState({ timeSec: targetTime });
+        seekFileAudioSafe(targetTime, true);
       }
       return;
     }
@@ -1802,17 +2076,18 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
     activeTimeline.resolvedScope,
     activeTimeline.resolvedChapterIndex,
     syncConfig,
-    filePlaybackRate,
-    fileVolume,
     handleSelectTrack,
-    persistFileState,
+    seekFileAudioSafe,
     stopAiNarrator,
     startAiReadingFrom,
     updateSyncConfig,
   ]);
 
   const miniPlayerActive =
-    !open && !isFullscreenOrZen && (aiPlaying || aiLoading || filePlaying);
+    !open &&
+    !audioFocusMode &&
+    !isFullscreenOrZen &&
+    (aiPlaying || aiLoading || filePlaying);
 
   return (
     <>
@@ -1827,7 +2102,7 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
       <input
         ref={subtitleUploadInputRef}
         type="file"
-        accept=".srt,.vtt,.lrc,.txt"
+        accept=".srt,.vtt,.lrc,.ass,.ssa,.txt"
         onChange={handleUploadSubtitleFile}
         className="hidden"
       />
@@ -1845,32 +2120,39 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
           const pendingJump = pendingTrackJumpParaRef.current;
           if (pendingJump && activeTrack && pendingJump.trackId === activeTrack.id) {
             pendingTrackJumpParaRef.current = null;
-            pendingFileSeekRef.current = 0;
+            pendingFileSeekRef.current = null;
             const trackIdx = tracks.findIndex((t) => t.id === activeTrack.id);
             const cfg = loadTrackSyncConfig(
               bookStorageKey,
               activeTrack.id,
               pendingJump.chapterIndex
             );
-            const tl = buildWeightedSyncTimeline(allSyncBlocks, {
-              durationSec: dur,
-              trackCount: tracks.length,
-              trackIndex: Math.max(0, trackIdx),
-              trackName: activeTrack.name,
-              currentChapterIndex: pendingJump.chapterIndex,
-              chapterCount,
-              chapterTitles,
-              config: cfg,
-            });
-            const segs =
-              cfg.cues && cfg.cues.length > 0
-                ? buildSubtitleAlignedTimeline(
-                    tl.targetBlocks,
-                    cfg.cues,
-                    dur,
-                    cfg.anchors
-                  )
-                : tl.segments;
+            const subs = trackSubtitlesRef.current;
+            let segs: SyncTimelineSegment[] = [];
+            if (subs.length > 0) {
+              const subRes = alignSubtitlesToBook(
+                allSyncBlocks,
+                subs,
+                dur,
+                cfg.anchors
+              );
+              if (subRes.matchedCount >= 3 && subRes.segments.length > 0) {
+                segs = subRes.segments;
+              }
+            }
+            if (segs.length === 0) {
+              const tl = buildWeightedSyncTimeline(allSyncBlocks, {
+                durationSec: dur,
+                trackCount: tracks.length,
+                trackIndex: Math.max(0, trackIdx),
+                trackName: activeTrack.name,
+                currentChapterIndex: pendingJump.chapterIndex,
+                chapterCount,
+                chapterTitles,
+                config: cfg,
+              });
+              segs = tl.segments;
+            }
             const seg = findSegmentForParagraph(
               segs,
               pendingJump.chapterIndex,
@@ -1880,16 +2162,39 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
             el.currentTime = targetSec;
             setFileCurrentTime(targetSec);
             persistFileState({ trackId: activeTrack.id, timeSec: targetSec });
-          } else if (pendingFileSeekRef.current > 0) {
+          } else if (
+            pendingFileSeekRef.current !== null &&
+            pendingFileSeekRef.current >= 0
+          ) {
             const targetSec =
               dur > 0
-                ? Math.min(dur - 0.5, pendingFileSeekRef.current)
+                ? Math.min(Math.max(0, dur - 0.5), pendingFileSeekRef.current)
                 : pendingFileSeekRef.current;
             el.currentTime = Math.max(0, targetSec);
             setFileCurrentTime(Math.max(0, targetSec));
-            pendingFileSeekRef.current = 0;
+            pendingFileSeekRef.current = null;
           }
 
+          if (autoPlayTrackRef.current && el.readyState >= 2) {
+            autoPlayTrackRef.current = false;
+            void el.play().catch(() => {});
+          }
+        }}
+        onCanPlay={(e) => {
+          const el = e.currentTarget;
+          if (
+            pendingFileSeekRef.current !== null &&
+            pendingFileSeekRef.current >= 0
+          ) {
+            const dur = Number.isFinite(el.duration) ? el.duration : 0;
+            const targetSec =
+              dur > 0
+                ? Math.min(Math.max(0, dur - 0.5), pendingFileSeekRef.current)
+                : pendingFileSeekRef.current;
+            el.currentTime = Math.max(0, targetSec);
+            setFileCurrentTime(Math.max(0, targetSec));
+            pendingFileSeekRef.current = null;
+          }
           if (autoPlayTrackRef.current) {
             autoPlayTrackRef.current = false;
             void el.play().catch(() => {});
@@ -2803,19 +3108,22 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
                         </span>
                       </div>
 
-                      {trackingPrefs.liveTracking && fileTrackedSeg && (
+                      {((trackingPrefs.liveTracking && fileTrackedSeg) ||
+                        trackSubtitles.length > 0) && (
                         <div className="text-[11px] font-mono px-2.5 py-1.5 rounded-xl bg-black/25 border border-white/10 space-y-0.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-emerald-300 font-bold truncate">
-                              ● Bab {fileTrackedSeg.chapterIndex + 1} • Paragraf #
-                              {fileTrackedSeg.paraIndex + 1}
-                            </span>
-                            <span className="opacity-75 shrink-0 text-[10px]">
-                              {activeTimeline.resolvedScope === 'book'
-                                ? 'Seluruh Buku'
-                                : `Bab ${activeTimeline.resolvedChapterIndex + 1}`}
-                            </span>
-                          </div>
+                          {trackingPrefs.liveTracking && fileTrackedSeg && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-emerald-300 font-bold truncate">
+                                ● Bab {fileTrackedSeg.chapterIndex + 1} • Paragraf #
+                                {fileTrackedSeg.paraIndex + 1}
+                              </span>
+                              <span className="opacity-75 shrink-0 text-[10px]">
+                                {activeTimeline.resolvedScope === 'book'
+                                  ? 'Seluruh Buku'
+                                  : `Bab ${activeTimeline.resolvedChapterIndex + 1}`}
+                              </span>
+                            </div>
+                          )}
                           {activeTimeline.resolvedScope === 'chapter' &&
                             chapterTitles[activeTimeline.resolvedChapterIndex] && (
                               <div className="text-[10px] opacity-70 truncate">
@@ -2823,7 +3131,42 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
                                 {chapterTitles[activeTimeline.resolvedChapterIndex]}
                               </div>
                             )}
+                          {trackSubtitles.length > 0 && (
+                            <div
+                              className={`text-[10px] truncate ${
+                                activeTimeline.subtitleMatchedCount >= 3
+                                  ? 'text-emerald-300/90'
+                                  : 'text-amber-300/90'
+                              }`}
+                            >
+                              Subtitle: {activeTimeline.subtitleMatchedCount}{' '}
+                              paragraf cocok / {trackSubtitles.length} baris
+                            </div>
+                          )}
                         </div>
+                      )}
+
+                      {onToggleFocusMode && (
+                        <button
+                          type="button"
+                          onClick={() => onToggleFocusMode()}
+                          className={`w-full py-2 px-2.5 rounded-xl border text-[11px] font-extrabold inline-flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                            audioFocusMode
+                              ? 'bg-amber-400 text-slate-950 border-amber-300'
+                              : 'bg-sky-500 hover:bg-sky-400 text-slate-950 border-sky-400 shadow-sm'
+                          }`}
+                        >
+                          {audioFocusMode ? (
+                            <EyeOff className="w-3.5 h-3.5 shrink-0" />
+                          ) : (
+                            <Eye className="w-3.5 h-3.5 shrink-0" />
+                          )}
+                          <span>
+                            {audioFocusMode
+                              ? 'Keluar Layar Fokus Audio'
+                              : 'Buka Layar Fokus Audio (Tanpa Scroll)'}
+                          </span>
+                        </button>
                       )}
 
                       <div className="grid grid-cols-3 gap-1">
@@ -3024,6 +3367,7 @@ export const ReaderAudiobookDock: React.FC<ReaderAudiobookDockProps> = ({
 
                       {(syncConfig.anchors.length > 0 ||
                         syncConfig.offsetSec !== 0 ||
+                        trackSubtitles.length > 0 ||
                         (syncConfig.cues?.length ?? 0) > 0) && (
                         <button
                           type="button"
