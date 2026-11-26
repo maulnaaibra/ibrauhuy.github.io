@@ -87,7 +87,7 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
           </div>
 
           <Link
-            to="/settings"
+            to="/dashboard?tab=profile"
             className="px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:border-rose-300 text-xs font-bold text-rose-600 transition self-start sm:self-center"
           >
             Ubah Target Harian
