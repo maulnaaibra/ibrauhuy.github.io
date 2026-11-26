@@ -22,6 +22,7 @@ import {
   Eye,
   FileUp,
   FolderInput,
+  Gauge,
   HardDrive,
   Headphones,
   History,
@@ -149,6 +150,14 @@ import {
   ReaderWordPopover,
   type ActiveInspectedWord,
 } from './ReaderWordPopover';
+import { ReaderStatsModal } from './ReaderStatsModal';
+import {
+  commitSessionProgressDelta,
+  computeCharsPerHour,
+  formatEstimatedRemaining,
+  formatStopwatchClock,
+  type ReaderSpeedSample,
+} from '../lib/readerStatsStore';
 import type {
   JapanesePosCategory,
   PitchAccentPattern,
@@ -313,6 +322,7 @@ const READER_SHORTCUTS: Array<{ keys: string[]; desc: string }> = [
   { keys: ['C'], desc: 'Buka Daftar Bab & Bookmark' },
   { keys: ['H'], desc: 'Buka Riwayat Paragraf (Backlog Mode VN)' },
   { keys: ['A'], desc: 'Buka panel Audiobook & AI Narator' },
+  { keys: ['I'], desc: 'Buka Statistik & Kecepatan Membaca' },
   { keys: ['S'], desc: 'Buka Pengaturan Reader' },
   { keys: ['Z'], desc: 'Aktif / matikan Mode Clean (bebas distraksi)' },
   { keys: ['M'], desc: 'Mode Fullscreen / Fokus (sembunyikan toolbar)' },
@@ -323,8 +333,10 @@ const READER_SHORTCUTS: Array<{ keys: string[]; desc: string }> = [
 const ReaderSessionTimerButton: React.FC<{
   active: boolean;
   resetToken: number;
+  externalSec?: number;
+  paused?: boolean;
   onLog: (minutes: number) => void;
-}> = React.memo(({ active, resetToken, onLog }) => {
+}> = React.memo(({ active, resetToken, externalSec, paused, onLog }) => {
   const [elapsedSec, setElapsedSec] = useState(0);
 
   useEffect(() => {
@@ -332,23 +344,32 @@ const ReaderSessionTimerButton: React.FC<{
   }, [resetToken]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || typeof externalSec === 'number') return;
     const id = window.setInterval(() => {
       setElapsedSec((prev) => prev + 1);
     }, 1000);
     return () => window.clearInterval(id);
-  }, [active]);
+  }, [active, externalSec]);
 
-  const mins = Math.floor(elapsedSec / 60);
-  const secs = elapsedSec % 60;
+  const effectiveSec = typeof externalSec === 'number' ? externalSec : elapsedSec;
+  const mins = Math.floor(effectiveSec / 60);
+  const secs = effectiveSec % 60;
   const label = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 
   return (
     <button
       type="button"
-      onClick={() => onLog(Math.max(1, Math.round(elapsedSec / 60)))}
-      title="Catat durasi baca saat ini ke Immersion Log"
-      className="px-2 sm:px-2.5 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-300 text-xs font-mono font-bold inline-flex items-center gap-1 transition cursor-pointer"
+      onClick={() => onLog(Math.max(1, Math.round(effectiveSec / 60)))}
+      title={
+        paused
+          ? 'Stopwatch dijeda (idle/pause) — Klik untuk catat durasi ke Immersion Log'
+          : 'Catat durasi baca aktif saat ini ke Immersion Log'
+      }
+      className={`px-2 sm:px-2.5 py-1.5 rounded-xl border text-xs font-mono font-bold inline-flex items-center gap-1 transition cursor-pointer ${
+        paused
+          ? 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-400/40 text-amber-200'
+          : 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-400/40 text-emerald-300'
+      }`}
     >
       <Clock className="w-3.5 h-3.5 shrink-0" />
       <span>{label}</span>
@@ -522,6 +543,26 @@ export const JapaneseNovelReaderModal: React.FC<
   const [vnIndex, setVnIndex] = useState(0);
   const sessionStartMsRef = useRef<number>(Date.now());
   const [timerResetToken, setTimerResetToken] = useState(0);
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [sessionActiveSec, setSessionActiveSec] = useState(0);
+  const [sessionCharsRead, setSessionCharsRead] = useState(0);
+  const [isSessionPaused, setIsSessionPaused] = useState(false);
+  const [isUserIdle, setIsUserIdle] = useState(false);
+  const [speedSamples, setSpeedSamples] = useState<ReaderSpeedSample[]>([]);
+  const sessionIdRef = useRef<string>(
+    `ses-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+  );
+  const lastActivityAtRef = useRef<number>(Date.now());
+  const suppressSpeedUntilRef = useRef<number>(Date.now() + 1500);
+  const lastReadCharsSnapshotRef = useRef<number | null>(null);
+  const sessionActiveSecRef = useRef(0);
+  const sessionCharsReadRef = useRef(0);
+  const isSessionPausedRef = useRef(false);
+  isSessionPausedRef.current = isSessionPaused;
+  const audioPlaybackActiveRef = useRef(false);
+  audioPlaybackActiveRef.current = audioPlaybackActive;
+  const committedCharsRef = useRef(0);
+  const committedSecRef = useRef(0);
   const [selectedSentence, setSelectedSentence] = useState('');
 
   const [yatsuLinks, setYatsuLinks] = useState<Record<string, string>>(
@@ -573,6 +614,7 @@ export const JapaneseNovelReaderModal: React.FC<
 
   const loadBookByKey = useCallback(
     async (key: string) => {
+      flushStatsRef.current();
       loadingBookRef.current = true;
       hasSavedOnCloseRef.current = false;
       userInteractedSinceRestoreRef.current = false;
@@ -647,6 +689,19 @@ export const JapaneseNovelReaderModal: React.FC<
       setVnIndex(initVn);
       setScrollPct(Math.round(initRatio * 100));
       sessionStartMsRef.current = Date.now();
+      suppressSpeedUntilRef.current = Date.now() + 1500;
+      lastReadCharsSnapshotRef.current = null;
+      sessionIdRef.current = `ses-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      sessionActiveSecRef.current = 0;
+      sessionCharsReadRef.current = 0;
+      committedCharsRef.current = 0;
+      committedSecRef.current = 0;
+      setSessionActiveSec(0);
+      setSessionCharsRead(0);
+      setSpeedSamples([]);
+      setIsSessionPaused(false);
+      setIsUserIdle(false);
+      lastActivityAtRef.current = Date.now();
       setTimerResetToken((t) => t + 1);
       setSavedBooks(allSaved);
       if (loaded) {
@@ -789,6 +844,8 @@ export const JapaneseNovelReaderModal: React.FC<
       !loadingBookRef.current;
 
     if ((modeChanged || writingChanged) && bookRef.current) {
+      suppressSpeedUntilRef.current = Date.now() + 1100;
+      lastReadCharsSnapshotRef.current = null;
       const curBook = bookRef.current;
       const live = getLiveProgressRef.current() ?? {
         chapterIndex: liveChapterRef.current,
@@ -1586,23 +1643,27 @@ export const JapaneseNovelReaderModal: React.FC<
 
   useEffect(() => {
     const onHideOrUnload = () => {
+      flushStatsRef.current();
       if (!hasSavedOnCloseRef.current && !loadingBookRef.current) {
         flushProgressSyncRef.current();
       }
     };
     const onVisibilityChange = () => {
-      if (
-        document.visibilityState === 'hidden' &&
-        !hasSavedOnCloseRef.current &&
-        !loadingBookRef.current
-      ) {
-        flushProgressSyncRef.current();
+      if (document.visibilityState === 'hidden') {
+        flushStatsRef.current();
+        if (!hasSavedOnCloseRef.current && !loadingBookRef.current) {
+          flushProgressSyncRef.current();
+        }
+      } else {
+        lastActivityAtRef.current = Date.now();
+        setIsUserIdle(false);
       }
     };
     window.addEventListener('pagehide', onHideOrUnload);
     window.addEventListener('beforeunload', onHideOrUnload);
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
+      flushStatsRef.current();
       if (!hasSavedOnCloseRef.current && !loadingBookRef.current) {
         flushProgressSyncRef.current();
       }
@@ -1613,6 +1674,7 @@ export const JapaneseNovelReaderModal: React.FC<
   }, []);
 
   const handleCloseReader = useCallback(async () => {
+    flushStatsRef.current();
     if (progressTimerRef.current) {
       window.clearTimeout(progressTimerRef.current);
       progressTimerRef.current = null;
@@ -1676,7 +1738,12 @@ export const JapaneseNovelReaderModal: React.FC<
   const handleSwitchChapter = useCallback(
     (
       nextIdx: number,
-      opts?: { jumpToEnd?: boolean; targetScrollRatio?: number; targetVnIndex?: number }
+      opts?: {
+        jumpToEnd?: boolean;
+        targetScrollRatio?: number;
+        targetVnIndex?: number;
+        natural?: boolean;
+      }
     ) => {
       if (!book) return;
       const clamped = Math.max(0, Math.min(book.chapters.length - 1, nextIdx));
@@ -1694,6 +1761,17 @@ export const JapaneseNovelReaderModal: React.FC<
       if (progressTimerRef.current) {
         window.clearTimeout(progressTimerRef.current);
         progressTimerRef.current = null;
+      }
+
+      const isNonSequentialJump =
+        !opts?.natural ||
+        Boolean(opts?.jumpToEnd) ||
+        typeof opts?.targetScrollRatio === 'number' ||
+        typeof opts?.targetVnIndex === 'number' ||
+        Math.abs(clamped - book.currentChapter) > 1;
+      if (isNonSequentialJump) {
+        suppressSpeedUntilRef.current = Date.now() + 1100;
+        lastReadCharsSnapshotRef.current = null;
       }
 
       pendingJumpToEndRef.current = Boolean(opts?.jumpToEnd);
@@ -1980,7 +2058,7 @@ export const JapaneseNovelReaderModal: React.FC<
       const nextVn = vnIndex + prefs.vnParagraphsPerStep;
       if (nextVn >= chapterParagraphs.length) {
         if (book.currentChapter < book.chapters.length - 1) {
-          handleSwitchChapter(book.currentChapter + 1);
+          handleSwitchChapter(book.currentChapter + 1, { natural: true });
           toast.success(`Masuk Bab ${book.currentChapter + 2}`);
         } else {
           toast('Sudah di paragraf terakhir buku ini.');
@@ -2363,6 +2441,8 @@ export const JapaneseNovelReaderModal: React.FC<
           setShowShortcuts(false);
         } else if (showAudioPanel) {
           setShowAudioPanel(false);
+        } else if (showStatsModal) {
+          setShowStatsModal(false);
         } else if (showBacklog) {
           setShowBacklog(false);
         } else if (showSettings) {
@@ -2387,7 +2467,7 @@ export const JapaneseNovelReaderModal: React.FC<
         return;
       }
 
-      if (showShortcuts || showToc || showBacklog || showAudioPanel) return;
+      if (showShortcuts || showToc || showBacklog || showAudioPanel || showStatsModal) return;
 
       const lower = e.key.toLowerCase();
       const isVertical = prefs.writingMode === 'vertical';
@@ -2510,6 +2590,13 @@ export const JapaneseNovelReaderModal: React.FC<
         setShowSettings(false);
         setShowToc(false);
         setShowBacklog(false);
+      } else if (lower === 'i') {
+        e.preventDefault();
+        setShowStatsModal((prev) => !prev);
+        setShowSettings(false);
+        setShowToc(false);
+        setShowBacklog(false);
+        setShowAudioPanel(false);
       } else if (lower === 's') {
         e.preventDefault();
         setShowSettings((prev) => !prev);
@@ -2535,6 +2622,7 @@ export const JapaneseNovelReaderModal: React.FC<
     book,
     aiExplainState,
     showAudioPanel,
+    showStatsModal,
     showShortcuts,
     showBacklog,
     showSettings,
@@ -2739,6 +2827,8 @@ export const JapaneseNovelReaderModal: React.FC<
     if (!book || prefs.readingMode === 'vn') return;
     const el = scrollContainerRef.current;
     if (!el) return;
+    suppressSpeedUntilRef.current = Date.now() + 900;
+    lastReadCharsSnapshotRef.current = null;
     userInteractedSinceRestoreRef.current = true;
     const rect = e.currentTarget.getBoundingClientRect();
     const clickRatio = Math.min(
@@ -2962,20 +3052,68 @@ export const JapaneseNovelReaderModal: React.FC<
     toast.success('Font tambahan dihapus.');
   };
 
+  const flushStatsRef = useRef<() => void>(() => {});
+  const flushStatsToStore = useCallback(() => {
+    const curBook = bookRef.current;
+    if (!curBook) return;
+    const totalChars = sessionCharsReadRef.current;
+    const totalSec = sessionActiveSecRef.current;
+    const deltaChars = Math.max(0, totalChars - committedCharsRef.current);
+    const deltaSec = Math.max(0, totalSec - committedSecRef.current);
+    if (deltaChars === 0 && deltaSec === 0) return;
+    commitSessionProgressDelta({
+      sessionId: sessionIdRef.current,
+      bookKey: curBook.storageKey,
+      bookTitle: curBook.title,
+      sessionCharsTotal: totalChars,
+      sessionSecTotal: totalSec,
+      deltaChars,
+      deltaSec,
+    });
+    committedCharsRef.current = totalChars;
+    committedSecRef.current = totalSec;
+  }, []);
+  flushStatsRef.current = flushStatsToStore;
+
+  const handleResetSessionStats = useCallback(() => {
+    flushStatsToStore();
+    sessionIdRef.current = `ses-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    sessionStartMsRef.current = Date.now();
+    sessionActiveSecRef.current = 0;
+    sessionCharsReadRef.current = 0;
+    committedCharsRef.current = 0;
+    committedSecRef.current = 0;
+    lastReadCharsSnapshotRef.current = null;
+    lastActivityAtRef.current = Date.now();
+    setSessionActiveSec(0);
+    setSessionCharsRead(0);
+    setSpeedSamples([]);
+    setIsSessionPaused(false);
+    setIsUserIdle(false);
+    setTimerResetToken((t) => t + 1);
+    toast.success('Statistik kecepatan sesi direset!');
+  }, [flushStatsToStore]);
+
   const handleLogTimerSession = useCallback(
     (mins: number) => {
+      flushStatsToStore();
       onLogReadingSession(bookRef.current?.title || target.title, mins);
     },
-    [onLogReadingSession, target.title]
+    [flushStatsToStore, onLogReadingSession, target.title]
   );
 
   const themeStyle = READER_THEME_STYLES[prefs.theme];
   const directYatsuUrl = resolveYatsuUrl(activeKey, yatsuLinks);
 
-  // Compute live character progress & reading speed across entire book
+  // Compute live character progress across current book & active chapter
   const readingProgressStats = useMemo(() => {
     if (!book || !activeChapter) {
-      return { readChars: 0, totalChars: 0, bookPct: 0, charsPerHour: 0 };
+      return {
+        readChars: 0,
+        totalChars: 0,
+        chapterRemainingChars: 0,
+        bookPct: 0,
+      };
     }
     let charsBefore = 0;
     for (let i = 0; i < book.currentChapter; i++) {
@@ -2994,17 +3132,18 @@ export const JapaneseNovelReaderModal: React.FC<
       chapterCharsRead = Math.round(activeChapter.charCount * (scrollPct / 100));
     }
     const readChars = Math.min(book.totalChars, charsBefore + chapterCharsRead);
+    const chapterRemainingChars = Math.max(
+      0,
+      activeChapter.charCount - chapterCharsRead
+    );
     const bookPct =
       book.totalChars > 0 ? Math.round((readChars / book.totalChars) * 100) : 0;
-    const elapsedNowSec = Math.max(
-      0,
-      Math.floor((Date.now() - sessionStartMsRef.current) / 1000)
-    );
-    const charsPerHour =
-      elapsedNowSec >= 20 && chapterCharsRead > 0
-        ? Math.round((chapterCharsRead / elapsedNowSec) * 3600)
-        : 0;
-    return { readChars, totalChars: book.totalChars, bookPct, charsPerHour };
+    return {
+      readChars,
+      totalChars: book.totalChars,
+      chapterRemainingChars,
+      bookPct,
+    };
   }, [
     book,
     activeChapter,
@@ -3014,6 +3153,102 @@ export const JapaneseNovelReaderModal: React.FC<
     vnIndex,
     scrollPct,
   ]);
+
+  // Measure real forward incremental reading delta (immune to restore & TOC jumps)
+  useEffect(() => {
+    if (loadingBook || !book) return;
+    const curChars = readingProgressStats.readChars;
+    if (Date.now() < suppressSpeedUntilRef.current || restoringScrollRef.current) {
+      lastReadCharsSnapshotRef.current = curChars;
+      return;
+    }
+    if (lastReadCharsSnapshotRef.current === null) {
+      lastReadCharsSnapshotRef.current = curChars;
+      return;
+    }
+    const delta = curChars - lastReadCharsSnapshotRef.current;
+    lastReadCharsSnapshotRef.current = curChars;
+    if (delta > 0 && delta <= 3500) {
+      sessionCharsReadRef.current += delta;
+      setSessionCharsRead(sessionCharsReadRef.current);
+      lastActivityAtRef.current = Date.now();
+      setIsUserIdle(false);
+    }
+  }, [readingProgressStats.readChars, book, loadingBook]);
+
+  // Activity tracker + idle-aware 1s active stopwatch + rolling speed sample collector
+  useEffect(() => {
+    if (!book) return;
+    const markActivity = () => {
+      lastActivityAtRef.current = Date.now();
+      setIsUserIdle(false);
+    };
+    window.addEventListener('pointerdown', markActivity, { passive: true });
+    window.addEventListener('keydown', markActivity, { passive: true });
+    window.addEventListener('wheel', markActivity, { passive: true });
+    window.addEventListener('touchstart', markActivity, { passive: true });
+
+    const intervalId = window.setInterval(() => {
+      const hidden =
+        typeof document !== 'undefined' &&
+        document.visibilityState !== 'visible';
+      const idleNow =
+        !audioPlaybackActiveRef.current &&
+        (hidden || Date.now() - lastActivityAtRef.current > 60_000);
+      setIsUserIdle((prev) => (prev === idleNow ? prev : idleNow));
+      if (idleNow || isSessionPausedRef.current) return;
+
+      const nextSec = sessionActiveSecRef.current + 1;
+      sessionActiveSecRef.current = nextSec;
+      setSessionActiveSec(nextSec);
+
+      if (nextSec % 15 === 0) {
+        const curChars = sessionCharsReadRef.current;
+        const avgCph = computeCharsPerHour(curChars, nextSec);
+        setSpeedSamples((prev) => {
+          const lookbackIdx = Math.max(0, prev.length - 4);
+          const refPt = prev[lookbackIdx];
+          const instantCph =
+            refPt && nextSec - refPt.elapsedSec >= 10
+              ? computeCharsPerHour(
+                  Math.max(0, curChars - refPt.totalChars),
+                  nextSec - refPt.elapsedSec
+                )
+              : avgCph;
+          const next = [
+            ...prev,
+            { elapsedSec: nextSec, totalChars: curChars, instantCph, avgCph },
+          ];
+          return next.length > 160 ? next.slice(next.length - 160) : next;
+        });
+      }
+
+      if (nextSec % 20 === 0) {
+        flushStatsRef.current();
+      }
+    }, 1000);
+
+    return () => {
+      window.removeEventListener('pointerdown', markActivity);
+      window.removeEventListener('keydown', markActivity);
+      window.removeEventListener('wheel', markActivity);
+      window.removeEventListener('touchstart', markActivity);
+      window.clearInterval(intervalId);
+    };
+  }, [book?.storageKey]);
+
+  const sessionCph = useMemo(
+    () => computeCharsPerHour(sessionCharsRead, sessionActiveSec),
+    [sessionCharsRead, sessionActiveSec]
+  );
+
+  const rollingCph = useMemo(() => {
+    if (speedSamples.length === 0) return sessionCph;
+    const latest = speedSamples[speedSamples.length - 1];
+    return latest.instantCph > 0 ? latest.instantCph : sessionCph;
+  }, [speedSamples, sessionCph]);
+
+  const charsPerHour = sessionCph > 0 ? sessionCph : rollingCph;
 
   const annotatedBook = useMemo(() => {
     if (!book) {
@@ -4664,8 +4899,39 @@ export const JapaneseNovelReaderModal: React.FC<
                   <ReaderSessionTimerButton
                     active={Boolean(book)}
                     resetToken={timerResetToken}
+                    externalSec={sessionActiveSec}
+                    paused={isSessionPaused || isUserIdle}
                     onLog={handleLogTimerSession}
                   />
+
+                  {/* Live Reading Speed & Stats Trigger */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowStatsModal(true);
+                      setShowSettings(false);
+                      setShowToc(false);
+                      setShowBacklog(false);
+                      setShowAudioPanel(false);
+                    }}
+                    title="Statistik & Kecepatan Membaca (I)"
+                    className={`hidden sm:inline-flex p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold items-center gap-1 transition cursor-pointer ${
+                      showStatsModal
+                        ? 'bg-sky-500 text-slate-950 border-sky-400'
+                        : charsPerHour > 0
+                          ? 'bg-sky-500/15 border-sky-400/35 text-sky-300'
+                          : themeStyle.subtleBtn
+                    }`}
+                  >
+                    <Gauge className="w-3.5 h-3.5 shrink-0" />
+                    <span className="font-mono text-[11px]">
+                      {charsPerHour > 0
+                        ? charsPerHour >= 1000
+                          ? `${(charsPerHour / 1000).toFixed(1)}k/j`
+                          : `${charsPerHour}/j`
+                        : 'Stats'}
+                    </span>
+                  </button>
 
                   {/* Desktop Bookmark */}
                   <button
@@ -5040,6 +5306,31 @@ export const JapaneseNovelReaderModal: React.FC<
               >
                 <Headphones className="w-3 h-3" />
                 <span>Audio/AI</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowStatsModal(true);
+                  setShowSettings(false);
+                  setShowToc(false);
+                  setShowBacklog(false);
+                  setShowAudioPanel(false);
+                }}
+                className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${
+                  charsPerHour > 0
+                    ? 'bg-sky-500/20 border-sky-400/40 text-sky-300'
+                    : themeStyle.subtleBtn
+                }`}
+              >
+                <Gauge className="w-3 h-3" />
+                <span className="font-mono">
+                  {charsPerHour > 0
+                    ? charsPerHour >= 1000
+                      ? `${(charsPerHour / 1000).toFixed(1)}k/j`
+                      : `${charsPerHour}/j`
+                    : 'Stats'}
+                </span>
               </button>
 
               <button
@@ -8494,33 +8785,42 @@ export const JapaneseNovelReaderModal: React.FC<
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setShowToc(true);
-                setShowSettings(false);
-                setShowBacklog(false);
-                setShowAudioPanel(false);
-              }}
-              title="Buka Daftar Bab & Bookmark"
-              className={`min-w-0 flex-1 text-[11px] font-mono text-center truncate px-2 py-1 rounded-lg hover:bg-white/10 transition cursor-pointer flex items-center justify-center gap-1.5 ${themeStyle.mutedText}`}
+            <div
+              className={`min-w-0 flex-1 text-[11px] font-mono text-center truncate flex items-center justify-center gap-1 ${themeStyle.mutedText}`}
             >
-              <span className="truncate max-w-[8rem] sm:max-w-xs font-semibold">
-                Bab {book.currentChapter + 1}/{book.chapters.length}
-              </span>
-              <span>•</span>
-              <span>
-                Hal {pageInfo.current}/{pageInfo.total}
-              </span>
-              <span>•</span>
-              <span>{readingProgressStats.bookPct}%</span>
-              {readingProgressStats.charsPerHour > 0 && (
-                <span className="hidden md:inline text-sky-400">
-                  • ~{readingProgressStats.charsPerHour.toLocaleString('id-ID')}{' '}
-                  huruf/jam
+              <button
+                type="button"
+                onClick={() => {
+                  setShowToc(true);
+                  setShowSettings(false);
+                  setShowBacklog(false);
+                  setShowAudioPanel(false);
+                }}
+                title="Buka Daftar Bab & Bookmark"
+                className="min-w-0 truncate px-2 py-1 rounded-lg hover:bg-white/10 transition cursor-pointer inline-flex items-center gap-1.5"
+              >
+                <span className="truncate max-w-[8rem] sm:max-w-xs font-semibold">
+                  Bab {book.currentChapter + 1}/{book.chapters.length}
                 </span>
+                <span>•</span>
+                <span>
+                  Hal {pageInfo.current}/{pageInfo.total}
+                </span>
+                <span>•</span>
+                <span>{readingProgressStats.bookPct}%</span>
+              </button>
+              {charsPerHour > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowStatsModal(true)}
+                  title="Klik untuk buka Statistik & Grafik Kecepatan Membaca (I)"
+                  className="hidden md:inline-flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-white/10 text-sky-400 font-bold transition cursor-pointer shrink-0"
+                >
+                  <span>•</span>
+                  <span>~{charsPerHour.toLocaleString('id-ID')} huruf/jam</span>
+                </button>
               )}
-            </button>
+            </div>
 
             <div className="flex items-center gap-1 shrink-0">
               <button
@@ -8544,6 +8844,66 @@ export const JapaneseNovelReaderModal: React.FC<
             </div>
           </footer>
         )}
+
+      {/* OPTIONAL FLOATING MINI READING SPEED HUD */}
+      {prefs.showSpeedHud && book && !audioFocusMode && !showStatsModal && (
+        <button
+          type="button"
+          onClick={() => setShowStatsModal(true)}
+          title="Klik untuk buka Statistik Lengkap Membaca (I)"
+          className={`fixed left-3 z-[104] px-2.5 py-1 rounded-xl border backdrop-blur-md shadow-lg text-[10px] font-mono font-bold inline-flex items-center gap-2 transition hover:scale-[1.02] cursor-pointer ${
+            hideChrome
+              ? 'bottom-[max(0.45rem,env(safe-area-inset-bottom))]'
+              : prefs.readingMode === 'vn'
+                ? 'bottom-16'
+                : 'bottom-12'
+          } ${themeStyle.panel}`}
+        >
+          <Gauge className="w-3 h-3 text-sky-400 shrink-0" />
+          <span className="text-sky-300">
+            {charsPerHour > 0
+              ? `${charsPerHour.toLocaleString('id-ID')}/j`
+              : 'Mengukur...'}
+          </span>
+          <span className="opacity-65">+{sessionCharsRead.toLocaleString('id-ID')}</span>
+          <span className="opacity-65">{formatStopwatchClock(sessionActiveSec)}</span>
+          {charsPerHour >= 100 && (
+            <span className="hidden sm:inline text-violet-300">
+              •{' '}
+              {formatEstimatedRemaining(
+                Math.max(0, book.totalChars - readingProgressStats.readChars),
+                charsPerHour
+              )}
+            </span>
+          )}
+        </button>
+      )}
+
+      {/* READING STATISTICS & SPEED MODAL */}
+      <ReaderStatsModal
+        open={showStatsModal}
+        onClose={() => setShowStatsModal(false)}
+        book={book}
+        readCharsInBook={readingProgressStats.readChars}
+        chapterRemainingChars={readingProgressStats.chapterRemainingChars}
+        bookPct={readingProgressStats.bookPct}
+        sessionCharsRead={sessionCharsRead}
+        sessionActiveSec={sessionActiveSec}
+        sessionCph={sessionCph}
+        rollingCph={rollingCph}
+        speedSamples={speedSamples}
+        isPaused={isSessionPaused}
+        isIdle={isUserIdle}
+        showSpeedHud={prefs.showSpeedHud}
+        onToggleShowSpeedHud={() =>
+          updatePrefs({ showSpeedHud: !prefs.showSpeedHud })
+        }
+        onTogglePause={() => setIsSessionPaused((p) => !p)}
+        onResetSession={handleResetSessionStats}
+        onLogSessionToTracker={(mins) => handleLogTimerSession(mins)}
+        onJumpChapter={(chIdx) => handleSwitchChapter(chIdx)}
+        themeStyle={themeStyle}
+      />
     </div>,
     document.body
   );

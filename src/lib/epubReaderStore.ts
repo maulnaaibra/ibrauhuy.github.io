@@ -249,6 +249,7 @@ export interface ReaderPreferences {
   wordClickAction: ReaderWordClickAction;
   colorParticlesInVocab: boolean;
   hideKnownFurigana: boolean;
+  showSpeedHud: boolean;
   vocabColors: VocabColorPalette;
   posColors: PosColorPalette;
   pitchColors: PitchColorPalette;
@@ -288,6 +289,7 @@ export const DEFAULT_READER_PREFS: ReaderPreferences = {
   wordClickAction: 'popover',
   colorParticlesInVocab: true,
   hideKnownFurigana: false,
+  showSpeedHud: false,
   vocabColors: DEFAULT_VOCAB_COLORS,
   posColors: DEFAULT_POS_COLORS,
   pitchColors: DEFAULT_PITCH_COLORS,
@@ -480,6 +482,10 @@ export function loadReaderPrefs(): ReaderPreferences {
         typeof parsed.hideKnownFurigana === 'boolean'
           ? parsed.hideKnownFurigana
           : DEFAULT_READER_PREFS.hideKnownFurigana;
+      const showSpeedHud =
+        typeof parsed.showSpeedHud === 'boolean'
+          ? parsed.showSpeedHud
+          : DEFAULT_READER_PREFS.showSpeedHud;
       const rawVocabColors = parsed.vocabColors as
         | Partial<VocabColorPalette>
         | undefined;
@@ -582,6 +588,7 @@ export function loadReaderPrefs(): ReaderPreferences {
         wordClickAction,
         colorParticlesInVocab,
         hideKnownFurigana,
+        showSpeedHud,
         vocabColors,
         posColors,
         pitchColors,
