@@ -3645,6 +3645,7 @@ export const JapaneseNovelReaderModal: React.FC<
   return createPortal(
     <div
       ref={readerRootRef}
+      data-novel-reader="true"
       className={`fixed inset-0 z-[100] w-screen h-[100dvh] flex flex-col overflow-hidden ${themeStyle.shell}`}
       onDragOver={(e) => {
         e.preventDefault();
