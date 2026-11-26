@@ -1321,3 +1321,102 @@ html[data-custom-text="true"] :is(#root, [data-mobile-bottom-nav="true"], [data-
   border: 0;
   pointer-events: none;
 }
+
+/* ============================================================================
+   JAPANESE WORD COLORING (Vocab Status / POS / Pitch Accent) & INTERACTION
+   ============================================================================ */
+.jp-tok {
+  color: inherit;
+  border-radius: 0.22em;
+  transition: color 0.14s ease, background-color 0.14s ease;
+}
+
+.jp-novel-reader-content[data-furigana="show"][data-text-color-mode]:not([data-text-color-mode="off"]) .jp-tok rt {
+  opacity: 0.9;
+}
+
+.jp-novel-reader-content[data-word-clickable="true"] .jp-tok {
+  cursor: pointer;
+}
+
+.jp-novel-reader-content[data-word-clickable="true"] .jp-tok:hover {
+  background-color: rgba(148, 163, 184, 0.15);
+  text-decoration: underline;
+  text-decoration-color: currentColor;
+  text-underline-offset: 0.22em;
+  text-decoration-thickness: 1px;
+}
+
+.jp-tok-selected {
+  background-color: rgba(56, 189, 248, 0.22) !important;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.45);
+}
+
+/* Status Kosakata Mode */
+.jp-novel-reader-content[data-text-color-mode="vocab"] .jp-tok[data-jp-status="new"] {
+  color: var(--jp-vocab-new, #74d4b7);
+}
+.jp-novel-reader-content[data-text-color-mode="vocab"] .jp-tok[data-jp-status="learning"] {
+  color: var(--jp-vocab-learning, #797ab5);
+}
+.jp-novel-reader-content[data-text-color-mode="vocab"] .jp-tok[data-jp-status="due"] {
+  color: var(--jp-vocab-due, #d9684e);
+}
+.jp-novel-reader-content[data-text-color-mode="vocab"] .jp-tok[data-jp-status="known"] {
+  color: var(--jp-vocab-known, inherit);
+}
+.jp-novel-reader-content[data-text-color-mode="vocab"] .jp-tok[data-jp-status="ignored"] {
+  color: var(--jp-vocab-ignored, #8b949e);
+}
+.jp-novel-reader-content[data-text-color-mode="vocab"][data-color-particles="true"] .jp-tok[data-jp-status="particle"] {
+  color: var(--jp-vocab-particle, #797ab5);
+}
+.jp-novel-reader-content[data-text-color-mode="vocab"][data-color-particles="false"] .jp-tok[data-jp-status="particle"] {
+  color: inherit;
+}
+
+/* Kelas Kata (POS) Mode */
+.jp-novel-reader-content[data-text-color-mode="pos"] .jp-tok[data-jp-pos="noun"] {
+  color: var(--jp-pos-noun, #d9684e);
+}
+.jp-novel-reader-content[data-text-color-mode="pos"] .jp-tok[data-jp-pos="verb"] {
+  color: var(--jp-pos-verb, #74d4b7);
+}
+.jp-novel-reader-content[data-text-color-mode="pos"] .jp-tok[data-jp-pos="adj"] {
+  color: var(--jp-pos-adj, #f0b35e);
+}
+.jp-novel-reader-content[data-text-color-mode="pos"] .jp-tok[data-jp-pos="particle"] {
+  color: var(--jp-pos-particle, #797ab5);
+}
+.jp-novel-reader-content[data-text-color-mode="pos"] .jp-tok[data-jp-pos="adverb"] {
+  color: var(--jp-pos-adverb, #c58be6);
+}
+.jp-novel-reader-content[data-text-color-mode="pos"] .jp-tok[data-jp-pos="other"] {
+  color: var(--jp-pos-other, inherit);
+}
+
+/* Pitch Accent Mode */
+.jp-novel-reader-content[data-text-color-mode="pitch"] .jp-tok[data-jp-pitch="heiban"] {
+  color: var(--jp-pitch-heiban, #5cb8ff);
+}
+.jp-novel-reader-content[data-text-color-mode="pitch"] .jp-tok[data-jp-pitch="atamadaka"] {
+  color: var(--jp-pitch-atamadaka, #e06c58);
+}
+.jp-novel-reader-content[data-text-color-mode="pitch"] .jp-tok[data-jp-pitch="nakadaka"] {
+  color: var(--jp-pitch-nakadaka, #f0aa4f);
+}
+.jp-novel-reader-content[data-text-color-mode="pitch"] .jp-tok[data-jp-pitch="odaka"] {
+  color: var(--jp-pitch-odaka, #63cfa5);
+}
+.jp-novel-reader-content[data-text-color-mode="pitch"] .jp-tok[data-jp-pitch="unknown"] {
+  color: var(--jp-pitch-unknown, inherit);
+}
+
+/* Auto-hide furigana on known words (hover reveals subtly) */
+.jp-novel-reader-content[data-hide-known-furigana="true"]:not([data-furigana="hide"]) .jp-tok[data-jp-status="known"] rt {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.jp-novel-reader-content[data-hide-known-furigana="true"]:not([data-furigana="hide"]) .jp-tok[data-jp-status="known"]:hover rt {
+  opacity: 0.92;
+}

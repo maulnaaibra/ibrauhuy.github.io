@@ -78,6 +78,134 @@ export type ReaderBgMediaKind =
   | 'video'
   | 'youtube'
   | 'local-video';
+export type ReaderTextColorMode = 'off' | 'vocab' | 'pos' | 'pitch';
+export type ReaderWordClickAction = 'popover' | 'cycle' | 'off';
+
+export interface VocabColorPalette {
+  new: string;
+  learning: string;
+  due: string;
+  known: string;
+  ignored: string;
+  particle: string;
+}
+
+export interface PosColorPalette {
+  noun: string;
+  verb: string;
+  adj: string;
+  particle: string;
+  adverb: string;
+  other: string;
+}
+
+export interface PitchColorPalette {
+  heiban: string;
+  atamadaka: string;
+  nakadaka: string;
+  odaka: string;
+  unknown: string;
+}
+
+export const DEFAULT_VOCAB_COLORS: VocabColorPalette = {
+  new: '#74d4b7',
+  learning: '#797ab5',
+  due: '#d9684e',
+  known: '',
+  ignored: '#8b949e',
+  particle: '#797ab5',
+};
+
+export const DEFAULT_POS_COLORS: PosColorPalette = {
+  noun: '#d9684e',
+  verb: '#74d4b7',
+  adj: '#f0b35e',
+  particle: '#797ab5',
+  adverb: '#c58be6',
+  other: '',
+};
+
+export const DEFAULT_PITCH_COLORS: PitchColorPalette = {
+  heiban: '#5cb8ff',
+  atamadaka: '#e06c58',
+  nakadaka: '#f0aa4f',
+  odaka: '#63cfa5',
+  unknown: '',
+};
+
+export const READER_WORD_COLOR_PRESETS: Array<{
+  id: string;
+  label: string;
+  desc: string;
+  vocabColors: VocabColorPalette;
+  posColors: PosColorPalette;
+  pitchColors: PitchColorPalette;
+}> = [
+  {
+    id: 'screenshot-matte',
+    label: 'Matte Studio (Contoh)',
+    desc: 'Mint teal, lavender, & coral lembut di background gelap',
+    vocabColors: DEFAULT_VOCAB_COLORS,
+    posColors: DEFAULT_POS_COLORS,
+    pitchColors: DEFAULT_PITCH_COLORS,
+  },
+  {
+    id: 'migaku-vivid',
+    label: 'Vivid Cerah',
+    desc: 'Warna kontras tinggi jelas untuk semua mode',
+    vocabColors: {
+      new: '#38bdf8',
+      learning: '#f59e0b',
+      due: '#f43f5e',
+      known: '',
+      ignored: '#64748b',
+      particle: '#818cf8',
+    },
+    posColors: {
+      noun: '#fb7185',
+      verb: '#34d399',
+      adj: '#fbbf24',
+      particle: '#818cf8',
+      adverb: '#c084fc',
+      other: '',
+    },
+    pitchColors: {
+      heiban: '#38bdf8',
+      atamadaka: '#fb7185',
+      nakadaka: '#fbbf24',
+      odaka: '#34d399',
+      unknown: '',
+    },
+  },
+  {
+    id: 'sepia-ink',
+    label: 'Kertas Sepia / Terang',
+    desc: 'Kontras tinta dalam agar jelas di tema Sepia & Terang',
+    vocabColors: {
+      new: '#0f766e',
+      learning: '#4338ca',
+      due: '#b91c1c',
+      known: '',
+      ignored: '#78716c',
+      particle: '#6366f1',
+    },
+    posColors: {
+      noun: '#b91c1c',
+      verb: '#0f766e',
+      adj: '#b45309',
+      particle: '#4338ca',
+      adverb: '#7e22ce',
+      other: '',
+    },
+    pitchColors: {
+      heiban: '#0369a1',
+      atamadaka: '#b91c1c',
+      nakadaka: '#c2410c',
+      odaka: '#047857',
+      unknown: '',
+    },
+  },
+];
 
 export interface ParsedReaderBgMedia {
   kind: ReaderBgMediaKind;
@@ -94,7 +222,7 @@ export interface ReaderPreferences {
   fontSize: number;
   fontWeight: number;
   fontFamily: string;
-  theme: 'navy' | 'charcoal' | 'amoled' | 'sepia' | 'light';
+  theme: 'slate' | 'navy' | 'charcoal' | 'amoled' | 'sepia' | 'light';
   lineHeight: number;
   letterSpacing: number;
   maxWidth: 'narrow' | 'medium' | 'wide' | 'full' | 'custom';
@@ -114,6 +242,13 @@ export interface ReaderPreferences {
   bgPosition: ReaderBgPosition;
   bgVideoMuted: boolean;
   bgVideoVolume: number;
+  textColorMode: ReaderTextColorMode;
+  wordClickAction: ReaderWordClickAction;
+  colorParticlesInVocab: boolean;
+  hideKnownFurigana: boolean;
+  vocabColors: VocabColorPalette;
+  posColors: PosColorPalette;
+  pitchColors: PitchColorPalette;
 }
 
 export const DEFAULT_READER_PREFS: ReaderPreferences = {
@@ -143,7 +278,26 @@ export const DEFAULT_READER_PREFS: ReaderPreferences = {
   bgPosition: 'center',
   bgVideoMuted: true,
   bgVideoVolume: 100,
+  textColorMode: 'off',
+  wordClickAction: 'popover',
+  colorParticlesInVocab: true,
+  hideKnownFurigana: false,
+  vocabColors: DEFAULT_VOCAB_COLORS,
+  posColors: DEFAULT_POS_COLORS,
+  pitchColors: DEFAULT_PITCH_COLORS,
 };
+
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+function sanitizeReaderColorHex(value: unknown, fallback: string): string {
+  if (value === '') return '';
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '') return '';
+    if (HEX_COLOR_RE.test(trimmed)) return trimmed.toLowerCase();
+  }
+  return fallback;
+}
 
 const READER_PREFS_STORAGE_KEY = 'immersiontrack_reader_prefs_v1';
 const YATSU_LINKS_STORAGE_KEY = 'immersiontrack_yatsu_links_v1';
@@ -184,6 +338,7 @@ export function loadReaderPrefs(): ReaderPreferences {
           ? parsed.fontFamily.trim()
           : DEFAULT_READER_PREFS.fontFamily;
       const theme =
+        parsed.theme === 'slate' ||
         parsed.theme === 'charcoal' ||
         parsed.theme === 'amoled' ||
         parsed.theme === 'sepia' ||
@@ -279,6 +434,92 @@ export function loadReaderPrefs(): ReaderPreferences {
         Number.isFinite(parsed.bgVideoVolume)
           ? Math.min(300, Math.max(0, Math.round(parsed.bgVideoVolume)))
           : DEFAULT_READER_PREFS.bgVideoVolume;
+      const textColorMode: ReaderTextColorMode =
+        parsed.textColorMode === 'vocab' ||
+        parsed.textColorMode === 'pos' ||
+        parsed.textColorMode === 'pitch'
+          ? parsed.textColorMode
+          : 'off';
+      const wordClickAction: ReaderWordClickAction =
+        parsed.wordClickAction === 'cycle' || parsed.wordClickAction === 'off'
+          ? parsed.wordClickAction
+          : 'popover';
+      const colorParticlesInVocab =
+        typeof parsed.colorParticlesInVocab === 'boolean'
+          ? parsed.colorParticlesInVocab
+          : DEFAULT_READER_PREFS.colorParticlesInVocab;
+      const hideKnownFurigana =
+        typeof parsed.hideKnownFurigana === 'boolean'
+          ? parsed.hideKnownFurigana
+          : DEFAULT_READER_PREFS.hideKnownFurigana;
+      const rawVocabColors = parsed.vocabColors as
+        | Partial<VocabColorPalette>
+        | undefined;
+      const vocabColors: VocabColorPalette = {
+        new: sanitizeReaderColorHex(rawVocabColors?.new, DEFAULT_VOCAB_COLORS.new),
+        learning: sanitizeReaderColorHex(
+          rawVocabColors?.learning,
+          DEFAULT_VOCAB_COLORS.learning
+        ),
+        due: sanitizeReaderColorHex(rawVocabColors?.due, DEFAULT_VOCAB_COLORS.due),
+        known: sanitizeReaderColorHex(
+          rawVocabColors?.known,
+          DEFAULT_VOCAB_COLORS.known
+        ),
+        ignored: sanitizeReaderColorHex(
+          rawVocabColors?.ignored,
+          DEFAULT_VOCAB_COLORS.ignored
+        ),
+        particle: sanitizeReaderColorHex(
+          rawVocabColors?.particle,
+          DEFAULT_VOCAB_COLORS.particle
+        ),
+      };
+      const rawPosColors = parsed.posColors as
+        | Partial<PosColorPalette>
+        | undefined;
+      const posColors: PosColorPalette = {
+        noun: sanitizeReaderColorHex(rawPosColors?.noun, DEFAULT_POS_COLORS.noun),
+        verb: sanitizeReaderColorHex(rawPosColors?.verb, DEFAULT_POS_COLORS.verb),
+        adj: sanitizeReaderColorHex(rawPosColors?.adj, DEFAULT_POS_COLORS.adj),
+        particle: sanitizeReaderColorHex(
+          rawPosColors?.particle,
+          DEFAULT_POS_COLORS.particle
+        ),
+        adverb: sanitizeReaderColorHex(
+          rawPosColors?.adverb,
+          DEFAULT_POS_COLORS.adverb
+        ),
+        other: sanitizeReaderColorHex(
+          rawPosColors?.other,
+          DEFAULT_POS_COLORS.other
+        ),
+      };
+      const rawPitchColors = parsed.pitchColors as
+        | Partial<PitchColorPalette>
+        | undefined;
+      const pitchColors: PitchColorPalette = {
+        heiban: sanitizeReaderColorHex(
+          rawPitchColors?.heiban,
+          DEFAULT_PITCH_COLORS.heiban
+        ),
+        atamadaka: sanitizeReaderColorHex(
+          rawPitchColors?.atamadaka,
+          DEFAULT_PITCH_COLORS.atamadaka
+        ),
+        nakadaka: sanitizeReaderColorHex(
+          rawPitchColors?.nakadaka,
+          DEFAULT_PITCH_COLORS.nakadaka
+        ),
+        odaka: sanitizeReaderColorHex(
+          rawPitchColors?.odaka,
+          DEFAULT_PITCH_COLORS.odaka
+        ),
+        unknown: sanitizeReaderColorHex(
+          rawPitchColors?.unknown,
+          DEFAULT_PITCH_COLORS.unknown
+        ),
+      };
       return {
         readingMode,
         writingMode,
@@ -306,6 +547,13 @@ export function loadReaderPrefs(): ReaderPreferences {
         bgPosition,
         bgVideoMuted,
         bgVideoVolume,
+        textColorMode,
+        wordClickAction,
+        colorParticlesInVocab,
+        hideKnownFurigana,
+        vocabColors,
+        posColors,
+        pitchColors,
       };
     }
   } catch {

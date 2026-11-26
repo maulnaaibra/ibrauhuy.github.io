@@ -33,6 +33,7 @@ import {
   Maximize2,
   Minimize2,
   Minus,
+  Palette,
   Pause,
   Play,
   Plus,
@@ -130,6 +131,27 @@ import {
   type AudioFocusControlRequest,
   type AudioTrackingStatusPayload,
 } from './ReaderAudiobookDock';
+import { ReaderWordColorPanel } from './ReaderWordColorPanel';
+import {
+  ReaderWordPopover,
+  type ActiveInspectedWord,
+} from './ReaderWordPopover';
+import type {
+  JapanesePosCategory,
+  PitchAccentPattern,
+} from '../lib/japaneseCoreLexicon';
+import { annotateChapterHtmlWithTokens } from '../lib/japaneseTextAnalyzer';
+import {
+  VOCAB_CHANGED_EVENT,
+  cycleWordVocabStatus,
+  getWordVocabEntry,
+  loadVocabStore,
+  resolveEffectiveWordStatus,
+  setWordPitchOverride,
+  setWordVocabStatus,
+  type VocabDictionaryMap,
+  type VocabStatus,
+} from '../lib/vocabTrackerStore';
 
 export interface NovelReaderTarget {
   storageKey: string;
@@ -167,6 +189,21 @@ const READER_THEME_STYLES: Record<
     accentText: string;
   }
 > = {
+  slate: {
+    shell: 'bg-[#232729] text-[#d8dcdc]',
+    toolbar: 'bg-[#1d2022]/95 border-white/10 text-[#e6e9ea]',
+    toolbarGlass: 'bg-[#1d2022]/80 border-white/12 text-[#e6e9ea]',
+    panel: 'bg-[#282d30] border-white/12 text-[#eef1f2]',
+    subtleBtn:
+      'bg-white/8 hover:bg-white/14 border-white/12 text-[#dce0e1]',
+    mutedText: 'text-[#9aa3a7]',
+    articleBg: 'bg-[#232729] text-[#d8dcdc]',
+    vnCard: 'bg-[#272b2e]/95 border-white/12 shadow-2xl',
+    cardRgb: '39, 43, 46',
+    surfaceRgb: '35, 39, 41',
+    cardBorder: 'rgba(255, 255, 255, 0.12)',
+    accentText: 'text-teal-300',
+  },
   navy: {
     shell: 'bg-[#0b121c] text-[#eef4fb]',
     toolbar: 'bg-[#0f1826]/95 border-[#1e2d42] text-[#f3f7fc]',
@@ -257,6 +294,7 @@ const READER_SHORTCUTS: Array<{ keys: string[]; desc: string }> = [
   { keys: ['P'], desc: 'Ganti mode baca (Continuous / Page / VN)' },
   { keys: ['T'], desc: 'Ganti arah baca (Horizontal ↔ Vertikal 縦書き)' },
   { keys: ['F'], desc: 'Ganti mode Furigana (Tampil / Hover / Sembunyi)' },
+  { keys: ['W'], desc: 'Ganti mode Warna Kata (Vocab / Kelas Kata / Pitch / Mati)' },
   { keys: ['+', '-'], desc: 'Perbesar / perkecil ukuran huruf' },
   { keys: ['B'], desc: 'Simpan Bookmark posisi sekarang' },
   { keys: ['C'], desc: 'Buka Daftar Bab & Bookmark' },
@@ -367,6 +405,7 @@ export const JapaneseNovelReaderModal: React.FC<
   const vnVerticalViewportRef = useRef<HTMLDivElement | null>(null);
   const vnStreamEndRef = useRef<HTMLDivElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
+  const focusArticleRef = useRef<HTMLDivElement | null>(null);
   const vnRevealControllerRef = useRef<VnRevealController | null>(null);
   const vnPreviewContainerRef = useRef<HTMLDivElement | null>(null);
   const vnPreviewControllerRef = useRef<VnRevealController | null>(null);
@@ -403,9 +442,14 @@ export const JapaneseNovelReaderModal: React.FC<
     'chapters'
   );
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'reading' | 'vn' | 'background'>(
-    'reading'
-  );
+  const [settingsTab, setSettingsTab] = useState<
+    'reading' | 'colors' | 'vn' | 'background'
+  >('reading');
+  const [vocabMap, setVocabMap] = useState<VocabDictionaryMap>(loadVocabStore);
+  const [vocabVersion, setVocabVersion] = useState(0);
+  const [inspectedWord, setInspectedWord] =
+    useState<ActiveInspectedWord | null>(null);
+  const inspectedWordElRef = useRef<HTMLElement | null>(null);
   const [bgUrlDraft, setBgUrlDraft] = useState<string>(() => {
     const saved = loadReaderPrefs().bgImageUrl;
     return saved.startsWith('data:') || saved.startsWith('idb:') ? '' : saved;
@@ -2225,6 +2269,21 @@ export const JapaneseNovelReaderModal: React.FC<
               ? 'Furigana: Hover'
               : 'Furigana: Sembunyi'
         );
+      } else if (lower === 'w') {
+        e.preventDefault();
+        const modeOrder = ['off', 'vocab', 'pos', 'pitch'] as const;
+        const idx = modeOrder.indexOf(prefs.textColorMode);
+        const nextMode = modeOrder[(idx + 1) % modeOrder.length];
+        updatePrefs({ textColorMode: nextMode });
+        toast.success(
+          nextMode === 'vocab'
+            ? 'Warna Kata: Status Kosakata'
+            : nextMode === 'pos'
+              ? 'Warna Kata: Kelas Kata'
+              : nextMode === 'pitch'
+                ? 'Warna Kata: Pitch Accent'
+                : 'Warna Kata: Mati'
+        );
       } else if (e.key === '+' || e.key === '=') {
         e.preventDefault();
         updatePrefs({ fontSize: Math.min(34, prefs.fontSize + 1) });
@@ -2284,6 +2343,7 @@ export const JapaneseNovelReaderModal: React.FC<
     prefs.writingMode,
     prefs.readingMode,
     prefs.furigana,
+    prefs.textColorMode,
     prefs.fontSize,
     handleCloseReader,
     handleStepForward,
@@ -2764,6 +2824,39 @@ export const JapaneseNovelReaderModal: React.FC<
     return annotateBookChaptersForSync(book.chapters);
   }, [book?.storageKey, book?.chapters]);
 
+  const displayChapters = useMemo(() => {
+    if (prefs.textColorMode === 'off') {
+      return annotatedBook.annotatedChapters;
+    }
+    return annotatedBook.annotatedChapters.map((ch) => ({
+      ...ch,
+      html: annotateChapterHtmlWithTokens(ch.html),
+    }));
+  }, [annotatedBook.annotatedChapters, prefs.textColorMode]);
+
+  useEffect(() => {
+    const refreshVocab = () => {
+      setVocabMap({ ...loadVocabStore() });
+      setVocabVersion((v) => v + 1);
+    };
+    window.addEventListener(VOCAB_CHANGED_EVENT, refreshVocab);
+    return () => window.removeEventListener(VOCAB_CHANGED_EVENT, refreshVocab);
+  }, []);
+
+  useEffect(() => {
+    if (!inspectedWord) return;
+    const onPointerDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      if (t.closest('[data-reader-word-popover="true"]') || t.closest('.jp-tok')) {
+        return;
+      }
+      setInspectedWord(null);
+    };
+    window.addEventListener('mousedown', onPointerDown);
+    return () => window.removeEventListener('mousedown', onPointerDown);
+  }, [inspectedWord]);
+
   const [audioTrackingState, setAudioTrackingState] =
     useState<AudioTrackingStatusPayload | null>(null);
   const [calibrateClickMode, setCalibrateClickMode] = useState(false);
@@ -2838,6 +2931,22 @@ export const JapaneseNovelReaderModal: React.FC<
     }
     return { activePos, items };
   }, [speakableSyncBlocks, audioTrackingState?.activeTarget, book]);
+
+  const displayFocusEpubView = useMemo(() => {
+    if (prefs.textColorMode === 'off') {
+      return focusEpubView;
+    }
+    return {
+      activePos: focusEpubView.activePos,
+      items: focusEpubView.items.map(({ pos, block }) => ({
+        pos,
+        block: {
+          ...block,
+          html: annotateChapterHtmlWithTokens(block.html),
+        },
+      })),
+    };
+  }, [focusEpubView, prefs.textColorMode]);
 
   const chapterTitles = useMemo(
     () => book?.chapters.map((c) => c.title) ?? [],
@@ -3050,9 +3159,82 @@ export const JapaneseNovelReaderModal: React.FC<
     [handleSwitchChapter, pagedWidthPx, syncProgressFromViewport]
   );
 
+  const tryHandleWordClick = useCallback(
+    (targetEl: HTMLElement): boolean => {
+      if (prefs.textColorMode === 'off' || prefs.wordClickAction === 'off') {
+        return false;
+      }
+      const tokEl = targetEl.closest<HTMLElement>('.jp-tok');
+      if (!tokEl) return false;
+
+      const surface = tokEl.dataset.jpW || tokEl.textContent || '';
+      const lemma = tokEl.dataset.jpL || surface;
+      const reading = tokEl.dataset.jpR || '';
+      const pos = (tokEl.dataset.jpPos as JapanesePosCategory) || 'noun';
+      const pitchPattern =
+        (tokEl.dataset.jpPitch as PitchAccentPattern) || 'unknown';
+      const pitchNumRaw = Number(tokEl.dataset.jpPn);
+      const pitchNum = Number.isFinite(pitchNumRaw) ? pitchNumRaw : undefined;
+      const meaning = tokEl.dataset.jpM || undefined;
+      const keyTarget = lemma || surface;
+
+      if (prefs.wordClickAction === 'cycle') {
+        const nextSt = cycleWordVocabStatus(keyTarget);
+        const label =
+          nextSt === 'known'
+            ? 'Hafal'
+            : nextSt === 'learning'
+              ? 'Belajar'
+              : 'Baru';
+        toast.success(`「${keyTarget}」 → ${label}`, { duration: 1400 });
+        return true;
+      }
+
+      if (inspectedWordElRef.current && inspectedWordElRef.current !== tokEl) {
+        inspectedWordElRef.current.classList.remove('jp-tok-selected');
+      }
+      inspectedWordElRef.current = tokEl;
+      tokEl.classList.add('jp-tok-selected');
+
+      const rect = tokEl.getBoundingClientRect();
+      const entry = getWordVocabEntry(lemma, surface);
+      const currentStatus = resolveEffectiveWordStatus(
+        lemma,
+        surface,
+        pos,
+        vocabMap
+      );
+      const syncBlock = tokEl.closest<HTMLElement>(
+        '[data-sync-chapter][data-sync-para]'
+      );
+      const syncChapter = syncBlock ? Number(syncBlock.dataset.syncChapter) : undefined;
+      const syncPara = syncBlock ? Number(syncBlock.dataset.syncPara) : undefined;
+
+      setInspectedWord({
+        surface,
+        lemma,
+        reading,
+        pos,
+        pitchPattern: entry?.customPitchPattern ?? pitchPattern,
+        pitchNum: entry?.customPitchNum ?? pitchNum,
+        meaning: entry?.customMeaning ?? meaning,
+        currentStatus,
+        anchorRect: {
+          top: rect.top,
+          left: rect.left,
+          bottom: rect.bottom,
+          width: rect.width,
+        },
+        syncChapter: Number.isFinite(syncChapter) ? syncChapter : undefined,
+        syncPara: Number.isFinite(syncPara) ? syncPara : undefined,
+      });
+      return true;
+    },
+    [prefs.textColorMode, prefs.wordClickAction, vocabMap]
+  );
+
   const handleArticleClickForAudio = useCallback(
     (e: React.MouseEvent<HTMLElement>) => {
-      if ((!isAudioClickable && !calibrateClickMode) || !book) return;
       if (window.getSelection()?.toString().trim()) return;
       const targetEl = e.target as HTMLElement | null;
       if (!targetEl) return;
@@ -3063,6 +3245,13 @@ export const JapaneseNovelReaderModal: React.FC<
       ) {
         return;
       }
+      if (!calibrateClickMode && !e.shiftKey) {
+        if (tryHandleWordClick(targetEl)) {
+          e.stopPropagation();
+          return;
+        }
+      }
+      if ((!isAudioClickable && !calibrateClickMode) || !book) return;
       const block = targetEl.closest<HTMLElement>(
         '[data-sync-chapter][data-sync-para]'
       );
@@ -3085,7 +3274,7 @@ export const JapaneseNovelReaderModal: React.FC<
         calibrate: isCalibrate,
       });
     },
-    [isAudioClickable, calibrateClickMode, book]
+    [isAudioClickable, calibrateClickMode, book, tryHandleWordClick]
   );
 
   const handleJumpFocusBlock = useCallback(
@@ -3458,6 +3647,7 @@ export const JapaneseNovelReaderModal: React.FC<
 
   const articleGlassStyle: React.CSSProperties = useMemo(() => {
     const isDarkTheme =
+      prefs.theme === 'slate' ||
       prefs.theme === 'navy' ||
       prefs.theme === 'charcoal' ||
       prefs.theme === 'amoled';
@@ -3499,6 +3689,7 @@ export const JapaneseNovelReaderModal: React.FC<
 
   const vnCardStyle: React.CSSProperties | undefined = useMemo(() => {
     const isDarkTheme =
+      prefs.theme === 'slate' ||
       prefs.theme === 'navy' ||
       prefs.theme === 'charcoal' ||
       prefs.theme === 'amoled';
@@ -3555,6 +3746,116 @@ export const JapaneseNovelReaderModal: React.FC<
     vnIndex,
     prefs.vnParagraphsPerStep,
   ]);
+
+  const displayVnParagraphs = useMemo(() => {
+    if (prefs.textColorMode === 'off') return vnVisibleParagraphs;
+    return vnVisibleParagraphs.map((p) => ({
+      ...p,
+      html: annotateChapterHtmlWithTokens(p.html),
+    }));
+  }, [vnVisibleParagraphs, prefs.textColorMode]);
+
+  const wordColorStyleVars = useMemo<React.CSSProperties>(
+    () =>
+      ({
+        '--jp-vocab-new': prefs.vocabColors.new || '#74d4b7',
+        '--jp-vocab-learning': prefs.vocabColors.learning || '#797ab5',
+        '--jp-vocab-due': prefs.vocabColors.due || '#d9684e',
+        '--jp-vocab-known': prefs.vocabColors.known || 'inherit',
+        '--jp-vocab-ignored': prefs.vocabColors.ignored || '#8b949e',
+        '--jp-vocab-particle': prefs.vocabColors.particle || '#797ab5',
+        '--jp-pos-noun': prefs.posColors.noun || '#d9684e',
+        '--jp-pos-verb': prefs.posColors.verb || '#74d4b7',
+        '--jp-pos-adj': prefs.posColors.adj || '#f0b35e',
+        '--jp-pos-particle': prefs.posColors.particle || '#797ab5',
+        '--jp-pos-adverb': prefs.posColors.adverb || '#c58be6',
+        '--jp-pos-other': prefs.posColors.other || 'inherit',
+        '--jp-pitch-heiban': prefs.pitchColors.heiban || '#5cb8ff',
+        '--jp-pitch-atamadaka': prefs.pitchColors.atamadaka || '#e06c58',
+        '--jp-pitch-nakadaka': prefs.pitchColors.nakadaka || '#f0aa4f',
+        '--jp-pitch-odaka': prefs.pitchColors.odaka || '#63cfa5',
+        '--jp-pitch-unknown': prefs.pitchColors.unknown || 'inherit',
+      }) as React.CSSProperties,
+    [prefs.vocabColors, prefs.posColors, prefs.pitchColors]
+  );
+
+  const wordColorDataProps = useMemo(
+    () => ({
+      'data-text-color-mode': prefs.textColorMode,
+      'data-color-particles': prefs.colorParticlesInVocab ? 'true' : 'false',
+      'data-hide-known-furigana':
+        prefs.textColorMode !== 'off' && prefs.hideKnownFurigana
+          ? 'true'
+          : 'false',
+      'data-word-clickable':
+        prefs.textColorMode !== 'off' && prefs.wordClickAction !== 'off'
+          ? 'true'
+          : 'false',
+    }),
+    [
+      prefs.textColorMode,
+      prefs.colorParticlesInVocab,
+      prefs.hideKnownFurigana,
+      prefs.wordClickAction,
+    ]
+  );
+
+  useLayoutEffect(() => {
+    if (prefs.textColorMode === 'off') return;
+    const syncContainer = (container: HTMLElement | null) => {
+      if (!container) return;
+      const nodes = container.querySelectorAll<HTMLElement>('.jp-tok');
+      for (let i = 0; i < nodes.length; i++) {
+        const el = nodes[i];
+        const surface = el.dataset.jpW || '';
+        const lemma = el.dataset.jpL || surface;
+        const pos = el.dataset.jpPos || 'noun';
+        const effectiveStatus = resolveEffectiveWordStatus(
+          lemma,
+          surface,
+          pos,
+          vocabMap
+        );
+        if (el.dataset.jpStatus !== effectiveStatus) {
+          el.dataset.jpStatus = effectiveStatus;
+        }
+        const entry = getWordVocabEntry(lemma, surface);
+        if (
+          entry?.customPitchPattern &&
+          el.dataset.jpPitch !== entry.customPitchPattern
+        ) {
+          el.dataset.jpPitch = entry.customPitchPattern;
+        }
+        if (
+          typeof entry?.customPitchNum === 'number' &&
+          el.dataset.jpPn !== String(entry.customPitchNum)
+        ) {
+          el.dataset.jpPn = String(entry.customPitchNum);
+        }
+      }
+    };
+    syncContainer(articleRef.current);
+    syncContainer(focusArticleRef.current);
+  }, [
+    prefs.textColorMode,
+    prefs.readingMode,
+    prefs.vnDisplayStyle,
+    audioFocusMode,
+    book?.currentChapter,
+    vnIndex,
+    displayChapters,
+    displayVnParagraphs,
+    displayFocusEpubView,
+    vocabMap,
+    vocabVersion,
+  ]);
+
+  useEffect(() => {
+    if (!inspectedWord && inspectedWordElRef.current) {
+      inspectedWordElRef.current.classList.remove('jp-tok-selected');
+      inspectedWordElRef.current = null;
+    }
+  }, [inspectedWord]);
 
   const resolvedMaxWidthPx: number | null =
     prefs.maxWidth === 'full'
@@ -4220,6 +4521,41 @@ export const JapaneseNovelReaderModal: React.FC<
               <button
                 type="button"
                 onClick={() => {
+                  if (showSettings && settingsTab === 'colors') {
+                    setShowSettings(false);
+                  } else {
+                    setSettingsTab('colors');
+                    setShowSettings(true);
+                    setShowToc(false);
+                    setShowBacklog(false);
+                    setShowAudioPanel(false);
+                  }
+                }}
+                title="Pewarnaan Kata (Status Kosakata / Kelas Kata / Pitch) (W)"
+                aria-label="Warna Kata Reader"
+                className={`hidden md:inline-flex p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold items-center gap-1 transition cursor-pointer ${
+                  showSettings && settingsTab === 'colors'
+                    ? 'bg-sky-500 text-slate-950 border-sky-400'
+                    : prefs.textColorMode !== 'off'
+                      ? 'bg-teal-500/20 border-teal-400/45 text-teal-300'
+                      : themeStyle.subtleBtn
+                }`}
+              >
+                <Palette className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden xl:inline">
+                  {prefs.textColorMode === 'vocab'
+                    ? 'Vocab'
+                    : prefs.textColorMode === 'pos'
+                      ? 'POS'
+                      : prefs.textColorMode === 'pitch'
+                        ? 'Pitch'
+                        : 'Warna'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
                   if (showSettings && settingsTab === 'background') {
                     setShowSettings(false);
                   } else {
@@ -4415,6 +4751,33 @@ export const JapaneseNovelReaderModal: React.FC<
               <button
                 type="button"
                 onClick={() => {
+                  setSettingsTab('colors');
+                  setShowSettings(true);
+                  setShowToc(false);
+                  setShowBacklog(false);
+                  setShowAudioPanel(false);
+                }}
+                className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${
+                  prefs.textColorMode !== 'off'
+                    ? 'bg-teal-500/25 border-teal-400/50 text-teal-200'
+                    : themeStyle.subtleBtn
+                }`}
+              >
+                <Palette className="w-3 h-3" />
+                <span>
+                  {prefs.textColorMode === 'vocab'
+                    ? 'Vocab'
+                    : prefs.textColorMode === 'pos'
+                      ? 'POS'
+                      : prefs.textColorMode === 'pitch'
+                        ? 'Pitch'
+                        : 'Warna'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
                   setSettingsTab('background');
                   setShowSettings(true);
                   setShowToc(false);
@@ -4475,19 +4838,20 @@ export const JapaneseNovelReaderModal: React.FC<
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 gap-1">
+              <div className="grid grid-cols-4 gap-1">
                 {(
                   [
                     { id: 'reading', label: 'Baca' },
-                    { id: 'vn', label: 'VN & Animasi' },
-                    { id: 'background', label: 'Background' },
+                    { id: 'colors', label: 'Warna' },
+                    { id: 'vn', label: 'VN' },
+                    { id: 'background', label: 'BG' },
                   ] as const
                 ).map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
                     onClick={() => setSettingsTab(tab.id)}
-                    className={`py-1.5 px-2 rounded-xl text-[11px] font-extrabold border transition cursor-pointer ${
+                    className={`py-1.5 px-1.5 rounded-xl text-[11px] font-extrabold border transition cursor-pointer ${
                       settingsTab === tab.id
                         ? 'bg-sky-500 text-slate-950 border-sky-400'
                         : themeStyle.subtleBtn
@@ -5232,6 +5596,7 @@ export const JapaneseNovelReaderModal: React.FC<
                     <div className="grid grid-cols-3 gap-1.5">
                       {(
                         [
+                          { id: 'slate', label: 'Matte #232729' },
                           { id: 'charcoal', label: 'Clean Dark' },
                           { id: 'navy', label: 'Navy' },
                           { id: 'amoled', label: 'AMOLED' },
@@ -5255,6 +5620,15 @@ export const JapaneseNovelReaderModal: React.FC<
                     </div>
                   </div>
                 </>
+              )}
+
+              {settingsTab === 'colors' && (
+                <ReaderWordColorPanel
+                  prefs={prefs}
+                  updatePrefs={updatePrefs}
+                  themeStyle={themeStyle}
+                  vocabMap={vocabMap}
+                />
               )}
 
               {settingsTab === 'vn' && (
@@ -6584,7 +6958,9 @@ export const JapaneseNovelReaderModal: React.FC<
               className="flex-1 min-h-0 flex flex-col items-center justify-center px-3 sm:px-6 py-4 overflow-y-auto"
             >
               <div
+                ref={focusArticleRef}
                 data-furigana={prefs.furigana}
+                {...wordColorDataProps}
                 className={`jp-novel-reader-content w-full mx-auto space-y-3 ${
                   hasActiveBg && prefs.bgPanelOpacity > 0 && !prefs.cleanMode
                     ? 'p-4 sm:p-7 rounded-3xl shadow-xl'
@@ -6601,6 +6977,7 @@ export const JapaneseNovelReaderModal: React.FC<
                     fontWeight: prefs.fontWeight,
                     lineHeight: prefs.lineHeight,
                     letterSpacing: `${prefs.letterSpacing}em`,
+                    ...wordColorStyleVars,
                     ...articleGlassStyle,
                   } as React.CSSProperties
                 }
@@ -6647,24 +7024,37 @@ export const JapaneseNovelReaderModal: React.FC<
                       );
                     })
                   )
-                ) : focusEpubView.items.length === 0 ? (
+                ) : displayFocusEpubView.items.length === 0 ? (
                   <div className="py-8 text-center text-sm opacity-75">
                     Belum ada paragraf teks di buku ini.
                   </div>
                 ) : (
-                  focusEpubView.items.map(({ pos, block: blk }) => {
-                    const isActive = pos === focusEpubView.activePos;
+                  displayFocusEpubView.items.map(({ pos, block: blk }) => {
+                    const isActive = pos === displayFocusEpubView.activePos;
                     return (
                       <div
                         key={`focus-blk-${blk.globalIndex}`}
-                        onClick={() =>
-                          handleJumpFocusBlock(blk.chapterIndex, blk.paraIndex)
-                        }
+                        data-sync-chapter={blk.chapterIndex}
+                        data-sync-para={blk.paraIndex}
+                        onClick={(e) => {
+                          if (window.getSelection()?.toString().trim()) return;
+                          const targetEl = e.target as HTMLElement | null;
+                          if (
+                            targetEl &&
+                            !calibrateClickMode &&
+                            !e.shiftKey &&
+                            tryHandleWordClick(targetEl)
+                          ) {
+                            e.stopPropagation();
+                            return;
+                          }
+                          handleJumpFocusBlock(blk.chapterIndex, blk.paraIndex);
+                        }}
                         title="Klik paragraf ini untuk langsung loncat audio ke bagian ini"
                         className={`rounded-2xl transition-all duration-200 cursor-pointer ${
                           isActive
                             ? 'bg-sky-500/15 border-l-4 border-sky-400 px-4 sm:px-6 py-4 shadow-lg'
-                            : pos < focusEpubView.activePos
+                            : pos < displayFocusEpubView.activePos
                               ? 'opacity-35 hover:opacity-85 px-4 py-1.5 text-[0.9em]'
                               : 'opacity-50 hover:opacity-90 px-4 py-1.5 text-[0.9em]'
                         }`}
@@ -7055,6 +7445,7 @@ export const JapaneseNovelReaderModal: React.FC<
                     ref={articleRef}
                     onClick={handleArticleClickForAudio}
                     data-furigana={prefs.furigana}
+                    {...wordColorDataProps}
                     className={`jp-novel-reader-content ${contentDirClass} ${cleanClass} ${
                       [isAudioClickable ? 'jp-audio-clickable' : '', calibrateClickMode ? 'jp-audio-calibrate-mode' : ''].filter(Boolean).join(' ')
                     } ${
@@ -7068,10 +7459,11 @@ export const JapaneseNovelReaderModal: React.FC<
                         lineHeight: prefs.lineHeight,
                         letterSpacing: `${prefs.letterSpacing}em`,
                         '--jp-para-gap': `${prefs.paragraphSpacing}em`,
+                        ...wordColorStyleVars,
                       } as React.CSSProperties
                     }
                   >
-                    {vnVisibleParagraphs.map((p, idx) => (
+                    {displayVnParagraphs.map((p, idx) => (
                       <div
                         key={`${book.currentChapter}-${vnIndex}-${p.id}`}
                         data-vn-reveal="true"
@@ -7099,6 +7491,7 @@ export const JapaneseNovelReaderModal: React.FC<
                   ref={articleRef}
                   onClick={handleArticleClickForAudio}
                   data-furigana={prefs.furigana}
+                  {...wordColorDataProps}
                   className={`jp-novel-reader-content ${contentDirClass} ${widthClass} ${indentClass} ${cleanClass} ${
                     [isAudioClickable ? 'jp-audio-clickable' : '', calibrateClickMode ? 'jp-audio-calibrate-mode' : ''].filter(Boolean).join(' ')
                   } ${
@@ -7128,11 +7521,12 @@ export const JapaneseNovelReaderModal: React.FC<
                         : resolvedVHeightPx !== null
                           ? { maxHeight: `min(100%, ${resolvedVHeightPx}px)` }
                           : { maxHeight: '100%' }),
+                      ...wordColorStyleVars,
                       ...articleGlassStyle,
                     } as React.CSSProperties & Record<'--jp-para-gap', string>
                   }
                 >
-                  {vnVisibleParagraphs.map((p, idx) => {
+                  {displayVnParagraphs.map((p, idx) => {
                     const isNewBatch = idx >= vnIndex;
                     return (
                       <div
@@ -7235,6 +7629,7 @@ export const JapaneseNovelReaderModal: React.FC<
                   ref={articleRef}
                   onClick={handleArticleClickForAudio}
                   data-furigana={prefs.furigana}
+                  {...wordColorDataProps}
                   className={`jp-novel-reader-content ${contentDirClass} ${indentClass} ${cleanClass} ${
                     [isAudioClickable ? 'jp-audio-clickable' : '', calibrateClickMode ? 'jp-audio-calibrate-mode' : ''].filter(Boolean).join(' ')
                   } ${
@@ -7250,6 +7645,7 @@ export const JapaneseNovelReaderModal: React.FC<
                       lineHeight: prefs.lineHeight,
                       letterSpacing: `${prefs.letterSpacing}em`,
                       '--jp-para-gap': `${prefs.paragraphSpacing}em`,
+                      ...wordColorStyleVars,
                       ...(prefs.writingMode === 'horizontal' && pagedWidthPx > 0
                         ? {
                             '--jp-page-width': `${pagedWidthPx}px`,
@@ -7260,7 +7656,7 @@ export const JapaneseNovelReaderModal: React.FC<
                   }
                 >
                   <BookChaptersContent
-                    chapters={annotatedBook.annotatedChapters}
+                    chapters={displayChapters}
                     showChapterDividers={true}
                   />
                 </article>
@@ -7297,6 +7693,7 @@ export const JapaneseNovelReaderModal: React.FC<
               ref={articleRef}
               onClick={handleArticleClickForAudio}
               data-furigana={prefs.furigana}
+              {...wordColorDataProps}
               className={`jp-novel-reader-content ${contentDirClass} ${widthClass} ${indentClass} ${cleanClass} ${
                 [isAudioClickable ? 'jp-audio-clickable' : '', calibrateClickMode ? 'jp-audio-calibrate-mode' : ''].filter(Boolean).join(' ')
               } ${
@@ -7315,6 +7712,7 @@ export const JapaneseNovelReaderModal: React.FC<
                   lineHeight: prefs.lineHeight,
                   letterSpacing: `${prefs.letterSpacing}em`,
                   '--jp-para-gap': `${prefs.paragraphSpacing}em`,
+                  ...wordColorStyleVars,
                   ...(prefs.writingMode === 'horizontal'
                     ? {
                         width: '100%',
@@ -7331,7 +7729,7 @@ export const JapaneseNovelReaderModal: React.FC<
               }
             >
               <BookChaptersContent
-                chapters={annotatedBook.annotatedChapters}
+                chapters={displayChapters}
                 showChapterDividers={true}
               />
             </article>
@@ -7590,6 +7988,40 @@ export const JapaneseNovelReaderModal: React.FC<
             Jisho
           </a>
         </div>
+      )}
+
+      {/* WORD INSPECTOR POPOVER (STATUS / POS / PITCH) */}
+      {inspectedWord && (
+        <ReaderWordPopover
+          word={inspectedWord}
+          panelClassName={themeStyle.panel}
+          subtleBtnClass={themeStyle.subtleBtn}
+          mutedTextClass={themeStyle.mutedText}
+          canJumpAudio={isAudioClickable}
+          onSetStatus={(key, st: VocabStatus) => {
+            setWordVocabStatus(key, st);
+            setInspectedWord((prev) =>
+              prev ? { ...prev, currentStatus: st } : null
+            );
+          }}
+          onSetPitch={(key, pat, pn) => {
+            setWordPitchOverride(key, pat, pn);
+            setInspectedWord((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    pitchPattern: pat,
+                    ...(typeof pn === 'number' ? { pitchNum: pn } : {}),
+                  }
+                : null
+            );
+          }}
+          onSpeakWord={(text) =>
+            setOneShotSpeakRequest({ id: Date.now(), text })
+          }
+          onJumpAudioPara={(chIdx, pIdx) => handleJumpFocusBlock(chIdx, pIdx)}
+          onClose={() => setInspectedWord(null)}
+        />
       )}
 
       {/* PER-NOVEL AUDIOBOOK & AI NARATOR DOCK */}
