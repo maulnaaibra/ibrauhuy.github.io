@@ -620,7 +620,9 @@ function inferFallbackPos(surface: string): JapanesePosCategory {
   }
 
   if (HIRAGANA_ONLY_RE.test(surface)) {
-    if (surface.length <= 2) return 'particle';
+    if (surface.length === 1 || SINGLE_PARTICLE_CHARS.has(surface)) {
+      return 'particle';
+    }
     return 'adverb';
   }
 
@@ -673,10 +675,23 @@ function canFormConjugatedVerbOrAdj(combined: string): boolean {
 }
 
 function refineRawSegments(raw: RawSeg[]): RawSeg[] {
-  // Pass 1: Split bogus leading-particle merges from Intl.Segmenter (e.g. "のち" + "ぎ"+"れ"+"た" -> "の" + "ち"+"ぎ"+"れ"+"た")
+  // Pass 1: Split bogus leading-particle merges from Intl.Segmenter
+  // (e.g. "のち"+"ぎ"+"れ"+"た" -> "の"+"ち"+"ぎ"+"れ"+"た", or "に従う" -> "に"+"従う")
   const splitPass: RawSeg[] = [];
+  const leadingCaseParticles = new Set(['の', 'は', 'が', 'を', 'に', 'へ']);
   for (let i = 0; i < raw.length; i++) {
     const cur = raw[i];
+    if (
+      cur.isWordLike &&
+      cur.text.length >= 2 &&
+      leadingCaseParticles.has(cur.text[0]) &&
+      KANJI_RE.test(cur.text[1]) &&
+      !lookupCoreLexicon(cur.text)
+    ) {
+      splitPass.push({ text: cur.text[0], isWordLike: true });
+      splitPass.push({ text: cur.text.slice(1), isWordLike: true });
+      continue;
+    }
     if (
       cur.isWordLike &&
       HIRAGANA_ONLY_RE.test(cur.text) &&

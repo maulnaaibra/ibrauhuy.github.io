@@ -48,6 +48,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Trash2,
+  Underline,
   Upload,
   Video,
   Volume2,
@@ -64,6 +65,7 @@ import {
   addReaderBgSlideFiles,
   addReaderBgSlideUrl,
   addStoredNovelBookmark,
+  buildWordMarkerCssVars,
   buildYouTubeBgEmbedUrl,
   clearReaderBgSlides,
   DEFAULT_READER_PREFS,
@@ -317,6 +319,7 @@ const READER_SHORTCUTS: Array<{ keys: string[]; desc: string }> = [
   { keys: ['T'], desc: 'Ganti arah baca (Horizontal ↔ Vertikal 縦書き)' },
   { keys: ['F'], desc: 'Ganti mode Furigana (Tampil / Hover / Sembunyi)' },
   { keys: ['W'], desc: 'Ganti mode Warna Kata (Vocab / Kelas Kata / Pitch / Mati)' },
+  { keys: ['U'], desc: 'Aktif / matikan Garis Bawah Kata (Gaya Migaku)' },
   { keys: ['+', '-'], desc: 'Perbesar / perkecil ukuran huruf' },
   { keys: ['B'], desc: 'Simpan Bookmark posisi sekarang' },
   { keys: ['C'], desc: 'Buka Daftar Bab & Bookmark' },
@@ -2565,6 +2568,15 @@ export const JapaneseNovelReaderModal: React.FC<
                 ? 'Warna Kata: Pitch Accent'
                 : 'Warna Kata: Mati'
         );
+      } else if (lower === 'u') {
+        e.preventDefault();
+        const nextUl = !prefs.wordUnderline;
+        updatePrefs({ wordUnderline: nextUl });
+        toast.success(
+          nextUl
+            ? 'Garis Bawah Kata: Aktif'
+            : 'Garis Bawah Kata: Mati'
+        );
       } else if (e.key === '+' || e.key === '=') {
         e.preventDefault();
         updatePrefs({ fontSize: Math.min(34, prefs.fontSize + 1) });
@@ -3260,15 +3272,17 @@ export const JapaneseNovelReaderModal: React.FC<
     return annotateBookChaptersForSync(book.chapters);
   }, [book?.storageKey, book?.chapters]);
 
+  const isWordMarkerActive = prefs.textColorMode !== 'off' || prefs.wordUnderline;
+
   const displayChapters = useMemo(() => {
-    if (prefs.textColorMode === 'off') {
+    if (!isWordMarkerActive) {
       return annotatedBook.annotatedChapters;
     }
     return annotatedBook.annotatedChapters.map((ch) => ({
       ...ch,
       html: annotateChapterHtmlWithTokens(ch.html),
     }));
-  }, [annotatedBook.annotatedChapters, prefs.textColorMode]);
+  }, [annotatedBook.annotatedChapters, isWordMarkerActive]);
 
   useEffect(() => {
     const refreshVocab = () => {
@@ -3369,7 +3383,7 @@ export const JapaneseNovelReaderModal: React.FC<
   }, [speakableSyncBlocks, audioTrackingState?.activeTarget, book]);
 
   const displayFocusEpubView = useMemo(() => {
-    if (prefs.textColorMode === 'off') {
+    if (!isWordMarkerActive) {
       return focusEpubView;
     }
     return {
@@ -3382,7 +3396,7 @@ export const JapaneseNovelReaderModal: React.FC<
         },
       })),
     };
-  }, [focusEpubView, prefs.textColorMode]);
+  }, [focusEpubView, isWordMarkerActive]);
 
   const chapterTitles = useMemo(
     () => book?.chapters.map((c) => c.title) ?? [],
@@ -3597,7 +3611,7 @@ export const JapaneseNovelReaderModal: React.FC<
 
   const tryHandleWordClick = useCallback(
     (targetEl: HTMLElement): boolean => {
-      if (prefs.textColorMode === 'off' || prefs.wordClickAction === 'off') {
+      if (!isWordMarkerActive || prefs.wordClickAction === 'off') {
         return false;
       }
       const tokEl = targetEl.closest<HTMLElement>('.jp-tok');
@@ -3666,7 +3680,7 @@ export const JapaneseNovelReaderModal: React.FC<
       });
       return true;
     },
-    [prefs.textColorMode, prefs.wordClickAction, vocabMap]
+    [isWordMarkerActive, prefs.wordClickAction, vocabMap]
   );
 
   const handleArticleClickForAudio = useCallback(
@@ -4267,60 +4281,47 @@ export const JapaneseNovelReaderModal: React.FC<
   ]);
 
   const displayVnParagraphs = useMemo(() => {
-    if (prefs.textColorMode === 'off') return vnVisibleParagraphs;
+    if (!isWordMarkerActive) return vnVisibleParagraphs;
     return vnVisibleParagraphs.map((p) => ({
       ...p,
       html: annotateChapterHtmlWithTokens(p.html),
     }));
-  }, [vnVisibleParagraphs, prefs.textColorMode]);
+  }, [vnVisibleParagraphs, isWordMarkerActive]);
 
   const wordColorStyleVars = useMemo<React.CSSProperties>(
-    () =>
-      ({
-        '--jp-vocab-new': prefs.vocabColors.new || '#74d4b7',
-        '--jp-vocab-learning': prefs.vocabColors.learning || '#797ab5',
-        '--jp-vocab-due': prefs.vocabColors.due || '#d9684e',
-        '--jp-vocab-known': prefs.vocabColors.known || 'inherit',
-        '--jp-vocab-ignored': prefs.vocabColors.ignored || '#8b949e',
-        '--jp-vocab-particle': prefs.vocabColors.particle || '#797ab5',
-        '--jp-pos-noun': prefs.posColors.noun || '#d9684e',
-        '--jp-pos-verb': prefs.posColors.verb || '#74d4b7',
-        '--jp-pos-adj': prefs.posColors.adj || '#f0b35e',
-        '--jp-pos-particle': prefs.posColors.particle || '#797ab5',
-        '--jp-pos-adverb': prefs.posColors.adverb || '#c58be6',
-        '--jp-pos-other': prefs.posColors.other || 'inherit',
-        '--jp-pitch-heiban': prefs.pitchColors.heiban || '#5cb8ff',
-        '--jp-pitch-atamadaka': prefs.pitchColors.atamadaka || '#e06c58',
-        '--jp-pitch-nakadaka': prefs.pitchColors.nakadaka || '#f0aa4f',
-        '--jp-pitch-odaka': prefs.pitchColors.odaka || '#63cfa5',
-        '--jp-pitch-unknown': prefs.pitchColors.unknown || 'inherit',
-      }) as React.CSSProperties,
-    [prefs.vocabColors, prefs.posColors, prefs.pitchColors]
+    () => buildWordMarkerCssVars(prefs) as React.CSSProperties,
+    [
+      prefs.vocabColors,
+      prefs.posColors,
+      prefs.pitchColors,
+      prefs.wordUnderlineThickness,
+      prefs.wordUnderlineOffset,
+      prefs.wordUnderlinePalette,
+    ]
   );
 
   const wordColorDataProps = useMemo(
     () => ({
       'data-text-color-mode': prefs.textColorMode,
+      'data-word-underline': prefs.wordUnderline ? 'true' : 'false',
       'data-color-particles': prefs.colorParticlesInVocab ? 'true' : 'false',
       'data-hide-known-furigana':
-        prefs.textColorMode !== 'off' && prefs.hideKnownFurigana
-          ? 'true'
-          : 'false',
+        isWordMarkerActive && prefs.hideKnownFurigana ? 'true' : 'false',
       'data-word-clickable':
-        prefs.textColorMode !== 'off' && prefs.wordClickAction !== 'off'
-          ? 'true'
-          : 'false',
+        isWordMarkerActive && prefs.wordClickAction !== 'off' ? 'true' : 'false',
     }),
     [
       prefs.textColorMode,
+      prefs.wordUnderline,
       prefs.colorParticlesInVocab,
       prefs.hideKnownFurigana,
       prefs.wordClickAction,
+      isWordMarkerActive,
     ]
   );
 
   useLayoutEffect(() => {
-    if (prefs.textColorMode === 'off') return;
+    if (!isWordMarkerActive) return;
     const syncContainer = (container: HTMLElement | null) => {
       if (!container) return;
       const nodes = container.querySelectorAll<HTMLElement>('.jp-tok');
@@ -4356,7 +4357,9 @@ export const JapaneseNovelReaderModal: React.FC<
     syncContainer(articleRef.current);
     syncContainer(focusArticleRef.current);
   }, [
+    isWordMarkerActive,
     prefs.textColorMode,
+    prefs.wordUnderline,
     prefs.readingMode,
     prefs.vnDisplayStyle,
     audioFocusMode,
@@ -5141,6 +5144,29 @@ export const JapaneseNovelReaderModal: React.FC<
                 </span>
               </button>
 
+              <button
+                type="button"
+                onClick={() => {
+                  const nextUl = !prefs.wordUnderline;
+                  updatePrefs({ wordUnderline: nextUl });
+                  toast.success(
+                    nextUl
+                      ? 'Garis Bawah Kata: Aktif'
+                      : 'Garis Bawah Kata: Mati'
+                  );
+                }}
+                title="Garis Bawah Kata Status Kosakata (U)"
+                aria-label="Garis Bawah Kata Reader"
+                className={`hidden md:inline-flex p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold items-center gap-1 transition cursor-pointer ${
+                  prefs.wordUnderline
+                    ? 'bg-rose-500/20 border-rose-400/50 text-rose-200'
+                    : themeStyle.subtleBtn
+                }`}
+              >
+                <Underline className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden xl:inline">Garis</span>
+              </button>
+
               {isSlideshowBg && slideshowSlides.length > 1 && (
                 <button
                   type="button"
@@ -5391,15 +5417,36 @@ export const JapaneseNovelReaderModal: React.FC<
                 }`}
               >
                 <Palette className="w-3 h-3" />
-                <span>
-                  {prefs.textColorMode === 'vocab'
-                    ? 'Vocab'
-                    : prefs.textColorMode === 'pos'
-                      ? 'POS'
-                      : prefs.textColorMode === 'pitch'
-                        ? 'Pitch'
-                        : 'Warna'}
-                </span>
+                  <span>
+                    {prefs.textColorMode === 'vocab'
+                      ? 'Vocab'
+                      : prefs.textColorMode === 'pos'
+                        ? 'POS'
+                        : prefs.textColorMode === 'pitch'
+                          ? 'Pitch'
+                          : 'Warna'}
+                  </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const nextUl = !prefs.wordUnderline;
+                  updatePrefs({ wordUnderline: nextUl });
+                  toast.success(
+                    nextUl
+                      ? 'Garis Bawah Kata: Aktif'
+                      : 'Garis Bawah Kata: Mati'
+                  );
+                }}
+                className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${
+                  prefs.wordUnderline
+                    ? 'bg-rose-500/25 border-rose-400/50 text-rose-200'
+                    : themeStyle.subtleBtn
+                }`}
+              >
+                <Underline className="w-3 h-3" />
+                <span>Garis</span>
               </button>
 
               {isSlideshowBg && slideshowSlides.length > 1 && (

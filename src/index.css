@@ -1331,7 +1331,8 @@ html[data-custom-text="true"] :is(#root, [data-mobile-bottom-nav="true"], [data-
   transition: color 0.14s ease, background-color 0.14s ease;
 }
 
-.jp-novel-reader-content[data-furigana="show"][data-text-color-mode]:not([data-text-color-mode="off"]) .jp-tok rt {
+.jp-novel-reader-content[data-furigana="show"][data-text-color-mode]:not([data-text-color-mode="off"]) .jp-tok rt,
+.jp-novel-reader-content[data-furigana="show"][data-word-underline="true"] .jp-tok rt {
   opacity: 0.9;
 }
 
@@ -1347,9 +1348,59 @@ html[data-custom-text="true"] :is(#root, [data-mobile-bottom-nav="true"], [data-
   text-decoration-thickness: 1px;
 }
 
+.jp-novel-reader-content[data-word-underline="true"][data-word-clickable="true"] .jp-tok:hover {
+  background-color: rgba(148, 163, 184, 0.18);
+  text-decoration: none;
+}
+
 .jp-tok-selected {
   background-color: rgba(56, 189, 248, 0.22) !important;
   box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.45);
+}
+
+/* Word Underline Tracking (Migaku / Yomitan style: solid/dotted/dashed per vocab status) */
+.jp-novel-reader-content[data-word-underline="true"] .jp-tok {
+  padding-block-end: var(--jp-ul-offset, 3px);
+  border-block-end-width: var(--jp-ul-width, 2px);
+  border-block-end-style: none;
+  border-block-end-color: transparent;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  transition:
+    color 0.14s ease,
+    background-color 0.14s ease,
+    border-color 0.14s ease;
+}
+
+.jp-novel-reader-content[data-word-underline="true"] .jp-tok[data-jp-status="new"] {
+  border-block-end-style: var(--jp-ul-new-style, solid);
+  border-block-end-color: var(--jp-ul-new-color, #e86d78);
+  margin-inline: var(--jp-ul-new-gap, 0.045em);
+}
+.jp-novel-reader-content[data-word-underline="true"] .jp-tok[data-jp-status="learning"] {
+  border-block-end-style: var(--jp-ul-learning-style, dotted);
+  border-block-end-color: var(--jp-ul-learning-color, #45c4b0);
+  margin-inline: var(--jp-ul-learning-gap, 0.045em);
+}
+.jp-novel-reader-content[data-word-underline="true"] .jp-tok[data-jp-status="due"] {
+  border-block-end-style: var(--jp-ul-due-style, solid);
+  border-block-end-color: var(--jp-ul-due-color, #f59e0b);
+  margin-inline: var(--jp-ul-due-gap, 0.045em);
+}
+.jp-novel-reader-content[data-word-underline="true"] .jp-tok[data-jp-status="known"] {
+  border-block-end-style: var(--jp-ul-known-style, none);
+  border-block-end-color: var(--jp-ul-known-color, #34d399);
+  margin-inline: var(--jp-ul-known-gap, 0);
+}
+.jp-novel-reader-content[data-word-underline="true"] .jp-tok[data-jp-status="ignored"] {
+  border-block-end-style: var(--jp-ul-ignored-style, none);
+  border-block-end-color: var(--jp-ul-ignored-color, #8b949e);
+  margin-inline: var(--jp-ul-ignored-gap, 0);
+}
+.jp-novel-reader-content[data-word-underline="true"] .jp-tok[data-jp-status="particle"] {
+  border-block-end-style: var(--jp-ul-particle-style, none);
+  border-block-end-color: var(--jp-ul-particle-color, #64748b);
+  margin-inline: var(--jp-ul-particle-gap, 0);
 }
 
 /* Status Kosakata Mode */

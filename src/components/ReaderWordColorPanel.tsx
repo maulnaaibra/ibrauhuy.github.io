@@ -6,19 +6,25 @@ import {
   RotateCcw,
   Sparkles,
   Trash2,
+  Underline,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
+  buildWordMarkerCssVars,
   DEFAULT_PITCH_COLORS,
   DEFAULT_POS_COLORS,
   DEFAULT_VOCAB_COLORS,
+  DEFAULT_VOCAB_UNDERLINES,
   READER_WORD_COLOR_PRESETS,
   type PitchColorPalette,
   type PosColorPalette,
   type ReaderPreferences,
   type ReaderTextColorMode,
+  type ReaderUnderlineStyle,
   type ReaderWordClickAction,
   type VocabColorPalette,
+  type VocabUnderlinePalette,
+  type WordUnderlineRule,
 } from '../lib/epubReaderStore';
 import {
   clearVocabStore,
@@ -156,6 +162,115 @@ const WordCategoryColorRow: React.FC<SwatchRowProps> = ({
   );
 };
 
+const UNDERLINE_STYLE_OPTIONS: Array<{
+  id: ReaderUnderlineStyle;
+  label: string;
+}> = [
+  { id: 'solid', label: 'Solid' },
+  { id: 'dotted', label: 'Titik' },
+  { id: 'dashed', label: 'Putus' },
+  { id: 'none', label: 'Mati' },
+];
+
+const UNDERLINE_CATEGORIES: Array<{
+  key: keyof VocabUnderlinePalette;
+  label: string;
+  sublabel: string;
+}> = [
+  {
+    key: 'new',
+    label: 'Kata Baru',
+    sublabel: 'Belum dikenal (cth: 本能 / ボタン)',
+  },
+  {
+    key: 'learning',
+    label: 'Sedang Belajar',
+    sublabel: 'Dalam proses belajar (cth: 俺 / 従う)',
+  },
+  {
+    key: 'due',
+    label: 'Perlu Review (Due)',
+    sublabel: 'Kartu Anki / prioritas ulang',
+  },
+  {
+    key: 'known',
+    label: 'Sudah Hafal',
+    sublabel: 'Kata sudah dikuasai',
+  },
+  {
+    key: 'particle',
+    label: 'Partikel',
+    sublabel: 'は, が, を, に, の',
+  },
+  {
+    key: 'ignored',
+    label: 'Diabaikan',
+    sublabel: 'Nama tokoh / SFX',
+  },
+];
+
+interface UnderlineRuleRowProps {
+  label: string;
+  sublabel: string;
+  rule: WordUnderlineRule;
+  onChange: (next: WordUnderlineRule) => void;
+  subtleBtnClass: string;
+  mutedTextClass: string;
+}
+
+const WordUnderlineRuleRow: React.FC<UnderlineRuleRowProps> = ({
+  label,
+  sublabel,
+  rule,
+  onChange,
+  subtleBtnClass,
+  mutedTextClass,
+}) => (
+  <div className="py-1.5 border-b border-current/10 last:border-b-0 space-y-1.5">
+    <div className="flex items-center justify-between gap-2">
+      <div className="min-w-0">
+        <div className="text-[11px] font-bold leading-tight truncate">{label}</div>
+        <div className={`text-[10px] leading-tight truncate ${mutedTextClass}`}>
+          {sublabel}
+        </div>
+      </div>
+      <label
+        title={`Pilih warna garis ${label}`}
+        className={`relative w-6 h-6 rounded-lg overflow-hidden border border-white/20 cursor-pointer shrink-0 ${
+          rule.style === 'none' ? 'opacity-40' : ''
+        }`}
+        style={{ backgroundColor: rule.color }}
+      >
+        <input
+          type="color"
+          value={rule.color}
+          onChange={(e) =>
+            onChange({ ...rule, color: e.target.value.toLowerCase() })
+          }
+          className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+        />
+      </label>
+    </div>
+
+    <div className="grid grid-cols-4 gap-1">
+      {UNDERLINE_STYLE_OPTIONS.map((opt) => (
+        <button
+          key={opt.id}
+          type="button"
+          onClick={() => onChange({ ...rule, style: opt.id })}
+          className={`py-1 px-1.5 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+            rule.style === opt.id
+              ? 'bg-sky-500 text-slate-950 border-sky-400'
+              : subtleBtnClass
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  </div>
+);
+
 export const ReaderWordColorPanel: React.FC<ReaderWordColorPanelProps> = ({
   prefs,
   updatePrefs,
@@ -192,6 +307,26 @@ export const ReaderWordColorPanel: React.FC<ReaderWordColorPanelProps> = ({
     updatePrefs({
       pitchColors: { ...prefs.pitchColors, [key]: value },
     });
+  };
+
+  const handlePatchUnderlineRule = (
+    key: keyof VocabUnderlinePalette,
+    next: WordUnderlineRule
+  ) => {
+    updatePrefs({
+      wordUnderlinePalette: { ...prefs.wordUnderlinePalette, [key]: next },
+    });
+  };
+
+  const handleApplyMigakuUnderlinePreset = () => {
+    updatePrefs({
+      textColorMode: 'off',
+      wordUnderline: true,
+      wordUnderlineThickness: 2,
+      wordUnderlineOffset: 3,
+      wordUnderlinePalette: DEFAULT_VOCAB_UNDERLINES,
+    });
+    toast.success('Garis bawah kata (gaya contoh) diaktifkan!');
   };
 
   const handleMarkParticles = () => {
@@ -289,51 +424,201 @@ export const ReaderWordColorPanel: React.FC<ReaderWordColorPanelProps> = ({
         </div>
       </div>
 
+      {/* Word Underline Tracker (Migaku / Yomitan style) */}
+      <div className="space-y-2 rounded-xl border border-current/15 p-2.5 bg-black/15">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-[11px] font-extrabold flex items-center gap-1.5">
+              <Underline className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+              <span>Garis Bawah Kata (U)</span>
+            </div>
+            <div className={`text-[10px] leading-tight ${themeStyle.mutedText}`}>
+              Garis solid/titik penanda status kosakata seperti di foto
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => updatePrefs({ wordUnderline: !prefs.wordUnderline })}
+            className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold transition cursor-pointer shrink-0 ${
+              prefs.wordUnderline
+                ? 'bg-emerald-500 text-slate-950'
+                : 'bg-white/10 opacity-80'
+            }`}
+          >
+            {prefs.wordUnderline ? 'ON' : 'OFF'}
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleApplyMigakuUnderlinePreset}
+          className={`w-full px-2.5 py-1.5 rounded-xl border text-[11px] font-bold flex items-center justify-between gap-2 transition cursor-pointer ${themeStyle.subtleBtn}`}
+        >
+          <span>Pakai Gaya Contoh (Teks Polos + Garis Merah/Teal)</span>
+          <span className="text-[10px] text-sky-400 font-extrabold shrink-0">
+            Terapkan
+          </span>
+        </button>
+
+        {prefs.wordUnderline && (
+          <div className="space-y-2.5 pt-1 border-t border-current/10">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] font-bold opacity-80">
+                  <span>Tebal Garis</span>
+                  <span className="font-mono">{prefs.wordUnderlineThickness}px</span>
+                </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={4}
+                  step={0.5}
+                  value={prefs.wordUnderlineThickness}
+                  onChange={(e) =>
+                    updatePrefs({
+                      wordUnderlineThickness: Number(e.target.value),
+                    })
+                  }
+                  className="w-full accent-sky-400 cursor-pointer"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] font-bold opacity-80">
+                  <span>Jarak Teks</span>
+                  <span className="font-mono">{prefs.wordUnderlineOffset}px</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={8}
+                  step={1}
+                  value={prefs.wordUnderlineOffset}
+                  onChange={(e) =>
+                    updatePrefs({
+                      wordUnderlineOffset: Number(e.target.value),
+                    })
+                  }
+                  className="w-full accent-sky-400 cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-0.5">
+              <span className={`text-[10px] font-extrabold ${themeStyle.accentText}`}>
+                Atur Garis per Status Kata
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  updatePrefs({
+                    wordUnderlineThickness: 2,
+                    wordUnderlineOffset: 3,
+                    wordUnderlinePalette: DEFAULT_VOCAB_UNDERLINES,
+                  })
+                }
+                className="text-[10px] font-bold opacity-80 hover:opacity-100 inline-flex items-center gap-1 cursor-pointer"
+              >
+                <RotateCcw className="w-2.5 h-2.5" />
+                <span>Default</span>
+              </button>
+            </div>
+
+            <div>
+              {UNDERLINE_CATEGORIES.map((cat) => (
+                <WordUnderlineRuleRow
+                  key={cat.key}
+                  label={cat.label}
+                  sublabel={cat.sublabel}
+                  rule={prefs.wordUnderlinePalette[cat.key]}
+                  onChange={(next) => handlePatchUnderlineRule(cat.key, next)}
+                  subtleBtnClass={themeStyle.subtleBtn}
+                  mutedTextClass={themeStyle.mutedText}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Live Preview Strip */}
       <div className="rounded-xl p-3 border border-current/15 bg-[#232729] text-[#d8dcdc]">
         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between">
-          <span>Pratinjau Warna Kata</span>
+          <span>Pratinjau Kata &amp; Garis</span>
           <span className="font-mono text-[9px] text-slate-400">
             {prefs.textColorMode === 'off'
-              ? 'OFF'
-              : prefs.textColorMode.toUpperCase()}
+              ? prefs.wordUnderline
+                ? 'GARIS'
+                : 'OFF'
+              : prefs.wordUnderline
+                ? `${prefs.textColorMode.toUpperCase()}+GARIS`
+                : prefs.textColorMode.toUpperCase()}
           </span>
         </div>
         <div
-          className="text-sm leading-loose tracking-wide font-medium"
+          className="jp-novel-reader-content text-base leading-loose tracking-wide font-medium"
           data-text-color-mode={prefs.textColorMode}
+          data-word-underline={prefs.wordUnderline ? 'true' : 'false'}
           data-color-particles={prefs.colorParticlesInVocab ? 'true' : 'false'}
-          style={
-            {
-              '--jp-vocab-new': prefs.vocabColors.new || '#74d4b7',
-              '--jp-vocab-learning': prefs.vocabColors.learning || '#797ab5',
-              '--jp-vocab-due': prefs.vocabColors.due || '#d9684e',
-              '--jp-vocab-known': prefs.vocabColors.known || 'inherit',
-              '--jp-vocab-ignored': prefs.vocabColors.ignored || '#8b949e',
-              '--jp-vocab-particle': prefs.vocabColors.particle || '#797ab5',
-              '--jp-pos-noun': prefs.posColors.noun || '#d9684e',
-              '--jp-pos-verb': prefs.posColors.verb || '#74d4b7',
-              '--jp-pos-adj': prefs.posColors.adj || '#f0b35e',
-              '--jp-pos-particle': prefs.posColors.particle || '#797ab5',
-              '--jp-pos-adverb': prefs.posColors.adverb || '#c58be6',
-              '--jp-pos-other': prefs.posColors.other || 'inherit',
-              '--jp-pitch-heiban': prefs.pitchColors.heiban || '#5cb8ff',
-              '--jp-pitch-atamadaka': prefs.pitchColors.atamadaka || '#e06c58',
-              '--jp-pitch-nakadaka': prefs.pitchColors.nakadaka || '#f0aa4f',
-              '--jp-pitch-odaka': prefs.pitchColors.odaka || '#63cfa5',
-              '--jp-pitch-unknown': prefs.pitchColors.unknown || 'inherit',
-            } as React.CSSProperties
-          }
+          style={buildWordMarkerCssVars(prefs) as React.CSSProperties}
         >
+          <span
+            className="jp-tok"
+            data-jp-status="learning"
+            data-jp-pos="noun"
+            data-jp-pitch="heiban"
+          >
+            俺
+          </span>
+          <span
+            className="jp-tok"
+            data-jp-status="particle"
+            data-jp-pos="particle"
+            data-jp-pitch="heiban"
+          >
+            は
+          </span>
+          <span
+            className="jp-tok"
+            data-jp-status="learning"
+            data-jp-pos="adverb"
+            data-jp-pitch="atamadaka"
+          >
+            ほぼ
+          </span>
+          <span
+            className="jp-tok"
+            data-jp-status="new"
+            data-jp-pos="noun"
+            data-jp-pitch="atamadaka"
+          >
+            <ruby>
+              本能<rt>ほんのう</rt>
+            </ruby>
+          </span>
+          <span
+            className="jp-tok"
+            data-jp-status="particle"
+            data-jp-pos="particle"
+            data-jp-pitch="heiban"
+          >
+            に
+          </span>
+          <span
+            className="jp-tok"
+            data-jp-status="learning"
+            data-jp-pos="verb"
+            data-jp-pitch="heiban"
+          >
+            従う
+          </span>
           <span
             className="jp-tok"
             data-jp-status="due"
             data-jp-pos="noun"
             data-jp-pitch="odaka"
           >
-            <ruby>
-              尻尾<rt>しっぽ</rt>
-            </ruby>
+            ブラウス
           </span>
           <span
             className="jp-tok"
@@ -345,49 +630,13 @@ export const ReaderWordColorPanel: React.FC<ReaderWordColorPanelProps> = ({
           </span>
           <span
             className="jp-tok"
-            data-jp-status="new"
-            data-jp-pos="verb"
-            data-jp-pitch="nakadaka"
-          >
-            ちぎれた
-          </span>
-          <span
-            className="jp-tok"
             data-jp-status="known"
             data-jp-pos="noun"
-            data-jp-pitch="atamadaka"
+            data-jp-pitch="heiban"
           >
             <ruby>
               彼女<rt>かのじょ</rt>
             </ruby>
-          </span>
-          <span
-            className="jp-tok"
-            data-jp-status="learning"
-            data-jp-pos="particle"
-            data-jp-pitch="heiban"
-          >
-            は
-          </span>
-          <span>、</span>
-          <span
-            className="jp-tok"
-            data-jp-status="new"
-            data-jp-pos="adj"
-            data-jp-pitch="nakadaka"
-          >
-            <ruby>
-              低<rt>ひく</rt>
-            </ruby>
-            い
-          </span>
-          <span
-            className="jp-tok"
-            data-jp-status="new"
-            data-jp-pos="noun"
-            data-jp-pitch="heiban"
-          >
-            テーブル
           </span>
           <span>。</span>
         </div>

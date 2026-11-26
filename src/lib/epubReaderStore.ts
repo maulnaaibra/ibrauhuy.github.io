@@ -80,6 +80,30 @@ export type ReaderBgMediaKind =
   | 'local-video';
 export type ReaderTextColorMode = 'off' | 'vocab' | 'pos' | 'pitch';
 export type ReaderWordClickAction = 'popover' | 'cycle' | 'off';
+export type ReaderUnderlineStyle = 'solid' | 'dotted' | 'dashed' | 'none';
+
+export interface WordUnderlineRule {
+  style: ReaderUnderlineStyle;
+  color: string;
+}
+
+export interface VocabUnderlinePalette {
+  new: WordUnderlineRule;
+  learning: WordUnderlineRule;
+  due: WordUnderlineRule;
+  known: WordUnderlineRule;
+  ignored: WordUnderlineRule;
+  particle: WordUnderlineRule;
+}
+
+export const DEFAULT_VOCAB_UNDERLINES: VocabUnderlinePalette = {
+  new: { style: 'solid', color: '#e86d78' },
+  learning: { style: 'dotted', color: '#45c4b0' },
+  due: { style: 'solid', color: '#f59e0b' },
+  known: { style: 'none', color: '#34d399' },
+  ignored: { style: 'none', color: '#8b949e' },
+  particle: { style: 'none', color: '#64748b' },
+};
 
 export interface VocabColorPalette {
   new: string;
@@ -249,6 +273,10 @@ export interface ReaderPreferences {
   wordClickAction: ReaderWordClickAction;
   colorParticlesInVocab: boolean;
   hideKnownFurigana: boolean;
+  wordUnderline: boolean;
+  wordUnderlineThickness: number;
+  wordUnderlineOffset: number;
+  wordUnderlinePalette: VocabUnderlinePalette;
   showSpeedHud: boolean;
   vocabColors: VocabColorPalette;
   posColors: PosColorPalette;
@@ -289,6 +317,10 @@ export const DEFAULT_READER_PREFS: ReaderPreferences = {
   wordClickAction: 'popover',
   colorParticlesInVocab: true,
   hideKnownFurigana: false,
+  wordUnderline: false,
+  wordUnderlineThickness: 2,
+  wordUnderlineOffset: 3,
+  wordUnderlinePalette: DEFAULT_VOCAB_UNDERLINES,
   showSpeedHud: false,
   vocabColors: DEFAULT_VOCAB_COLORS,
   posColors: DEFAULT_POS_COLORS,
@@ -305,6 +337,75 @@ function sanitizeReaderColorHex(value: unknown, fallback: string): string {
     if (HEX_COLOR_RE.test(trimmed)) return trimmed.toLowerCase();
   }
   return fallback;
+}
+
+function sanitizeUnderlineRule(
+  raw: unknown,
+  fallback: WordUnderlineRule
+): WordUnderlineRule {
+  if (!raw || typeof raw !== 'object') return fallback;
+  const r = raw as Partial<WordUnderlineRule>;
+  const style: ReaderUnderlineStyle =
+    r.style === 'solid' ||
+    r.style === 'dotted' ||
+    r.style === 'dashed' ||
+    r.style === 'none'
+      ? r.style
+      : fallback.style;
+  const color = sanitizeReaderColorHex(r.color, fallback.color) || fallback.color;
+  return { style, color };
+}
+
+const UNDERLINE_STATUS_KEYS: Array<keyof VocabUnderlinePalette> = [
+  'new',
+  'learning',
+  'due',
+  'known',
+  'ignored',
+  'particle',
+];
+
+/** Builds CSS variables shared by reader views and live preview strip. */
+export function buildWordMarkerCssVars(
+  prefs: Pick<
+    ReaderPreferences,
+    | 'vocabColors'
+    | 'posColors'
+    | 'pitchColors'
+    | 'wordUnderlineThickness'
+    | 'wordUnderlineOffset'
+    | 'wordUnderlinePalette'
+  >
+): Record<string, string> {
+  const vars: Record<string, string> = {
+    '--jp-vocab-new': prefs.vocabColors.new || '#74d4b7',
+    '--jp-vocab-learning': prefs.vocabColors.learning || '#797ab5',
+    '--jp-vocab-due': prefs.vocabColors.due || '#d9684e',
+    '--jp-vocab-known': prefs.vocabColors.known || 'inherit',
+    '--jp-vocab-ignored': prefs.vocabColors.ignored || '#8b949e',
+    '--jp-vocab-particle': prefs.vocabColors.particle || '#797ab5',
+    '--jp-pos-noun': prefs.posColors.noun || '#d9684e',
+    '--jp-pos-verb': prefs.posColors.verb || '#74d4b7',
+    '--jp-pos-adj': prefs.posColors.adj || '#f0b35e',
+    '--jp-pos-particle': prefs.posColors.particle || '#797ab5',
+    '--jp-pos-adverb': prefs.posColors.adverb || '#c58be6',
+    '--jp-pos-other': prefs.posColors.other || 'inherit',
+    '--jp-pitch-heiban': prefs.pitchColors.heiban || '#5cb8ff',
+    '--jp-pitch-atamadaka': prefs.pitchColors.atamadaka || '#e06c58',
+    '--jp-pitch-nakadaka': prefs.pitchColors.nakadaka || '#f0aa4f',
+    '--jp-pitch-odaka': prefs.pitchColors.odaka || '#63cfa5',
+    '--jp-pitch-unknown': prefs.pitchColors.unknown || 'inherit',
+    '--jp-ul-width': `${prefs.wordUnderlineThickness || 2}px`,
+    '--jp-ul-offset': `${prefs.wordUnderlineOffset ?? 3}px`,
+  };
+  const ul = prefs.wordUnderlinePalette ?? DEFAULT_VOCAB_UNDERLINES;
+  for (const status of UNDERLINE_STATUS_KEYS) {
+    const rule = ul[status] ?? DEFAULT_VOCAB_UNDERLINES[status];
+    vars[`--jp-ul-${status}-style`] = rule.style;
+    vars[`--jp-ul-${status}-color`] = rule.color;
+    vars[`--jp-ul-${status}-gap`] = rule.style === 'none' ? '0' : '0.045em';
+  }
+  return vars;
 }
 
 const READER_PREFS_STORAGE_KEY = 'immersiontrack_reader_prefs_v1';
@@ -482,6 +583,40 @@ export function loadReaderPrefs(): ReaderPreferences {
         typeof parsed.hideKnownFurigana === 'boolean'
           ? parsed.hideKnownFurigana
           : DEFAULT_READER_PREFS.hideKnownFurigana;
+      const wordUnderline =
+        typeof parsed.wordUnderline === 'boolean'
+          ? parsed.wordUnderline
+          : DEFAULT_READER_PREFS.wordUnderline;
+      const wordUnderlineThickness =
+        typeof parsed.wordUnderlineThickness === 'number' &&
+        Number.isFinite(parsed.wordUnderlineThickness)
+          ? Math.min(4, Math.max(1, Number(parsed.wordUnderlineThickness.toFixed(1))))
+          : DEFAULT_READER_PREFS.wordUnderlineThickness;
+      const wordUnderlineOffset =
+        typeof parsed.wordUnderlineOffset === 'number' &&
+        Number.isFinite(parsed.wordUnderlineOffset)
+          ? Math.min(8, Math.max(0, Math.round(parsed.wordUnderlineOffset)))
+          : DEFAULT_READER_PREFS.wordUnderlineOffset;
+      const rawUl = parsed.wordUnderlinePalette as
+        | Partial<VocabUnderlinePalette>
+        | undefined;
+      const wordUnderlinePalette: VocabUnderlinePalette = {
+        new: sanitizeUnderlineRule(rawUl?.new, DEFAULT_VOCAB_UNDERLINES.new),
+        learning: sanitizeUnderlineRule(
+          rawUl?.learning,
+          DEFAULT_VOCAB_UNDERLINES.learning
+        ),
+        due: sanitizeUnderlineRule(rawUl?.due, DEFAULT_VOCAB_UNDERLINES.due),
+        known: sanitizeUnderlineRule(rawUl?.known, DEFAULT_VOCAB_UNDERLINES.known),
+        ignored: sanitizeUnderlineRule(
+          rawUl?.ignored,
+          DEFAULT_VOCAB_UNDERLINES.ignored
+        ),
+        particle: sanitizeUnderlineRule(
+          rawUl?.particle,
+          DEFAULT_VOCAB_UNDERLINES.particle
+        ),
+      };
       const showSpeedHud =
         typeof parsed.showSpeedHud === 'boolean'
           ? parsed.showSpeedHud
@@ -588,6 +723,10 @@ export function loadReaderPrefs(): ReaderPreferences {
         wordClickAction,
         colorParticlesInVocab,
         hideKnownFurigana,
+        wordUnderline,
+        wordUnderlineThickness,
+        wordUnderlineOffset,
+        wordUnderlinePalette,
         showSpeedHud,
         vocabColors,
         posColors,
