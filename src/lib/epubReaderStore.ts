@@ -1912,6 +1912,29 @@ export function extractChapterParagraphs(
   const body = doc.body;
   if (!body) return [];
 
+  body
+    .querySelectorAll(DISALLOWED_TAGS_SELECTOR)
+    .forEach((node) => node.remove());
+  body.querySelectorAll('*').forEach((node) => {
+    for (const attr of Array.from(node.attributes)) {
+      const nameLower = attr.name.toLowerCase();
+      if (
+        nameLower.startsWith('on') ||
+        nameLower === 'srcdoc' ||
+        nameLower === 'formaction' ||
+        nameLower === 'action' ||
+        ((nameLower === 'href' ||
+          nameLower === 'xlink:href' ||
+          nameLower === 'src' ||
+          nameLower === 'poster' ||
+          nameLower === 'data') &&
+          hasDangerousUriScheme(attr.value))
+      ) {
+        node.removeAttribute(attr.name);
+      }
+    }
+  });
+
   const blocks: ChapterParagraphBlock[] = [];
 
   const pushElement = (el: Element) => {
@@ -1986,7 +2009,24 @@ function parseXmlOrHtmlDocument(raw: string): Document {
 }
 
 const DISALLOWED_TAGS_SELECTOR =
-  'script, style, iframe, object, embed, link, meta, form, input, textarea, select, button, noscript, audio, video';
+  'script, style, iframe, object, embed, link, meta, base, foreignobject, animate, animatemotion, animatetransform, set, mpath, handler, use, template, portal, form, input, textarea, select, button, noscript, audio, video';
+
+function hasDangerousUriScheme(raw: string): boolean {
+  let normalized = '';
+  for (let i = 0; i < raw.length; i++) {
+    const code = raw.charCodeAt(i);
+    if (code <= 32) continue;
+    normalized += raw[i];
+  }
+  const lower = normalized.toLowerCase();
+  return (
+    lower.startsWith('javascript:') ||
+    lower.startsWith('vbscript:') ||
+    lower.startsWith('data:text/html') ||
+    lower.startsWith('data:application/') ||
+    lower.startsWith('data:image/svg+xml')
+  );
+}
 
 async function sanitizeChapterRoot(
   root: Element,
@@ -1999,11 +2039,15 @@ async function sanitizeChapterRoot(
     .forEach((el) => el.remove());
 
   const loadDataUrl = async (href: string): Promise<string | null> => {
-    if (!href || /^(https?:|data:|blob:|javascript:)/i.test(href)) {
+    if (!href || /^(https?:|data:|blob:|javascript:|vbscript:)/i.test(href)) {
       return null;
     }
     const resolved = resolveZipRelative(chapterDir, href);
     if (!resolved) return null;
+    const mime = getMimeFromPath(resolved);
+    if (!mime.startsWith('image/') || mime === 'image/svg+xml') {
+      return null;
+    }
     const cached = imageCache.get(resolved);
     if (cached) return cached;
 
@@ -2012,7 +2056,7 @@ async function sanitizeChapterRoot(
     if (!entry) return null;
     try {
       const b64 = await entry.async('base64');
-      const dataUrl = `data:${getMimeFromPath(resolved)};base64,${b64}`;
+      const dataUrl = `data:${mime};base64,${b64}`;
       imageCache.set(resolved, dataUrl);
       return dataUrl;
     } catch {
@@ -2026,7 +2070,10 @@ async function sanitizeChapterRoot(
     const dataUrl = await loadDataUrl(src);
     if (dataUrl) {
       img.setAttribute('src', dataUrl);
-    } else if (!/^https?:/i.test(src) && !/^data:/i.test(src)) {
+    } else if (
+      !/^https?:/i.test(src) &&
+      !/^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(src)
+    ) {
       img.removeAttribute('src');
     }
     img.removeAttribute('width');
@@ -2042,6 +2089,12 @@ async function sanitizeChapterRoot(
     if (dataUrl) {
       svgImg.setAttribute('href', dataUrl);
       svgImg.removeAttribute('xlink:href');
+    } else if (
+      !/^https?:/i.test(href) &&
+      !/^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(href)
+    ) {
+      svgImg.removeAttribute('href');
+      svgImg.removeAttribute('xlink:href');
     }
   }
 
@@ -2053,6 +2106,11 @@ async function sanitizeChapterRoot(
         nameLower.startsWith('on') ||
         nameLower === 'style' ||
         nameLower === 'srcset' ||
+        nameLower === 'srcdoc' ||
+        nameLower === 'allow' ||
+        nameLower === 'sandbox' ||
+        nameLower === 'formaction' ||
+        nameLower === 'action' ||
         nameLower === 'xmlns' ||
         nameLower === 'xml:lang'
       ) {
@@ -2060,8 +2118,13 @@ async function sanitizeChapterRoot(
         continue;
       }
       if (
-        (nameLower === 'href' || nameLower === 'src') &&
-        /^\s*javascript:/i.test(attr.value)
+        (nameLower === 'href' ||
+          nameLower === 'xlink:href' ||
+          nameLower === 'src' ||
+          nameLower === 'poster' ||
+          nameLower === 'data' ||
+          nameLower === 'background') &&
+        hasDangerousUriScheme(attr.value)
       ) {
         el.removeAttribute(attr.name);
       }

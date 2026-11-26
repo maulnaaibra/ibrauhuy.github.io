@@ -26,9 +26,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [supabaseReady, setSupabaseReady] = useState<boolean>(
-    () => isSupabaseConfigured
-  );
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(false);
@@ -79,16 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   useEffect(() => {
-    const onConfigChange = () => {
-      setSupabaseReady(isSupabaseConfigured);
-    };
-    window.addEventListener('supabase-config-changed', onConfigChange);
-    return () =>
-      window.removeEventListener('supabase-config-changed', onConfigChange);
-  }, []);
-
-  useEffect(() => {
-    if (!supabaseReady) {
+    if (!isSupabaseConfigured) {
       return;
     }
 
@@ -137,7 +125,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       active = false;
       subscription.unsubscribe();
     };
-  }, [supabaseReady, fetchOrInitProfile]);
+  }, [fetchOrInitProfile]);
 
   const refreshProfile = async () => {
     if (session?.user) {

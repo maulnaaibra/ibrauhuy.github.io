@@ -236,7 +236,18 @@ export const ProfileDashboardSection: React.FC<
 
   const handleApplyBannerUrl = async () => {
     const clean = bannerUrlInput.trim();
-    if (!clean.startsWith('https://') && !clean.startsWith('http://')) {
+    let validHttps = false;
+    try {
+      const parsed = new URL(clean);
+      validHttps =
+        parsed.protocol === 'https:' &&
+        Boolean(parsed.hostname) &&
+        !parsed.username &&
+        !parsed.password;
+    } catch {
+      validHttps = false;
+    }
+    if (!validHttps) {
       toast.error('Masukkan URL gambar yang valid (https://...)');
       return;
     }

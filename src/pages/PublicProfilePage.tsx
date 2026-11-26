@@ -6,14 +6,16 @@ import { useAuth } from '../context/AuthContext';
 import {
   buildCommunityMemberSnapshot,
   buildPublicProfileSnapshot,
+  buildPublicShowcaseFromRpc,
   decodeProfileSnapshotFromToken,
   loadExtendedProfileMeta,
   saveExtendedProfileMeta,
   type ExtendedUserProfile,
   type PublicProfileSnapshot,
+  type RpcPublicProfileShowcase,
 } from '../lib/profileMeta';
 import { supabase } from '../lib/supabase';
-import type { ImmersionLog, Profile } from '../types';
+import type { ImmersionLog } from '../types';
 
 export const PublicProfilePage: React.FC = () => {
   const { handle } = useParams<{ handle?: string }>();
@@ -100,31 +102,21 @@ export const PublicProfilePage: React.FC = () => {
         }
       }
 
-      // 4. Try fetching public profile & logs from Supabase by UUID or full_name
+      // 4. Try fetching public showcase summary via least-privilege RPC (only if is_public = true)
       if (handle) {
-        const isUuid =
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-            handle
-          );
-        const query = supabase.from('profiles').select('*');
-        const { data: profData } = isUuid
-          ? await query.eq('id', handle).maybeSingle()
-          : await query.ilike('full_name', `%${handle}%`).limit(1).maybeSingle();
+        const cleanHandle = handle.trim().slice(0, 64);
+        const { data: showcaseData } = await supabase.rpc(
+          'get_public_profile_showcase',
+          { p_handle: cleanHandle }
+        );
 
         if (!active) return;
-        if (profData) {
-          const dbProf = profData as Profile;
-          const { data: dbLogs } = await supabase
-            .from('immersion_logs')
-            .select('*')
-            .eq('user_id', dbProf.id)
-            .order('logged_date', { ascending: false });
+        const row = Array.isArray(showcaseData)
+          ? (showcaseData[0] as RpcPublicProfileShowcase | undefined)
+          : (showcaseData as RpcPublicProfileShowcase | null);
 
-          if (!active) return;
-          const ext = loadExtendedProfileMeta(dbProf.id, dbProf);
-          setRemoteSnapshot(
-            buildPublicProfileSnapshot(ext, (dbLogs as ImmersionLog[]) ?? [])
-          );
+        if (row && row.id) {
+          setRemoteSnapshot(buildPublicShowcaseFromRpc(row));
           setLoading(false);
           return;
         }

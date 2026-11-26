@@ -8,8 +8,6 @@ import {
 } from 'react-router-dom';
 import {
   ArrowLeft,
-  Copy,
-  Database,
   KeyRound,
   Lock,
   Mail,
@@ -18,17 +16,9 @@ import {
   Zap,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import {
-  getSupabaseConfig,
-  isSupabaseConfigured,
-  saveRuntimeSupabaseConfig,
-  SUPABASE_SCHEMA_SQL,
-  supabase,
-  testSupabaseConnection,
-} from '../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
 import { useAuth } from '../context/AuthContext';
-import { completeGoogleSignInToSupabase } from '../lib/googleAuth';
 
 type AuthMode = 'signin' | 'signup' | 'forgot' | 'reset';
 
@@ -64,12 +54,6 @@ export const AuthPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [callbackTimedOut, setCallbackTimedOut] = useState(false);
 
-  const [showSetup, setShowSetup] = useState(false);
-  const [sbUrl, setSbUrl] = useState(() => getSupabaseConfig().url);
-  const [sbKey, setSbKey] = useState(() => getSupabaseConfig().anonKey);
-  const [sbReady, setSbReady] = useState(() => isSupabaseConfigured);
-  const [testingSb, setTestingSb] = useState(false);
-
   useEffect(() => {
     if (!isCallbackRoute) return;
     const timer = setTimeout(() => {
@@ -79,59 +63,19 @@ export const AuthPage: React.FC = () => {
   }, [isCallbackRoute]);
 
   useEffect(() => {
-    const goicError = searchParams.get('goic_error');
-    if (goicError) {
-      toast.error(`Login Google (goic) gagal: ${goicError}`);
+    const legacyParams = [
+      'goic_error',
+      'goic_email',
+      'goic_name',
+      'goic_picture',
+      'goic_sub',
+    ];
+    if (legacyParams.some((k) => searchParams.has(k))) {
       const next = new URLSearchParams(searchParams);
-      next.delete('goic_error');
+      legacyParams.forEach((k) => next.delete(k));
       setSearchParams(next, { replace: true });
-      return;
     }
-
-    const goicEmail = searchParams.get('goic_email');
-    if (!goicEmail) return;
-
-    const goicName = searchParams.get('goic_name') || goicEmail.split('@')[0];
-    const goicPicture = searchParams.get('goic_picture') || undefined;
-    const goicSub = searchParams.get('goic_sub') || undefined;
-
-    let cancelled = false;
-    void Promise.resolve().then(async () => {
-      if (cancelled) return;
-      setSubmitting(true);
-      try {
-        const res = await completeGoogleSignInToSupabase({
-          email: goicEmail,
-          name: goicName,
-          picture: goicPicture,
-          sub: goicSub,
-        });
-        if (cancelled) return;
-        const next = new URLSearchParams(searchParams);
-        next.delete('goic_email');
-        next.delete('goic_name');
-        next.delete('goic_picture');
-        next.delete('goic_sub');
-        setSearchParams(next, { replace: true });
-        if (!res.ok) {
-          toast.error(res.error || 'Gagal menyelesaikan sesi login Google.');
-          return;
-        }
-        toast.success(
-          res.isNewUser
-            ? `Akun ${goicEmail} aktif via Google OpenID!`
-            : `Masuk sebagai ${goicEmail}`
-        );
-        navigate(fromPath, { replace: true });
-      } finally {
-        if (!cancelled) setSubmitting(false);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [fromPath, navigate, searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     const hash = window.location.hash.replace(/^#/, '');
@@ -181,38 +125,9 @@ export const AuthPage: React.FC = () => {
   }
 
   const ensureConfigured = () => {
-    if (sbReady || isSupabaseConfigured) return true;
-    setShowSetup(true);
-    toast.error('Hubungkan URL & Anon Key Supabase terlebih dahulu.');
+    if (isSupabaseConfigured) return true;
+    toast.error('Layanan autentikasi belum siap. Silakan coba beberapa saat lagi.');
     return false;
-  };
-
-  const handleSaveSupabase = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setTestingSb(true);
-    const check = await testSupabaseConnection(sbUrl, sbKey);
-    if (!check.ok) {
-      toast.error(check.message);
-      setTestingSb(false);
-      return;
-    }
-    if (saveRuntimeSupabaseConfig(sbUrl, sbKey)) {
-      setSbReady(true);
-      setShowSetup(false);
-      toast.success(check.message);
-    } else {
-      toast.error('URL atau Anon Key Supabase tidak valid.');
-    }
-    setTestingSb(false);
-  };
-
-  const handleCopySql = async () => {
-    try {
-      await navigator.clipboard.writeText(SUPABASE_SCHEMA_SQL);
-      toast.success('Skrip SQL disalin! Jalankan di SQL Editor Supabase.');
-    } catch {
-      toast.error('Gagal menyalin otomatis. Salin dari Pengaturan.');
-    }
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -324,7 +239,7 @@ export const AuthPage: React.FC = () => {
                 </p>
               </div>
             </div>
-            {(sbReady || isSupabaseConfigured) && (
+            {isSupabaseConfigured && (
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] font-bold text-emerald-700 shrink-0">
                 <ShieldCheck className="w-3 h-3" />
                 Cloud Siap
@@ -357,69 +272,6 @@ export const AuthPage: React.FC = () => {
                 Daftar Baru
               </button>
             </div>
-          )}
-
-          {!sbReady && !isSupabaseConfigured && (
-            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-medium text-rose-900 space-y-1.5">
-              <p>
-                Kredensial Supabase belum terhubung di{' '}
-                <code className="font-mono text-rose-700">.env.local</code>.
-              </p>
-              <button
-                type="button"
-                onClick={() => setShowSetup(!showSetup)}
-                className="font-bold underline text-rose-700 cursor-pointer"
-              >
-                {showSetup
-                  ? 'Sembunyikan Pengaturan Supabase'
-                  : 'Masukkan Project URL & Anon Key Supabase Sekarang'}
-              </button>
-            </div>
-          )}
-
-          {showSetup && (
-            <form
-              onSubmit={handleSaveSupabase}
-              className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5 animate-scale-in"
-            >
-              <div className="flex items-center justify-between">
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-900">
-                  <Database className="w-3.5 h-3.5 text-rose-600" />
-                  Koneksi Supabase
-                </span>
-                <button
-                  type="button"
-                  onClick={handleCopySql}
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 hover:underline cursor-pointer"
-                >
-                  <Copy className="w-3 h-3" />
-                  Salin SQL Tabel
-                </button>
-              </div>
-              <input
-                type="url"
-                required
-                placeholder="https://xxxx.supabase.co"
-                value={sbUrl}
-                onChange={(e) => setSbUrl(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-rose-500"
-              />
-              <input
-                type="text"
-                required
-                placeholder="Anon Public Key"
-                value={sbKey}
-                onChange={(e) => setSbKey(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-rose-500"
-              />
-              <button
-                type="submit"
-                disabled={testingSb}
-                className="btn-crimson w-full py-2 rounded-lg text-xs font-bold cursor-pointer"
-              >
-                {testingSb ? 'Menguji...' : 'Test & Simpan Supabase'}
-              </button>
-            </form>
           )}
 
           <form onSubmit={handleFormSubmit} className="space-y-3">
@@ -456,11 +308,11 @@ export const AuthPage: React.FC = () => {
                 <input
                   type="password"
                   required
-                  minLength={6}
+                  minLength={8}
                   placeholder={
                     activeMode === 'reset'
-                      ? 'Password baru (min. 6 karakter)'
-                      : 'Password (min. 6 karakter)'
+                      ? 'Password baru (min. 8 karakter)'
+                      : 'Password (min. 8 karakter)'
                   }
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -475,7 +327,7 @@ export const AuthPage: React.FC = () => {
                 <input
                   type="password"
                   required
-                  minLength={6}
+                  minLength={8}
                   placeholder="Konfirmasi password baru"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
@@ -524,7 +376,6 @@ export const AuthPage: React.FC = () => {
 
               <GoogleSignInButton
                 onSuccess={() => navigate(fromPath, { replace: true })}
-                onRequireSupabaseSetup={() => setShowSetup(true)}
                 disabled={submitting}
               />
             </>

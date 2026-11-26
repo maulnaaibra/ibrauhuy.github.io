@@ -2,26 +2,15 @@ import React, { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowLeft,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Copy,
-  Database,
   Download,
   Palette,
   Save,
+  ShieldCheck,
   Upload,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AppearanceControlsContent } from '../components/WallpaperCustomizerPopover';
-import {
-  clearRuntimeSupabaseConfig,
-  getSupabaseConfig,
-  saveRuntimeSupabaseConfig,
-  SUPABASE_SCHEMA_SQL,
-  supabase,
-  testSupabaseConnection,
-} from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import {
   exportWorkspaceJson,
   loadDemoLogs,
@@ -235,15 +224,6 @@ export const SettingsPage: React.FC = () => {
   const { user, profile, refreshProfile } = useAuth();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [backingUp, setBackingUp] = useState(false);
-
-  const initialSb = getSupabaseConfig();
-  const [sbUrl, setSbUrl] = useState(initialSb.url);
-  const [sbKey, setSbKey] = useState(initialSb.anonKey);
-  const [sbSource, setSbSource] = useState(initialSb.source);
-  const [testingSb, setTestingSb] = useState(false);
-  const [sbStatusMsg, setSbStatusMsg] = useState<string | null>(null);
-  const [sbTablesReady, setSbTablesReady] = useState<boolean | null>(null);
-  const [showSql, setShowSql] = useState(false);
   const [migratingLogs, setMigratingLogs] = useState(false);
 
   const handleMigrateLocalToCloud = async () => {
@@ -273,55 +253,11 @@ export const SettingsPage: React.FC = () => {
       toast.error(
         err instanceof Error
           ? err.message
-          : 'Gagal menyinkronkan data ke Supabase'
+          : 'Gagal menyinkronkan data ke cloud'
       );
     } finally {
       setMigratingLogs(false);
     }
-  };
-
-  const handleTestAndSaveSupabase = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setTestingSb(true);
-    const check = await testSupabaseConnection(sbUrl, sbKey);
-    setSbStatusMsg(check.message);
-    setSbTablesReady(check.tablesReady);
-
-    if (!check.ok) {
-      toast.error(check.message);
-      setTestingSb(false);
-      return;
-    }
-
-    saveRuntimeSupabaseConfig(sbUrl, sbKey);
-    setSbSource(getSupabaseConfig().source);
-    toast.success(
-      check.tablesReady
-        ? 'Supabase terhubung & tabel siap!'
-        : 'Koneksi valid! Silakan jalankan Skrip SQL di Supabase.'
-    );
-    setTestingSb(false);
-  };
-
-  const handleCopySql = async () => {
-    try {
-      await navigator.clipboard.writeText(SUPABASE_SCHEMA_SQL);
-      toast.success('Skrip SQL disalin! Tempel di SQL Editor Supabase.');
-    } catch {
-      setShowSql(true);
-      toast('Silakan salin SQL dari kotak di bawah.');
-    }
-  };
-
-  const handleDisconnectSupabase = () => {
-    clearRuntimeSupabaseConfig();
-    const next = getSupabaseConfig();
-    setSbUrl(next.url);
-    setSbKey(next.anonKey);
-    setSbSource(next.source);
-    setSbStatusMsg(null);
-    setSbTablesReady(null);
-    toast.success('Koneksi lokal Supabase dihapus.');
   };
 
   const handleExport = async () => {
@@ -454,154 +390,21 @@ export const SettingsPage: React.FC = () => {
 
         <div className="card-pro p-6 space-y-4">
           <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-600">
-                <Database className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-slate-900">
-                  Koneksi Cloud Supabase (Database & Auth)
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Hubungkan proyek Supabase Anda untuk sinkronisasi akun & data
-                  di semua perangkat.
-                </p>
-              </div>
-            </div>
-            <span
-              className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border shrink-0 ${
-                sbSource !== 'none'
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-slate-100 text-slate-600 border-slate-200'
-              }`}
-            >
-              {sbSource === 'env'
-                ? 'Terhubung (Env)'
-                : sbSource === 'local'
-                  ? 'Terhubung'
-                  : 'Lokal'}
-            </span>
-          </div>
-
-          <form onSubmit={handleTestAndSaveSupabase} className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">
-                Project URL
-              </label>
-              <input
-                type="url"
-                required
-                placeholder="https://your-project-id.supabase.co"
-                value={sbUrl}
-                onChange={(e) => setSbUrl(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white"
-              />
+              <h2 className="text-base font-bold text-slate-900">
+                Manajemen Data & Backup Cloud
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Ekspor cadangan riwayat belajar ke file JSON atau impor data
+                cadangan langsung ke akun cloud Anda.
+              </p>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">
-                Anon Public Key
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                value={sbKey}
-                onChange={(e) => setSbKey(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white"
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="submit"
-                disabled={testingSb}
-                className="btn-crimson px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer disabled:opacity-60"
-              >
-                {testingSb
-                  ? 'Menguji Koneksi...'
-                  : 'Test & Simpan Koneksi Supabase'}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleCopySql}
-                className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-800 inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <Copy className="w-3.5 h-3.5 text-rose-600" />
-                Salin Skrip SQL Tabel & RLS
-              </button>
-
-              {sbSource === 'local' && (
-                <button
-                  type="button"
-                  onClick={handleDisconnectSupabase}
-                  className="px-3 py-2 rounded-xl bg-white border border-slate-200 hover:text-red-600 text-xs font-medium text-slate-500 cursor-pointer"
-                >
-                  Putuskan
-                </button>
-              )}
-
-              {user && loadDemoLogs().length > 0 && (
-                <button
-                  type="button"
-                  disabled={migratingLogs}
-                  onClick={handleMigrateLocalToCloud}
-                  className="px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-xs font-semibold text-emerald-700 inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  {migratingLogs
-                    ? 'Mengunggah...'
-                    : 'Sinkronkan Data Lokal ke Cloud'}
-                </button>
-              )}
-            </div>
-          </form>
-
-          {sbStatusMsg && (
-            <div
-              className={`p-3 rounded-xl text-xs border flex items-start justify-between gap-2 ${
-                sbTablesReady
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                  : 'bg-amber-50 border-amber-200 text-amber-900'
-              }`}
-            >
-              <span className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{sbStatusMsg}</span>
+            {user && (
+              <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200 inline-flex items-center gap-1.5 shrink-0">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Terlindung RLS
               </span>
-            </div>
-          )}
-
-          <div className="pt-1 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={() => setShowSql(!showSql)}
-              className="text-xs font-semibold text-slate-600 hover:text-slate-900 inline-flex items-center gap-1 cursor-pointer"
-            >
-              Lihat Skrip SQL Supabase
-              {showSql ? (
-                <ChevronUp className="w-3.5 h-3.5" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5" />
-              )}
-            </button>
-            {showSql && (
-              <pre className="mt-2 p-3 rounded-xl bg-slate-900 text-slate-100 text-[11px] font-mono overflow-x-auto max-h-56">
-                {SUPABASE_SCHEMA_SQL}
-              </pre>
             )}
-          </div>
-        </div>
-
-        <div className="card-pro p-6 space-y-4">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">
-              Manajemen Data & Backup Cloud
-            </h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Ekspor cadangan riwayat belajar ke file JSON atau impor data
-              cadangan langsung ke akun Supabase Anda.
-            </p>
           </div>
 
           <div className="grid sm:grid-cols-2 gap-2.5">
@@ -632,6 +435,20 @@ export const SettingsPage: React.FC = () => {
               className="hidden"
             />
           </div>
+
+          {user && loadDemoLogs().length > 0 && (
+            <button
+              type="button"
+              disabled={migratingLogs}
+              onClick={handleMigrateLocalToCloud}
+              className="w-full px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-xs font-semibold text-emerald-700 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              {migratingLogs
+                ? 'Mengunggah...'
+                : 'Sinkronkan Data Lokal ke Cloud'}
+            </button>
+          )}
         </div>
       </div>
     </div>

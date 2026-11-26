@@ -7,7 +7,6 @@ import {
   Calculator,
   Clock,
   Compass,
-  Database,
   Flame,
   Lock,
   LogIn,
@@ -25,13 +24,7 @@ import {
   Zap,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import {
-  getSupabaseConfig,
-  isSupabaseConfigured,
-  saveRuntimeSupabaseConfig,
-  supabase,
-  testSupabaseConnection,
-} from '../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import {
   COMMUNITY_ACTIVITY_FEED,
   COMMUNITY_LEADERBOARD,
@@ -104,12 +97,6 @@ export const LandingPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
-  const [showSupabaseSetup, setShowSupabaseSetup] = useState(false);
-  const [sbUrl, setSbUrl] = useState(() => getSupabaseConfig().url);
-  const [sbKey, setSbKey] = useState(() => getSupabaseConfig().anonKey);
-  const [sbReady, setSbReady] = useState(() => isSupabaseConfigured);
-  const [testingSb, setTestingSb] = useState(false);
-
   const [calcMinutes, setCalcMinutes] = useState(90);
   const [selectedMilestoneCode, setSelectedMilestoneCode] = useState<
     'N4' | 'N3' | 'N2' | 'N1'
@@ -177,34 +164,13 @@ export const LandingPage: React.FC = () => {
       navigate('/login', { state: { from: '/dashboard?tab=catalog' } });
       return;
     }
-    navigate('/dashboard?tab=catalog');
-  };
-
-  const handleSaveSupabase = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setTestingSb(true);
-    const check = await testSupabaseConnection(sbUrl, sbKey);
-    if (!check.ok) {
-      toast.error(check.message);
-      setTestingSb(false);
-      return;
-    }
-    const saved = saveRuntimeSupabaseConfig(sbUrl, sbKey);
-    if (saved) {
-      setSbReady(true);
-      setShowSupabaseSetup(false);
-      toast.success(check.message);
-    } else {
-      toast.error('URL atau Anon Key tidak valid');
-    }
-    setTestingSb(false);
+    navigate(`/dashboard?tab=catalog`);
   };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sbReady && !isSupabaseConfigured) {
-      setShowSupabaseSetup(true);
-      toast.error('Hubungkan kredensial Supabase terlebih dahulu di bawah.');
+    if (!isSupabaseConfigured) {
+      toast.error('Layanan autentikasi belum siap. Silakan coba beberapa saat lagi.');
       return;
     }
     setAuthLoading(true);
@@ -1166,57 +1132,6 @@ export const LandingPage: React.FC = () => {
               </button>
             </div>
 
-            {!sbReady && !isSupabaseConfigured && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-medium text-rose-900 space-y-2">
-                <div>
-                  Kredensial Supabase belum terhubung. Silakan{' '}
-                  <button
-                    type="button"
-                    onClick={() => setShowSupabaseSetup(!showSupabaseSetup)}
-                    className="underline font-bold text-rose-700 cursor-pointer"
-                  >
-                    atur URL &amp; Anon Key Supabase sekarang
-                  </button>{' '}
-                  untuk menyambungkan akun Anda.
-                </div>
-              </div>
-            )}
-
-            {showSupabaseSetup && (
-              <form
-                onSubmit={handleSaveSupabase}
-                className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5"
-              >
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                  <Database className="w-3.5 h-3.5 text-rose-600" />
-                  Hubungkan Proyek Supabase
-                </div>
-                <input
-                  type="url"
-                  required
-                  placeholder="https://xxxx.supabase.co"
-                  value={sbUrl}
-                  onChange={(e) => setSbUrl(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-rose-500"
-                />
-                <input
-                  type="text"
-                  required
-                  placeholder="Anon Public Key"
-                  value={sbKey}
-                  onChange={(e) => setSbKey(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-rose-500"
-                />
-                <button
-                  type="submit"
-                  disabled={testingSb}
-                  className="btn-crimson w-full py-2 rounded-lg text-xs font-bold cursor-pointer disabled:opacity-60"
-                >
-                  {testingSb ? 'Menguji Koneksi...' : 'Test & Simpan Koneksi'}
-                </button>
-              </form>
-            )}
-
             <form onSubmit={handleEmailAuth} className="space-y-3">
               {isSignUp && (
                 <div className="relative">
@@ -1246,8 +1161,8 @@ export const LandingPage: React.FC = () => {
                 <input
                   type="password"
                   required
-                  minLength={6}
-                  placeholder="Password (min. 6 karakter)"
+                  minLength={8}
+                  placeholder="Password (min. 8 karakter)"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white"
@@ -1295,7 +1210,6 @@ export const LandingPage: React.FC = () => {
                 setShowAuthModal(false);
                 navigate('/dashboard');
               }}
-              onRequireSupabaseSetup={() => setShowSupabaseSetup(true)}
               disabled={authLoading}
             />
           </div>

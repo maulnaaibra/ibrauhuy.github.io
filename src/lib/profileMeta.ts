@@ -360,6 +360,43 @@ export interface PublicProfileSnapshot {
 
 const LOCAL_PROFILE_META_PREFIX = 'immersiontrack_profile_meta_v1_';
 
+const BUILT_IN_PRESET_IMAGE_URLS = new Set<string>([
+  ...AVATAR_PRESETS.map((p) => p.url),
+  ...BANNER_IMAGE_PRESETS.map((p) => p.url),
+  DEFAULT_PROFILE_BANNER_URL,
+]);
+
+export function sanitizeSafeImageUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === 'none') return null;
+  if (BUILT_IN_PRESET_IMAGE_URLS.has(trimmed)) {
+    return trimmed;
+  }
+  if (
+    /^data:image\/(?:png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(
+      trimmed
+    ) &&
+    trimmed.length <= 1_500_000
+  ) {
+    return trimmed;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (
+      parsed.protocol === 'https:' &&
+      parsed.hostname &&
+      !parsed.username &&
+      !parsed.password
+    ) {
+      return parsed.toString();
+    }
+  } catch {
+    // invalid URL
+  }
+  return null;
+}
+
 export function normalizeJlptLevelSetting(raw: unknown): JlptLevelSetting {
   if (
     raw === 'auto' ||
@@ -418,18 +455,20 @@ export function loadExtendedProfileMeta(
     id: userId,
     full_name: fullName,
     username,
-    avatar_url:
+    avatar_url: sanitizeSafeImageUrl(
       cached.avatar_url ??
-      baseProfile?.avatar_url ??
-      (typeof meta.avatar_url === 'string' ? meta.avatar_url : null) ??
-      null,
+        baseProfile?.avatar_url ??
+        (typeof meta.avatar_url === 'string' ? meta.avatar_url : null)
+    ),
     banner_url:
       cached.banner_url === 'none'
         ? null
-        : cached.banner_url ||
-          (typeof meta.banner_url === 'string' && meta.banner_url
-            ? meta.banner_url
-            : DEFAULT_PROFILE_BANNER_URL),
+        : sanitizeSafeImageUrl(
+            cached.banner_url ||
+              (typeof meta.banner_url === 'string' && meta.banner_url
+                ? meta.banner_url
+                : DEFAULT_PROFILE_BANNER_URL)
+          ),
     banner_theme:
       cached.banner_theme ||
       (meta.banner_theme as ProfileBannerThemeId | undefined) ||
@@ -478,19 +517,27 @@ export async function saveExtendedProfileMeta(
   userId: string,
   next: ExtendedUserProfile
 ): Promise<{ ok: boolean; error?: string }> {
+  const safeAvatar = sanitizeSafeImageUrl(next.avatar_url);
+  const safeBanner =
+    next.banner_url === 'none'
+      ? 'none'
+      : sanitizeSafeImageUrl(next.banner_url);
+
   const cleaned: ExtendedUserProfile = {
     ...next,
     id: userId,
-    full_name: next.full_name.trim() || 'Pelajar Immersion',
+    full_name: next.full_name.trim().slice(0, 80) || 'Pelajar Immersion',
     username: sanitizeUsername(next.username, next.full_name),
-    bio: next.bio.trim(),
-    favorite_media: next.favorite_media.trim(),
-    location: next.location.trim(),
-    discord_handle: next.discord_handle.trim(),
-    target_language: next.target_language.trim() || 'Japanese',
+    avatar_url: safeAvatar,
+    banner_url: safeBanner,
+    bio: next.bio.trim().slice(0, 500),
+    favorite_media: next.favorite_media.trim().slice(0, 160),
+    location: next.location.trim().slice(0, 80),
+    discord_handle: next.discord_handle.trim().slice(0, 64),
+    target_language: next.target_language.trim().slice(0, 40) || 'Japanese',
     daily_goal_minutes: Math.max(
       5,
-      Math.min(1440, Number(next.daily_goal_minutes) || 90)
+      Math.min(1440, Math.round(Number(next.daily_goal_minutes) || 90))
     ),
   };
 
@@ -512,8 +559,8 @@ export async function saveExtendedProfileMeta(
     daily_goal_minutes: cleaned.daily_goal_minutes,
   });
 
-  // 2. Also attempt updating optional extended columns in public.profiles if they exist
-  void supabase
+  // 2. Also attempt updating extended columns in public.profiles
+  const { error: extErr } = await supabase
     .from('profiles')
     .update({
       username: cleaned.username,
@@ -522,9 +569,19 @@ export async function saveExtendedProfileMeta(
       jlpt_target: cleaned.jlpt_target,
       favorite_media: cleaned.favorite_media,
       banner_theme: cleaned.banner_theme,
+      banner_url:
+        cleaned.banner_url === 'none'
+          ? 'none'
+          : cleaned.banner_url && cleaned.banner_url.length <= 2000
+            ? cleaned.banner_url
+            : null,
       is_public: cleaned.is_public,
     })
     .eq('id', userId);
+
+  if (extErr && !extErr.message.toLowerCase().includes('column')) {
+    // Ignore missing-column mismatch on legacy schemas; log real RLS/constraint issues cleanly
+  }
 
   // 3. Persist lightweight extended profile fields in Supabase Auth user_metadata
   // Avoid stuffing large base64 data URLs (>2000 chars) into JWT user_metadata
@@ -637,7 +694,7 @@ export function buildPublicProfileSnapshot(
       duration_minutes: l.duration_minutes,
       cards_mined: l.cards_mined,
       logged_date: l.logged_date,
-      notes: l.notes,
+      notes: null,
     })),
     unlockedBadges: achievements,
   };
@@ -689,7 +746,7 @@ export function encodeProfileSnapshotToToken(
 export function decodeProfileSnapshotFromToken(
   token: string
 ): PublicProfileSnapshot | null {
-  if (!token) return null;
+  if (!token || token.length > 24000) return null;
   try {
     const base64 = token.replace(/-/g, '+').replace(/_/g, '/');
     const padded = base64.padEnd(
@@ -704,13 +761,150 @@ export function decodeProfileSnapshotFromToken(
         .join('')
     );
     const parsed = JSON.parse(jsonStr) as PublicProfileSnapshot;
-    if (parsed && parsed.v === 1 && parsed.profile && parsed.stats) {
-      return parsed;
+    if (
+      parsed &&
+      parsed.v === 1 &&
+      parsed.profile &&
+      parsed.stats &&
+      typeof parsed.profile.full_name === 'string'
+    ) {
+      return {
+        ...parsed,
+        profile: {
+          ...parsed.profile,
+          full_name: parsed.profile.full_name.slice(0, 80),
+          username: sanitizeUsername(
+            String(parsed.profile.username || ''),
+            parsed.profile.full_name
+          ),
+          bio: String(parsed.profile.bio || '').slice(0, 500),
+          favorite_media: String(parsed.profile.favorite_media || '').slice(
+            0,
+            160
+          ),
+          location: String(parsed.profile.location || '').slice(0, 80),
+          discord_handle: String(parsed.profile.discord_handle || '').slice(
+            0,
+            64
+          ),
+          avatar_url: sanitizeSafeImageUrl(parsed.profile.avatar_url),
+          banner_url: sanitizeSafeImageUrl(parsed.profile.banner_url),
+        },
+        topMedia: Array.isArray(parsed.topMedia)
+          ? parsed.topMedia.slice(0, 10)
+          : [],
+        recentLogs: Array.isArray(parsed.recentLogs)
+          ? parsed.recentLogs.slice(0, 8).map((l) => ({
+              ...l,
+              notes: null,
+            }))
+          : [],
+        unlockedBadges: Array.isArray(parsed.unlockedBadges)
+          ? parsed.unlockedBadges.slice(0, 12)
+          : [],
+      };
     }
     return null;
   } catch {
     return null;
   }
+}
+
+export interface RpcPublicProfileShowcase {
+  id: string;
+  full_name: string | null;
+  username: string | null;
+  avatar_url: string | null;
+  banner_url?: string | null;
+  bio: string | null;
+  jlpt_level?: string | null;
+  jlpt_target: string | null;
+  favorite_media: string | null;
+  banner_theme: string | null;
+  target_language: string | null;
+  daily_goal_minutes: number | null;
+  created_at: string | null;
+  total_minutes: number | null;
+  total_cards: number | null;
+  total_sessions: number | null;
+  top_media: Array<{
+    title: string;
+    category: ImmersionCategory;
+    totalMinutes: number;
+    sessions: number;
+    totalCards: number;
+  }> | null;
+}
+
+export function buildPublicShowcaseFromRpc(
+  row: RpcPublicProfileShowcase
+): PublicProfileSnapshot {
+  const totalMinutes = Math.max(0, Number(row.total_minutes) || 0);
+  const totalHours = Number((totalMinutes / 60).toFixed(1));
+  const jlptLevel = normalizeJlptLevelSetting(row.jlpt_level);
+  const stage = getImmersionStage(totalHours, jlptLevel);
+  const fullName = row.full_name?.trim() || 'Pelajar Immersion';
+  const username = sanitizeUsername(row.username || '', fullName);
+
+  const ext: ExtendedUserProfile = {
+    id: row.id,
+    full_name: fullName,
+    username,
+    avatar_url: sanitizeSafeImageUrl(row.avatar_url),
+    banner_url:
+      row.banner_url === 'none'
+        ? null
+        : sanitizeSafeImageUrl(row.banner_url) || DEFAULT_PROFILE_BANNER_URL,
+    banner_theme:
+      PROFILE_BANNER_THEMES.find((t) => t.id === row.banner_theme)?.id ??
+      'sakura-crimson',
+    bio: row.bio?.trim() || 'Pelajar aktif di ImmersionTrack.',
+    jlpt_level: jlptLevel,
+    jlpt_target:
+      row.jlpt_target === 'N5' ||
+      row.jlpt_target === 'N4' ||
+      row.jlpt_target === 'N3' ||
+      row.jlpt_target === 'N2' ||
+      row.jlpt_target === 'N1'
+        ? row.jlpt_target
+        : 'N2',
+    favorite_media: row.favorite_media?.trim() || '-',
+    favorite_category: 'anime',
+    location: '',
+    discord_handle: '',
+    target_language: row.target_language || 'Japanese',
+    daily_goal_minutes: Math.max(
+      5,
+      Math.min(1440, Number(row.daily_goal_minutes) || 90)
+    ),
+    is_public: true,
+    created_at: row.created_at || new Date().toISOString(),
+  };
+
+  return {
+    v: 1,
+    profile: ext,
+    stats: {
+      totalHours,
+      streak: 0,
+      longestStreak: 0,
+      totalCards: Math.max(0, Number(row.total_cards) || 0),
+      totalSessions: Math.max(0, Number(row.total_sessions) || 0),
+      todayMinutes: 0,
+      stageCode: stage.code,
+      stageLabel: stage.label,
+      stageProgressPct: stage.progressPct,
+      nextTargetHours: stage.nextTargetHours,
+      stageIsManual: stage.isManual,
+      listeningHours: 0,
+      readingHours: 0,
+      studyHours: 0,
+      ratioLabel: 'Cloud Public Showcase',
+    },
+    topMedia: Array.isArray(row.top_media) ? row.top_media.slice(0, 6) : [],
+    recentLogs: [],
+    unlockedBadges: [],
+  };
 }
 
 export function getPublicProfileShareUrl(
