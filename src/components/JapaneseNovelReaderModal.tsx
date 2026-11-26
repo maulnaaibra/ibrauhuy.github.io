@@ -26,6 +26,7 @@ import {
   Headphones,
   History,
   Image as ImageIcon,
+  Images,
   Keyboard,
   Library,
   List,
@@ -59,9 +60,13 @@ import {
   subscribeAppearanceChanges,
 } from '../lib/appearance';
 import {
+  addReaderBgSlideFiles,
+  addReaderBgSlideUrl,
   addStoredNovelBookmark,
   buildYouTubeBgEmbedUrl,
+  clearReaderBgSlides,
   DEFAULT_READER_PREFS,
+  deleteReaderBgSlide,
   deleteReaderBgVideoBlob,
   deleteStoredNovelBook,
   deleteStoredNovelBookmark,
@@ -71,9 +76,12 @@ import {
   getStoredNovelBook,
   importNovelFileToLibrary,
   listStoredNovelBooks,
+  loadReaderBgSlideBlob,
+  loadReaderBgSlideMetas,
   loadReaderBgVideoBlob,
   loadReaderPrefs,
   loadYatsuBookLinks,
+  moveReaderBgSlide,
   normalizeYatsuUrl,
   parseReaderBackgroundMedia,
   READER_BG_VIDEO_SENTINEL,
@@ -94,6 +102,7 @@ import {
   type StoredNovelBook,
   type StoredNovelChapter,
   type StoredNovelSummary,
+  type StoredReaderBgSlideMeta,
   type VnAnimationStyle,
 } from '../lib/epubReaderStore';
 import {
@@ -132,6 +141,10 @@ import {
   type AudioTrackingStatusPayload,
 } from './ReaderAudiobookDock';
 import { ReaderWordColorPanel } from './ReaderWordColorPanel';
+import {
+  ReaderBgSlideshowPanel,
+  type HydratedReaderBgSlide,
+} from './ReaderBgSlideshowPanel';
 import {
   ReaderWordPopover,
   type ActiveInspectedWord,
@@ -455,6 +468,18 @@ export const JapaneseNovelReaderModal: React.FC<
     return saved.startsWith('data:') || saved.startsWith('idb:') ? '' : saved;
   });
   const [localVideoObjectUrl, setLocalVideoObjectUrl] = useState('');
+  const [slideshowSlides, setSlideshowSlides] = useState<
+    HydratedReaderBgSlide[]
+  >([]);
+  const [slideshowIndex, setSlideshowIndex] = useState(0);
+  const [slideshowPaused, setSlideshowPaused] = useState(false);
+  const [slideshowTickToken, setSlideshowTickToken] = useState(0);
+  const [slideCrossfade, setSlideCrossfade] = useState<{
+    activeSlot: 'a' | 'b';
+    slotAUrl: string;
+    slotBUrl: string;
+  }>({ activeSlot: 'a', slotAUrl: '', slotBUrl: '' });
+  const slideBlobUrlsRef = useRef<Map<string, string>>(new Map());
   const [appWallpaperUrl, setAppWallpaperUrl] = useState<string>(
     () => loadAppearanceSettings().customImageUrl
   );
@@ -663,6 +688,69 @@ export const JapaneseNovelReaderModal: React.FC<
     });
   }, []);
 
+  const hydrateSlidesFromMetas = useCallback(
+    async (metas: StoredReaderBgSlideMeta[]) => {
+      const keepIds = new Set(metas.map((m) => m.id));
+      for (const [id, objUrl] of slideBlobUrlsRef.current.entries()) {
+        if (!keepIds.has(id)) {
+          URL.revokeObjectURL(objUrl);
+          slideBlobUrlsRef.current.delete(id);
+        }
+      }
+
+      const resolved: HydratedReaderBgSlide[] = await Promise.all(
+        metas.map(async (m) => {
+          if (m.kind === 'url') {
+            return {
+              id: m.id,
+              kind: 'url' as const,
+              name: m.name,
+              resolvedUrl: m.url ?? '',
+              addedAt: m.addedAt,
+            };
+          }
+          let cachedUrl = slideBlobUrlsRef.current.get(m.id);
+          if (!cachedUrl) {
+            const blob = await loadReaderBgSlideBlob(m.id);
+            if (blob) {
+              cachedUrl = URL.createObjectURL(blob);
+              slideBlobUrlsRef.current.set(m.id, cachedUrl);
+            }
+          }
+          return {
+            id: m.id,
+            kind: 'blob' as const,
+            name: m.name,
+            resolvedUrl: cachedUrl ?? '',
+            addedAt: m.addedAt,
+          };
+        })
+      );
+
+      const cleanSlides = resolved.filter((s) => Boolean(s.resolvedUrl));
+      setSlideshowSlides(cleanSlides);
+      setSlideshowIndex((prev) =>
+        cleanSlides.length === 0 ? 0 : Math.min(cleanSlides.length - 1, prev)
+      );
+      return cleanSlides;
+    },
+    []
+  );
+
+  useEffect(() => {
+    let active = true;
+    void loadReaderBgSlideMetas().then((metas) => {
+      if (active) void hydrateSlidesFromMetas(metas);
+    });
+    return () => {
+      active = false;
+      for (const objUrl of slideBlobUrlsRef.current.values()) {
+        URL.revokeObjectURL(objUrl);
+      }
+      slideBlobUrlsRef.current.clear();
+    };
+  }, [hydrateSlidesFromMetas]);
+
   useEffect(() => {
     if (
       prefs.bgMode !== 'custom' ||
@@ -757,12 +845,125 @@ export const JapaneseNovelReaderModal: React.FC<
     return saved;
   }, []);
 
+  const handleAddSlideFiles = useCallback(
+    async (files: FileList | File[]) => {
+      try {
+        const prevLen = slideshowSlides.length;
+        const res = await addReaderBgSlideFiles(files);
+        await hydrateSlidesFromMetas(res.slides);
+        if (res.addedCount > 0) {
+          if (prefsRef.current.bgMode !== 'slideshow') {
+            updatePrefs({ bgMode: 'slideshow' });
+          }
+          if (prevLen === 0) {
+            setSlideshowIndex(0);
+          }
+          setSlideshowPaused(false);
+          setSlideshowTickToken((t) => t + 1);
+          toast.success(
+            `${res.addedCount} foto ditambahkan ke slideshow (total ${res.slides.length})!${
+              res.skippedCount > 0
+                ? ` (${res.skippedCount} file non-gambar dilewati)`
+                : ''
+            }`
+          );
+        } else if (res.skippedCount > 0) {
+          toast.error('Pilih file gambar (.jpg / .png / .webp / .gif) untuk slideshow.');
+        }
+      } catch (err: unknown) {
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : 'Gagal menambahkan foto ke slideshow.'
+        );
+      }
+    },
+    [slideshowSlides.length, hydrateSlidesFromMetas, updatePrefs]
+  );
+
+  const handleAddSlideUrl = useCallback(
+    async (url: string, label?: string) => {
+      try {
+        const metas = await addReaderBgSlideUrl(url, label);
+        await hydrateSlidesFromMetas(metas);
+        if (prefsRef.current.bgMode !== 'slideshow') {
+          updatePrefs({ bgMode: 'slideshow' });
+        }
+        setSlideshowIndex(Math.max(0, metas.length - 1));
+        setSlideshowPaused(false);
+        setSlideshowTickToken((t) => t + 1);
+        toast.success(`Foto ditambahkan ke slideshow (total ${metas.length})!`);
+      } catch (err: unknown) {
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : 'Gagal menambahkan URL foto ke slideshow.'
+        );
+      }
+    },
+    [hydrateSlidesFromMetas, updatePrefs]
+  );
+
+  const handleMoveSlide = useCallback(
+    async (id: string, dir: -1 | 1) => {
+      const currentId = slideshowSlides[slideshowIndex]?.id;
+      const metas = await moveReaderBgSlide(id, dir);
+      const next = await hydrateSlidesFromMetas(metas);
+      if (currentId) {
+        const nextPos = next.findIndex((s) => s.id === currentId);
+        if (nextPos >= 0) setSlideshowIndex(nextPos);
+      }
+    },
+    [slideshowSlides, slideshowIndex, hydrateSlidesFromMetas]
+  );
+
+  const handleDeleteSlide = useCallback(
+    async (id: string) => {
+      const metas = await deleteReaderBgSlide(id);
+      await hydrateSlidesFromMetas(metas);
+      toast.success('Foto dihapus dari slideshow.');
+    },
+    [hydrateSlidesFromMetas]
+  );
+
+  const handleClearSlides = useCallback(async () => {
+    const metas = await clearReaderBgSlides();
+    await hydrateSlidesFromMetas(metas);
+    setSlideshowIndex(0);
+    if (prefsRef.current.bgMode === 'slideshow') {
+      updatePrefs({ bgMode: 'none' });
+    }
+    toast.success('Semua foto slideshow dihapus.');
+  }, [hydrateSlidesFromMetas, updatePrefs]);
+
+  const advanceSlide = useCallback(
+    (dir: 1 | -1) => {
+      if (slideshowSlides.length <= 1) return;
+      setSlideshowIndex((prev) => {
+        const len = slideshowSlides.length;
+        if (dir === 1 && prefsRef.current.bgSlideshowShuffle) {
+          let rand = Math.floor(Math.random() * len);
+          if (rand === prev) rand = (prev + 1) % len;
+          return rand;
+        }
+        return (prev + dir + len) % len;
+      });
+      setSlideshowTickToken((t) => t + 1);
+    },
+    [slideshowSlides.length]
+  );
+
   const handleUploadReaderBg = async (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
     try {
+      if (fileList.length > 1) {
+        await handleAddSlideFiles(fileList);
+        return;
+      }
+      const file = fileList[0];
       if (file.type.startsWith('video/')) {
         if (file.size > 60 * 1024 * 1024) {
           toast.error(
@@ -3369,6 +3570,82 @@ export const JapaneseNovelReaderModal: React.FC<
     scrollToTrackedBlock,
   ]);
 
+  const activeSlideItem = useMemo(() => {
+    if (prefs.bgMode !== 'slideshow' || slideshowSlides.length === 0) {
+      return null;
+    }
+    const idx = Math.min(slideshowSlides.length - 1, Math.max(0, slideshowIndex));
+    return slideshowSlides[idx] ?? null;
+  }, [prefs.bgMode, slideshowSlides, slideshowIndex]);
+
+  const activeSlideUrl = activeSlideItem?.resolvedUrl ?? '';
+
+  // Auto-advance timer & preload next photo when Slideshow is active
+  useEffect(() => {
+    if (
+      prefs.bgMode !== 'slideshow' ||
+      slideshowSlides.length <= 1 ||
+      slideshowPaused
+    ) {
+      return;
+    }
+    // Preload next candidate for seamless crossfade
+    const nextIdx = (slideshowIndex + 1) % slideshowSlides.length;
+    const nextUrl = slideshowSlides[nextIdx]?.resolvedUrl;
+    if (nextUrl) {
+      const preload = new Image();
+      preload.src = nextUrl;
+    }
+
+    const intervalMs = Math.max(2, prefs.bgSlideshowIntervalSec) * 1000;
+    const id = window.setInterval(() => {
+      advanceSlide(1);
+    }, intervalMs);
+    return () => window.clearInterval(id);
+  }, [
+    prefs.bgMode,
+    prefs.bgSlideshowIntervalSec,
+    prefs.bgSlideshowShuffle,
+    slideshowSlides,
+    slideshowIndex,
+    slideshowPaused,
+    slideshowTickToken,
+    advanceSlide,
+  ]);
+
+  // Dual-layer smooth crossfade state machine for slideshow backgrounds
+  useEffect(() => {
+    if (!activeSlideUrl) {
+      setSlideCrossfade({ activeSlot: 'a', slotAUrl: '', slotBUrl: '' });
+      return;
+    }
+    let raf1 = 0;
+    let raf2 = 0;
+    setSlideCrossfade((prev) => {
+      const currentVisible =
+        prev.activeSlot === 'a' ? prev.slotAUrl : prev.slotBUrl;
+      if (currentVisible === activeSlideUrl) return prev;
+      if (!currentVisible || prefs.bgSlideshowTransitionMs === 0) {
+        return { activeSlot: 'a', slotAUrl: activeSlideUrl, slotBUrl: '' };
+      }
+      const targetSlot: 'a' | 'b' = prev.activeSlot === 'a' ? 'b' : 'a';
+      const updated =
+        targetSlot === 'a'
+          ? { ...prev, slotAUrl: activeSlideUrl }
+          : { ...prev, slotBUrl: activeSlideUrl };
+      raf1 = window.requestAnimationFrame(() => {
+        raf2 = window.requestAnimationFrame(() => {
+          setSlideCrossfade((cur) => ({ ...cur, activeSlot: targetSlot }));
+        });
+      });
+      return updated;
+    });
+    return () => {
+      if (raf1) window.cancelAnimationFrame(raf1);
+      if (raf2) window.cancelAnimationFrame(raf2);
+    };
+  }, [activeSlideUrl, prefs.bgSlideshowTransitionMs]);
+
   const resolvedRawBgUrl = useMemo(() => {
     if (prefs.bgMode === 'app') return appWallpaperUrl.trim();
     if (prefs.bgMode === 'custom') return prefs.bgImageUrl.trim();
@@ -3381,9 +3658,12 @@ export const JapaneseNovelReaderModal: React.FC<
   );
 
   const safeBgUrl = useMemo(() => {
+    if (prefs.bgMode === 'slideshow') {
+      return activeSlideUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    }
     if (bgMedia.kind !== 'image') return '';
     return bgMedia.url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  }, [bgMedia]);
+  }, [prefs.bgMode, activeSlideUrl, bgMedia]);
 
   const activeVideoSrc =
     bgMedia.kind === 'local-video'
@@ -3393,11 +3673,15 @@ export const JapaneseNovelReaderModal: React.FC<
         : '';
 
   const isVideoBg =
-    (bgMedia.kind === 'youtube' && Boolean(bgMedia.youtubeId)) ||
-    Boolean(activeVideoSrc);
+    prefs.bgMode !== 'slideshow' &&
+    ((bgMedia.kind === 'youtube' && Boolean(bgMedia.youtubeId)) ||
+      Boolean(activeVideoSrc));
+
+  const isSlideshowBg =
+    prefs.bgMode === 'slideshow' && Boolean(activeSlideUrl);
 
   const hasActiveBg =
-    isVideoBg || (bgMedia.kind === 'image' && Boolean(safeBgUrl));
+    isSlideshowBg || isVideoBg || (bgMedia.kind === 'image' && Boolean(safeBgUrl));
 
   const ytEmbedUrl = useMemo(() => {
     if (bgMedia.kind !== 'youtube' || !bgMedia.youtubeId) return '';
@@ -4034,6 +4318,43 @@ export const JapaneseNovelReaderModal: React.FC<
                 willChange: 'transform',
               }}
             />
+          ) : isSlideshowBg ? (
+            <>
+              {slideCrossfade.slotAUrl && (
+                <div
+                  className="absolute -inset-8 bg-cover bg-no-repeat"
+                  style={{
+                    backgroundImage: `url("${slideCrossfade.slotAUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}")`,
+                    backgroundPosition: bgPositionCss,
+                    filter: `blur(${prefs.bgBlur}px)`,
+                    opacity:
+                      slideCrossfade.activeSlot === 'a'
+                        ? prefs.bgOpacity / 100
+                        : 0,
+                    transition: `opacity ${prefs.bgSlideshowTransitionMs}ms ease-in-out, filter 200ms ease, background-position 200ms ease`,
+                    transform: 'translate3d(0, 0, 0)',
+                    willChange: 'opacity, transform',
+                  }}
+                />
+              )}
+              {slideCrossfade.slotBUrl && (
+                <div
+                  className="absolute -inset-8 bg-cover bg-no-repeat"
+                  style={{
+                    backgroundImage: `url("${slideCrossfade.slotBUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}")`,
+                    backgroundPosition: bgPositionCss,
+                    filter: `blur(${prefs.bgBlur}px)`,
+                    opacity:
+                      slideCrossfade.activeSlot === 'b'
+                        ? prefs.bgOpacity / 100
+                        : 0,
+                    transition: `opacity ${prefs.bgSlideshowTransitionMs}ms ease-in-out, filter 200ms ease, background-position 200ms ease`,
+                    transform: 'translate3d(0, 0, 0)',
+                    willChange: 'opacity, transform',
+                  }}
+                />
+              )}
+            </>
           ) : (
             <div
               className="absolute -inset-8 bg-cover bg-no-repeat transition-[opacity,filter,background-position] duration-200"
@@ -4101,6 +4422,7 @@ export const JapaneseNovelReaderModal: React.FC<
       <input
         ref={bgFileInputRef}
         type="file"
+        multiple
         accept="image/*,video/mp4,video/webm,video/ogg"
         onChange={handleUploadReaderBg}
         className="hidden"
@@ -4553,6 +4875,20 @@ export const JapaneseNovelReaderModal: React.FC<
                 </span>
               </button>
 
+              {isSlideshowBg && slideshowSlides.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => advanceSlide(1)}
+                  title={`Ganti ke foto slideshow berikutnya (${slideshowIndex + 1}/${slideshowSlides.length})`}
+                  className={`hidden md:inline-flex p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold items-center gap-1 transition cursor-pointer ${themeStyle.subtleBtn}`}
+                >
+                  <Images className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span className="hidden xl:inline font-mono">
+                    {slideshowIndex + 1}/{slideshowSlides.length}
+                  </span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => {
@@ -4566,7 +4902,7 @@ export const JapaneseNovelReaderModal: React.FC<
                     setShowAudioPanel(false);
                   }
                 }}
-                title="Atur Background, Video, Blur & Opacity Reader"
+                title="Atur Background, Slideshow, Video, Blur & Opacity Reader"
                 aria-label="Background Reader"
                 className={`hidden md:inline-flex p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold items-center gap-1 transition cursor-pointer ${
                   showSettings && settingsTab === 'background'
@@ -4774,6 +5110,20 @@ export const JapaneseNovelReaderModal: React.FC<
                         : 'Warna'}
                 </span>
               </button>
+
+              {isSlideshowBg && slideshowSlides.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => advanceSlide(1)}
+                  title="Foto background berikutnya"
+                  className={`px-2 py-1 rounded-lg border text-[11px] font-mono font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${themeStyle.subtleBtn}`}
+                >
+                  <Images className="w-3 h-3 text-sky-400" />
+                  <span>
+                    {slideshowIndex + 1}/{slideshowSlides.length}
+                  </span>
+                </button>
+              )}
 
               <button
                 type="button"
@@ -5834,19 +6184,20 @@ export const JapaneseNovelReaderModal: React.FC<
                     <span className={`block text-[11px] font-bold ${themeStyle.mutedText}`}>
                       Sumber Background Reader
                     </span>
-                    <div className="grid grid-cols-3 gap-1.5">
+                    <div className="grid grid-cols-4 gap-1">
                       {(
                         [
                           { id: 'none', label: 'Polos' },
-                          { id: 'app', label: 'Ikuti Web' },
+                          { id: 'app', label: 'Web' },
                           { id: 'custom', label: 'Kustom' },
+                          { id: 'slideshow', label: 'Slideshow' },
                         ] as Array<{ id: ReaderBgMode; label: string }>
                       ).map((src) => (
                         <button
                           key={src.id}
                           type="button"
                           onClick={() => updatePrefs({ bgMode: src.id })}
-                          className={`px-2 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                          className={`px-1.5 py-1.5 rounded-xl text-[11px] font-bold border transition cursor-pointer ${
                             prefs.bgMode === src.id
                               ? 'bg-sky-500 text-slate-950 border-sky-400'
                               : themeStyle.subtleBtn
@@ -5894,7 +6245,7 @@ export const JapaneseNovelReaderModal: React.FC<
                       />
                     ) : hasActiveBg ? (
                       <div
-                        className="absolute -inset-4 bg-cover bg-no-repeat"
+                        className="absolute -inset-4 bg-cover bg-no-repeat transition-[background-image] duration-300"
                         style={{
                           backgroundImage: `url("${safeBgUrl}")`,
                           backgroundPosition: bgPositionCss,
@@ -5932,67 +6283,93 @@ export const JapaneseNovelReaderModal: React.FC<
                       <span className="px-2 py-0.5 rounded-md bg-black/55 text-white font-mono text-[10px]">
                         {hasActiveBg
                           ? `${
-                              bgMedia.kind === 'youtube'
-                                ? 'YT • '
-                                : isVideoBg
-                                  ? 'Video • '
-                                  : ''
+                              isSlideshowBg
+                                ? `Slide ${slideshowIndex + 1}/${slideshowSlides.length} • `
+                                : bgMedia.kind === 'youtube'
+                                  ? 'YT • '
+                                  : isVideoBg
+                                    ? 'Video • '
+                                    : ''
                             }Blur ${prefs.bgBlur}px • ${prefs.bgOpacity}%`
                           : 'Polos'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Upload & URL Actions */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => bgFileInputRef.current?.click()}
-                        className="btn-crimson flex-1 py-2 px-3 rounded-xl text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>Unggah Gambar / Video</span>
-                      </button>
-                      {prefs.bgImageUrl.trim() && (
+                  {/* Slideshow Controls OR Single Upload/URL Actions */}
+                  {prefs.bgMode === 'slideshow' ? (
+                    <ReaderBgSlideshowPanel
+                      prefs={prefs}
+                      updatePrefs={updatePrefs}
+                      themeStyle={themeStyle}
+                      slides={slideshowSlides}
+                      activeSlideIndex={slideshowIndex}
+                      paused={slideshowPaused}
+                      onTogglePaused={() => setSlideshowPaused((p) => !p)}
+                      onPrevSlide={() => advanceSlide(-1)}
+                      onNextSlide={() => advanceSlide(1)}
+                      onSelectSlide={(idx) => {
+                        setSlideshowIndex(idx);
+                        setSlideshowTickToken((t) => t + 1);
+                      }}
+                      onAddFiles={handleAddSlideFiles}
+                      onAddUrl={(url) => handleAddSlideUrl(url)}
+                      onMoveSlide={handleMoveSlide}
+                      onDeleteSlide={handleDeleteSlide}
+                      onClearSlides={handleClearSlides}
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5">
                         <button
                           type="button"
-                          onClick={() => {
-                            setBgUrlDraft('');
-                            void deleteReaderBgVideoBlob();
-                            updatePrefs({ bgMode: 'none', bgImageUrl: '' });
-                            toast.success('Background kustom reader dihapus.');
-                          }}
-                          title="Hapus background kustom"
-                          className={`p-2 rounded-xl border text-xs font-bold text-red-400 cursor-pointer ${themeStyle.subtleBtn}`}
+                          onClick={() => bgFileInputRef.current?.click()}
+                          className="btn-crimson flex-1 py-2 px-3 rounded-xl text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Unggah Gambar / Video</span>
                         </button>
-                      )}
-                    </div>
-
-                    <form onSubmit={handleApplyBgUrl} className="space-y-1">
-                      <div className="flex gap-1.5">
-                        <input
-                          type="url"
-                          placeholder="Tempel URL Gambar, YouTube, atau .MP4 (https://...)"
-                          value={bgUrlDraft}
-                          onChange={(e) => setBgUrlDraft(e.target.value)}
-                          className="flex-1 min-w-0 px-2.5 py-1.5 rounded-xl bg-black/20 border border-current/15 text-xs focus:outline-none focus:border-sky-400"
-                        />
-                        <button
-                          type="submit"
-                          className={`px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer shrink-0 ${themeStyle.subtleBtn}`}
-                        >
-                          Pakai
-                        </button>
+                        {prefs.bgImageUrl.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBgUrlDraft('');
+                              void deleteReaderBgVideoBlob();
+                              updatePrefs({ bgMode: 'none', bgImageUrl: '' });
+                              toast.success('Background kustom reader dihapus.');
+                            }}
+                            title="Hapus background kustom"
+                            className={`p-2 rounded-xl border text-xs font-bold text-red-400 cursor-pointer ${themeStyle.subtleBtn}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
-                      <p className={`text-[10px] leading-snug ${themeStyle.mutedText}`}>
-                        Mendukung link YouTube, video .mp4 / .webm, unggah file
-                        video lokal, atau link gambar.
-                      </p>
-                    </form>
-                  </div>
+
+                      <form onSubmit={handleApplyBgUrl} className="space-y-1">
+                        <div className="flex gap-1.5">
+                          <input
+                            type="url"
+                            placeholder="Tempel URL Gambar, YouTube, atau .MP4 (https://...)"
+                            value={bgUrlDraft}
+                            onChange={(e) => setBgUrlDraft(e.target.value)}
+                            className="flex-1 min-w-0 px-2.5 py-1.5 rounded-xl bg-black/20 border border-current/15 text-xs focus:outline-none focus:border-sky-400"
+                          />
+                          <button
+                            type="submit"
+                            className={`px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer shrink-0 ${themeStyle.subtleBtn}`}
+                          >
+                            Pakai
+                          </button>
+                        </div>
+                        <p className={`text-[10px] leading-snug ${themeStyle.mutedText}`}>
+                          Mendukung link YouTube, video .mp4 / .webm, unggah file
+                          video lokal, link gambar, atau pilih beberapa foto sekaligus
+                          untuk Slideshow.
+                        </p>
+                      </form>
+                    </div>
+                  )}
 
                   {/* Audio Controls for Video / YouTube Background */}
                   {isVideoBg && (

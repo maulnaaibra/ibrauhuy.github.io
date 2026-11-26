@@ -70,7 +70,7 @@ export type VnAnimationStyle =
   | 'blur-in'
   | 'none';
 export type VnDisplayStyle = 'card' | 'stream';
-export type ReaderBgMode = 'none' | 'app' | 'custom';
+export type ReaderBgMode = 'none' | 'app' | 'custom' | 'slideshow';
 export type ReaderBgPosition = 'top' | 'center' | 'bottom';
 export type ReaderBgMediaKind =
   | 'none'
@@ -242,6 +242,9 @@ export interface ReaderPreferences {
   bgPosition: ReaderBgPosition;
   bgVideoMuted: boolean;
   bgVideoVolume: number;
+  bgSlideshowIntervalSec: number;
+  bgSlideshowShuffle: boolean;
+  bgSlideshowTransitionMs: number;
   textColorMode: ReaderTextColorMode;
   wordClickAction: ReaderWordClickAction;
   colorParticlesInVocab: boolean;
@@ -278,6 +281,9 @@ export const DEFAULT_READER_PREFS: ReaderPreferences = {
   bgPosition: 'center',
   bgVideoMuted: true,
   bgVideoVolume: 100,
+  bgSlideshowIntervalSec: 12,
+  bgSlideshowShuffle: false,
+  bgSlideshowTransitionMs: 1000,
   textColorMode: 'off',
   wordClickAction: 'popover',
   colorParticlesInVocab: true,
@@ -403,7 +409,9 @@ export function loadReaderPrefs(): ReaderPreferences {
       const vnDisplayStyle: VnDisplayStyle =
         parsed.vnDisplayStyle === 'stream' ? 'stream' : 'card';
       const bgMode: ReaderBgMode =
-        parsed.bgMode === 'app' || parsed.bgMode === 'custom'
+        parsed.bgMode === 'app' ||
+        parsed.bgMode === 'custom' ||
+        parsed.bgMode === 'slideshow'
           ? parsed.bgMode
           : 'none';
       const bgImageUrl =
@@ -434,6 +442,26 @@ export function loadReaderPrefs(): ReaderPreferences {
         Number.isFinite(parsed.bgVideoVolume)
           ? Math.min(300, Math.max(0, Math.round(parsed.bgVideoVolume)))
           : DEFAULT_READER_PREFS.bgVideoVolume;
+      const bgSlideshowIntervalSec =
+        typeof parsed.bgSlideshowIntervalSec === 'number' &&
+        Number.isFinite(parsed.bgSlideshowIntervalSec)
+          ? Math.min(
+              3600,
+              Math.max(2, Math.round(parsed.bgSlideshowIntervalSec))
+            )
+          : DEFAULT_READER_PREFS.bgSlideshowIntervalSec;
+      const bgSlideshowShuffle =
+        typeof parsed.bgSlideshowShuffle === 'boolean'
+          ? parsed.bgSlideshowShuffle
+          : DEFAULT_READER_PREFS.bgSlideshowShuffle;
+      const bgSlideshowTransitionMs =
+        typeof parsed.bgSlideshowTransitionMs === 'number' &&
+        Number.isFinite(parsed.bgSlideshowTransitionMs)
+          ? Math.min(
+              3000,
+              Math.max(0, Math.round(parsed.bgSlideshowTransitionMs))
+            )
+          : DEFAULT_READER_PREFS.bgSlideshowTransitionMs;
       const textColorMode: ReaderTextColorMode =
         parsed.textColorMode === 'vocab' ||
         parsed.textColorMode === 'pos' ||
@@ -547,6 +575,9 @@ export function loadReaderPrefs(): ReaderPreferences {
         bgPosition,
         bgVideoMuted,
         bgVideoVolume,
+        bgSlideshowIntervalSec,
+        bgSlideshowShuffle,
+        bgSlideshowTransitionMs,
         textColorMode,
         wordClickAction,
         colorParticlesInVocab,
@@ -734,6 +765,266 @@ export async function deleteReaderBgVideoBlob(): Promise<void> {
   } catch {
     // ignore storage errors
   }
+}
+
+// === UNLIMITED BACKGROUND PHOTO SLIDESHOW STORAGE (IndexedDB) ===
+
+export interface StoredReaderBgSlideMeta {
+  id: string;
+  kind: 'blob' | 'url';
+  name: string;
+  url?: string;
+  addedAt: number;
+}
+
+const READER_BG_SLIDESHOW_META_KEY = 'reader_bg_slideshow_meta_v1';
+const readerBgSlideKey = (id: string) => `reader_bg_slide:${id}`;
+
+function sanitizeSlideMetas(raw: unknown): StoredReaderBgSlideMeta[] {
+  if (!Array.isArray(raw)) return [];
+  const out: StoredReaderBgSlideMeta[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const rec = item as Partial<StoredReaderBgSlideMeta>;
+    if (typeof rec.id !== 'string' || !rec.id.trim()) continue;
+    if (rec.kind !== 'blob' && rec.kind !== 'url') continue;
+    if (rec.kind === 'url' && (typeof rec.url !== 'string' || !rec.url.trim())) {
+      continue;
+    }
+    out.push({
+      id: rec.id,
+      kind: rec.kind,
+      name:
+        typeof rec.name === 'string' && rec.name.trim()
+          ? rec.name.trim().slice(0, 80)
+          : 'Foto Background',
+      ...(rec.kind === 'url' ? { url: rec.url!.trim() } : {}),
+      addedAt:
+        typeof rec.addedAt === 'number' && Number.isFinite(rec.addedAt)
+          ? rec.addedAt
+          : Date.now(),
+    });
+  }
+  return out;
+}
+
+export async function loadReaderBgSlideMetas(): Promise<
+  StoredReaderBgSlideMeta[]
+> {
+  try {
+    const db = await openReaderMediaDb();
+    return await new Promise<StoredReaderBgSlideMeta[]>((resolve) => {
+      const tx = db.transaction(MEDIA_STORE_NAME, 'readonly');
+      const req = tx
+        .objectStore(MEDIA_STORE_NAME)
+        .get(READER_BG_SLIDESHOW_META_KEY);
+      req.onsuccess = () => {
+        db.close();
+        resolve(sanitizeSlideMetas(req.result));
+      };
+      req.onerror = () => {
+        db.close();
+        resolve([]);
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function loadReaderBgSlideBlob(id: string): Promise<Blob | null> {
+  try {
+    const db = await openReaderMediaDb();
+    return await new Promise<Blob | null>((resolve) => {
+      const tx = db.transaction(MEDIA_STORE_NAME, 'readonly');
+      const req = tx.objectStore(MEDIA_STORE_NAME).get(readerBgSlideKey(id));
+      req.onsuccess = () => {
+        db.close();
+        resolve(req.result instanceof Blob ? req.result : null);
+      };
+      req.onerror = () => {
+        db.close();
+        resolve(null);
+      };
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function addReaderBgSlideFiles(
+  files: FileList | File[]
+): Promise<{
+  slides: StoredReaderBgSlideMeta[];
+  addedCount: number;
+  skippedCount: number;
+}> {
+  const list = Array.from(files);
+  const validImages = list.filter((f) => f.type.startsWith('image/') && f.size > 0);
+  const skippedCount = list.length - validImages.length;
+  if (validImages.length === 0) {
+    return {
+      slides: await loadReaderBgSlideMetas(),
+      addedCount: 0,
+      skippedCount,
+    };
+  }
+
+  const existing = await loadReaderBgSlideMetas();
+  const baseTs = Date.now();
+  const newItems: Array<{ meta: StoredReaderBgSlideMeta; blob: Blob }> =
+    validImages.map((file, idx) => {
+      const id = `slide-${baseTs}-${idx}-${Math.random().toString(36).slice(2, 7)}`;
+      return {
+        meta: {
+          id,
+          kind: 'blob',
+          name: file.name || `Foto ${existing.length + idx + 1}`,
+          addedAt: baseTs + idx,
+        },
+        blob: file,
+      };
+    });
+
+  const nextMetas = [...existing, ...newItems.map((it) => it.meta)];
+  const db = await openReaderMediaDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(MEDIA_STORE_NAME, 'readwrite');
+    const store = tx.objectStore(MEDIA_STORE_NAME);
+    for (const item of newItems) {
+      store.put(item.blob, readerBgSlideKey(item.meta.id));
+    }
+    store.put(nextMetas, READER_BG_SLIDESHOW_META_KEY);
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(
+        tx.error ?? new Error('Gagal menyimpan foto slideshow ke browser.')
+      );
+    };
+  });
+
+  return {
+    slides: nextMetas,
+    addedCount: newItems.length,
+    skippedCount,
+  };
+}
+
+export async function addReaderBgSlideUrl(
+  url: string,
+  name?: string
+): Promise<StoredReaderBgSlideMeta[]> {
+  const clean = url.trim();
+  if (!clean) return loadReaderBgSlideMetas();
+  const existing = await loadReaderBgSlideMetas();
+  const baseTs = Date.now();
+  const id = `slide-url-${baseTs}-${Math.random().toString(36).slice(2, 7)}`;
+  const meta: StoredReaderBgSlideMeta = {
+    id,
+    kind: 'url',
+    name: name?.trim() || `URL #${existing.length + 1}`,
+    url: clean,
+    addedAt: baseTs,
+  };
+  const nextMetas = [...existing, meta];
+  const db = await openReaderMediaDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(MEDIA_STORE_NAME, 'readwrite');
+    tx.objectStore(MEDIA_STORE_NAME).put(nextMetas, READER_BG_SLIDESHOW_META_KEY);
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error ?? new Error('Gagal menambahkan link foto slideshow.'));
+    };
+  });
+  return nextMetas;
+}
+
+export async function deleteReaderBgSlide(
+  id: string
+): Promise<StoredReaderBgSlideMeta[]> {
+  const existing = await loadReaderBgSlideMetas();
+  const target = existing.find((s) => s.id === id);
+  const nextMetas = existing.filter((s) => s.id !== id);
+  const db = await openReaderMediaDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(MEDIA_STORE_NAME, 'readwrite');
+    const store = tx.objectStore(MEDIA_STORE_NAME);
+    if (target?.kind === 'blob') {
+      store.delete(readerBgSlideKey(id));
+    }
+    store.put(nextMetas, READER_BG_SLIDESHOW_META_KEY);
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error ?? new Error('Gagal menghapus foto slideshow.'));
+    };
+  });
+  return nextMetas;
+}
+
+export async function moveReaderBgSlide(
+  id: string,
+  direction: -1 | 1
+): Promise<StoredReaderBgSlideMeta[]> {
+  const existing = await loadReaderBgSlideMetas();
+  const idx = existing.findIndex((s) => s.id === id);
+  const targetIdx = idx + direction;
+  if (idx < 0 || targetIdx < 0 || targetIdx >= existing.length) {
+    return existing;
+  }
+  const nextMetas = [...existing];
+  const [removed] = nextMetas.splice(idx, 1);
+  nextMetas.splice(targetIdx, 0, removed);
+
+  const db = await openReaderMediaDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(MEDIA_STORE_NAME, 'readwrite');
+    tx.objectStore(MEDIA_STORE_NAME).put(nextMetas, READER_BG_SLIDESHOW_META_KEY);
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error ?? new Error('Gagal mengurutkan foto slideshow.'));
+    };
+  });
+  return nextMetas;
+}
+
+export async function clearReaderBgSlides(): Promise<StoredReaderBgSlideMeta[]> {
+  const existing = await loadReaderBgSlideMetas();
+  const db = await openReaderMediaDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(MEDIA_STORE_NAME, 'readwrite');
+    const store = tx.objectStore(MEDIA_STORE_NAME);
+    for (const s of existing) {
+      if (s.kind === 'blob') {
+        store.delete(readerBgSlideKey(s.id));
+      }
+    }
+    store.put([], READER_BG_SLIDESHOW_META_KEY);
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error ?? new Error('Gagal membersihkan foto slideshow.'));
+    };
+  });
+  return [];
 }
 
 export function loadYatsuBookLinks(): Record<string, string> {
